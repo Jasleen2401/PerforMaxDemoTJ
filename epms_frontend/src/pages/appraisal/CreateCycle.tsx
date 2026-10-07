@@ -34,11 +34,12 @@ const AppraisalCycleCreate: React.FC = () => {
   const [frequency, setFrequency] = useState<'ANNUAL' | 'SEMI_ANNUAL' | 'QUARTERLY'>('ANNUAL');
   const [period, setPeriod] = useState<string>('FULL');
 
+  const currentYearStr = new Date().getFullYear().toString();
   const [formData, setFormData] = useState({
-    cycleName: '2024 Annual Performance Review',
+    cycleName: `${currentYearStr} Annual Performance Review`,
     startDate: '', endDate: '',
     selfAssessmentDeadline: '', managerEvaluationDeadline: '', finalizationDeadline: '',
-    evaluationPeriod: 'Q1-Q4 2024',
+    evaluationPeriod: `Q1-Q4 ${currentYearStr}`,
     status: 'PLANNING', isActive: false,
     kpiWeight: 50, managerWeight: 30, feedbackWeight: 0, selfWeight: 20,
     financialYearId: ''

@@ -80,7 +80,7 @@ const AppraisalDetail: React.FC = () => {
   const isManager = isAssignedManager || authIsManager;
   const isPrivileged = isAdmin || isHR;
   const canViewSelfAssessment = isEmployee || isManager || isPrivileged;
-  const canViewManagerEvaluation = isManager || isPrivileged || (isEmployee && !!appraisal.managerSubmittedAt);
+  const canViewManagerEvaluation = isManager || isPrivileged || (isEmployee && appraisal.status === 'PUBLISHED');
 
   // Signature gate for finalize
   const hasEmployeeSigned = !!appraisal.employeeSignedAt;

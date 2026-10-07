@@ -24,6 +24,7 @@ from apps.goals.models import (
 )
 from apps.audit.models import AuditLog
 from apps.reports.services import AnalyticsService
+from apps.performance.services.scoring import ScoringService
 from django.utils import timezone
 
 
@@ -59,12 +60,7 @@ def _safe_user_name(u):
     last = getattr(u, 'last_name', '')
     if first or last:
         return f"{first} {last}".strip()
-    un = getattr(u, 'username', '')
-    if un == 'manager_marcus':
-        return 'Marcus Vance'
-    if un == 'manager_elena':
-        return 'Elena Rostova'
-    return un or getattr(u, 'email', '') or "Manager"
+    return getattr(u, 'username', '') or getattr(u, 'email', '') or "Unassigned"
 
 
 def map_employee(profile: EmployeeProfile) -> dict:
@@ -1409,6 +1405,11 @@ class EmployeeCompatView(APIView):
         return ok_response(paged_data)
 
     def post(self, request):
+        if request.user.role not in [UserRole.SUPER_ADMIN, UserRole.HR] and not request.user.is_superuser:
+            return Response(
+                {"detail": "Permission denied. Only HR and Super Admin can create employees."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         data = request.data
         staff_name = (data.get("staffName") or data.get("name") or "New Staff").strip()
         names = staff_name.split(" ", 1)
@@ -1512,6 +1513,11 @@ class EmployeeCompatView(APIView):
         return ok_response(map_employee(profile), "Staff member registered successfully")
 
     def put(self, request, pk=None):
+        if request.user.role not in [UserRole.SUPER_ADMIN, UserRole.HR] and not request.user.is_superuser:
+            return Response(
+                {"detail": "Permission denied. Only HR and Super Admin can update employees."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         try:
             if not pk or not is_valid_uuid(str(pk)):
                 profile = EmployeeProfile.objects.select_related(
@@ -1914,11 +1920,9 @@ def _resolve_appraisal(pk, user=None):
     Safely resolves an Appraisal instance by:
     1. Appraisal UUID
     2. EmployeeProfile ID (UUID, code, or user ID)
-    3. Auto-creates an appraisal in active cycle for the employee if missing
-    4. Fallback to latest appraisal
     """
     if not pk or str(pk).strip() in ('undefined', 'null', 'NaN', '0', ''):
-        return Appraisal.objects.select_related('employee', 'cycle', 'reviewer').first()
+        return None
 
     pk_str = str(pk).strip()
     is_uuid = False
@@ -1946,7 +1950,7 @@ def _resolve_appraisal(pk, user=None):
             Q(employee_code__iexact=pk_str) | Q(user__username__iexact=pk_str)
         ).first()
 
-    # 3. If employee found, find their appraisal in active cycle, or any appraisal, or create one
+    # 3. If employee found, find their appraisal in active cycle, or latest appraisal
     if emp:
         active_cycle = PerformanceCycle.objects.filter(status=CycleStatus.ACTIVE).first() or PerformanceCycle.objects.order_by('-start_date').first()
         if active_cycle:
@@ -1957,19 +1961,7 @@ def _resolve_appraisal(pk, user=None):
         if app:
             return app
 
-        if active_cycle:
-            reviewer = user if (user and user.is_authenticated) else emp.manager
-            app = Appraisal.objects.create(
-                employee=emp,
-                cycle=active_cycle,
-                reviewer=reviewer,
-                status=AppraisalStatus.SUBMITTED,
-                appraisal_type=AppraisalType.MANAGER
-            )
-            return app
-
-    # 4. Fallback: try latest appraisal
-    return Appraisal.objects.select_related('employee', 'cycle', 'reviewer').first()
+    return None
 
 
 def map_appraisal(app: Appraisal) -> dict:
@@ -1985,8 +1977,8 @@ def map_appraisal(app: Appraisal) -> dict:
         mgr_id = str(app.reviewer.id)
         mgr_name = _safe_user_name(app.reviewer)
 
-    has_self = app.status in ['SUBMITTED', 'SELF_ASSESSED', 'EVALUATED', 'HR_APPROVED', 'APPROVED', 'FINALIZED'] or bool(app.self_comments)
-    has_mgr = app.status in ['SUBMITTED', 'EVALUATED', 'HR_APPROVED', 'APPROVED', 'FINALIZED'] or bool(app.reviewer_comments) or (app.overall_score is not None)
+    has_self = app.status in ['SUBMITTED', 'SELF_ASSESSED', 'EVALUATED', 'HR_APPROVED', 'APPROVED', 'FINALIZED', 'PUBLISHED'] or bool(app.self_comments)
+    has_mgr = app.status in ['SUBMITTED', 'EVALUATED', 'HR_APPROVED', 'APPROVED', 'FINALIZED', 'PUBLISHED'] or bool(app.reviewer_comments) or (app.overall_score is not None)
 
     emp = app.employee
     emp_code = getattr(emp, 'employee_code', '') if emp else ''
@@ -2008,12 +2000,12 @@ def map_appraisal(app: Appraisal) -> dict:
         "reviewerId": str(app.reviewer.id) if app.reviewer else mgr_id,
         "reviewerName": _safe_user_name(app.reviewer) if app.reviewer else mgr_name,
         "status": app.status,
-        "overallScore": float(app.overall_score) if app.overall_score else None,
-        "score": float(app.overall_score) if app.overall_score else None,
-        "finalScore": float(app.overall_score) if app.overall_score else None,
+        "overallScore": float(app.overall_score) if app.overall_score is not None else None,
+        "score": float(app.overall_score) if app.overall_score is not None else None,
+        "finalScore": float(app.overall_score) if app.overall_score is not None else None,
         "finalGrade": app.classification or ("Exceeds Expectations" if app.overall_score and app.overall_score >= 80 else "Meets Expectations"),
         "evaluationPeriod": app.cycle.name if app.cycle else "Annual Review",
-        "published": app.status in ['PUBLISHED', 'FINALIZED', 'HR_APPROVED', 'APPROVED'],
+        "published": app.status in ['PUBLISHED', 'FINALIZED'],
         "selfSubmittedAt": str(app.submitted_at or app.created_at) if has_self else None,
         "managerSubmittedAt": str(app.submitted_at) if has_mgr else None,
         "employeeSignedAt": str(app.submitted_at) if has_self else None,
@@ -2135,25 +2127,38 @@ class AppraisalsDetailCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        try:
-            if str(pk) == "360":
-                return ok_response({
-                    "appraisalId": 360,
-                    "id": 360,
-                    "employeeId": 1,
-                    "employeeName": request.user.username,
-                    "employeeCode": "EMP-360",
-                    "departmentName": "Engineering",
-                    "managerName": "Executive Management",
-                    "cycleName": "360 Multi-Rater Evaluation",
-                    "status": "FINALIZED",
-                    "finalScore": 8.5,
-                    "finalGrade": "Exceeds Expectations",
-                    "ratings": []
-                })
-            app = _resolve_appraisal(pk, request.user)
-            if not app:
-                return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
+        if str(pk) == "360":
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+        app = _resolve_appraisal(pk, request.user)
+        if not app:
+            return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        if user.role == UserRole.INTERN:
+            if app.employee.user != user:
+                return Response(
+                    {"detail": "Permission denied. You can only view your own appraisal."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.role == UserRole.MANAGER and not user.is_superuser:
+            if app.employee.manager != user and app.reviewer != user:
+                return Response(
+                    {"detail": "Permission denied. You can only view appraisals of your assigned direct reports."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        data = map_appraisal(app)
+
+        # Publication Gate: Intern cannot see manager evaluation or ratings before publication
+        if user.role == UserRole.INTERN and app.status not in [AppraisalStatus.PUBLISHED, 'FINALIZED']:
+            data["overallScore"] = None
+            data["score"] = None
+            data["finalScore"] = None
+            data["finalGrade"] = "Pending Evaluation"
+            data["ratings"] = []
+            data["reviewerComments"] = None
+            data["managerComments"] = None
+        else:
             ratings = [
                 {
                     "criterionId": str(r.criterion.id),
@@ -2163,19 +2168,9 @@ class AppraisalsDetailCompatView(APIView):
                 }
                 for r in app.ratings.all()
             ]
-            data = map_appraisal(app)
             data["ratings"] = ratings
-            return ok_response(data)
-        except Exception:
-            return ok_response({
-                "appraisalId": str(pk),
-                "id": str(pk),
-                "employeeId": 1,
-                "employeeName": request.user.username,
-                "cycleName": "Evaluation Cycle",
-                "status": "FINALIZED",
-                "ratings": []
-            })
+
+        return ok_response(data)
 
 
 class AppraisalsScoreBreakdownCompatView(APIView):
@@ -2183,47 +2178,71 @@ class AppraisalsScoreBreakdownCompatView(APIView):
 
     def get(self, request, pk):
         try:
-            app = Appraisal.objects.get(id=pk)
-            score = float(app.final_score) if app.final_score else 8.0
-            mgr_score = float(app.manager_overall_score or score)
-            self_score = float(app.self_overall_score or score)
-            return ok_response({
-                "appraisalId": str(app.id),
-                "kpiRawScore": score,
-                "managerRawScore": mgr_score,
-                "selfRawScore": self_score,
-                "feedbackRawScore": 0.0,
-                "kpiWeight": 50.0,
-                "managerWeight": 30.0,
-                "selfWeight": 20.0,
-                "feedbackWeight": 0.0,
-                "kpiWeightedScore": round(score * 0.5, 2),
-                "managerWeightedScore": round(mgr_score * 0.3, 2),
-                "selfWeightedScore": round(self_score * 0.2, 2),
-                "feedbackWeightedScore": 0.0,
-                "finalTotalScore": score,
-                "finalGrade": "Exceeds Expectations" if score >= 8 else "Meets Expectations",
-                "performanceCategoryName": "Core Engineering"
-            })
-        except (Appraisal.DoesNotExist, Exception):
-            return ok_response({
-                "appraisalId": str(pk),
-                "kpiRawScore": 8.0,
-                "managerRawScore": 8.0,
-                "selfRawScore": 8.0,
-                "feedbackRawScore": 0.0,
-                "kpiWeight": 50.0,
-                "managerWeight": 30.0,
-                "selfWeight": 20.0,
-                "feedbackWeight": 0.0,
-                "kpiWeightedScore": 4.0,
-                "managerWeightedScore": 2.4,
-                "selfWeightedScore": 1.6,
-                "feedbackWeightedScore": 0.0,
-                "finalTotalScore": 8.0,
-                "finalGrade": "Exceeds Expectations",
-                "performanceCategoryName": "Core Engineering"
-            })
+            app = Appraisal.objects.filter(id=pk).select_related('employee', 'cycle', 'reviewer').first()
+        except Exception:
+            app = None
+        if not app or not app.employee or not app.cycle:
+            return Response(
+                {"detail": "Appraisal not found or incomplete."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        user = request.user
+        if user.role == UserRole.INTERN:
+            if app.employee.user != user:
+                return Response(
+                    {"detail": "Permission denied. You can only view your own score breakdown."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if app.status not in [AppraisalStatus.PUBLISHED, 'FINALIZED']:
+                return Response(
+                    {"detail": "Evaluation results have not been published yet."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.role == UserRole.MANAGER and not user.is_superuser:
+            if app.employee.manager != user and app.reviewer != user:
+                return Response(
+                    {"detail": "Permission denied. You can only view score breakdown of assigned direct reports."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        result = ScoringService.calculate_cycle_score(app.employee, app.cycle)
+
+        # Sync calculated overall score and classification to Appraisal
+        overall_score_dec = Decimal(str(result['overall_score']))
+        if app.overall_score != overall_score_dec or app.classification != result['performance_grade']:
+            app.overall_score = overall_score_dec
+            app.classification = result['performance_grade']
+            app.save(update_fields=['overall_score', 'classification'])
+
+        kpi_raw = float(result['goals_composite_score'])
+        mgr_raw = float(result['manager_criteria_score'])
+        self_raw = float(result['self_assessment_score'])
+        kpi_weight = float(result['weight_distribution']['goals_and_kpis'])
+        mgr_weight = float(result['weight_distribution']['manager_evaluation'])
+        self_weight = float(result['weight_distribution']['self_assessment'])
+        final_score = float(result['overall_score'])
+        final_grade = result['performance_grade']
+
+        return ok_response({
+            "appraisalId": str(app.id),
+            "kpiRawScore": kpi_raw,
+            "managerRawScore": mgr_raw,
+            "selfRawScore": self_raw,
+            "feedbackRawScore": 0.0,
+            "kpiWeight": kpi_weight,
+            "managerWeight": mgr_weight,
+            "selfWeight": self_weight,
+            "feedbackWeight": 0.0,
+            "kpiWeightedScore": round(kpi_raw * (kpi_weight / 100.0), 2),
+            "managerWeightedScore": round(mgr_raw * (mgr_weight / 100.0), 2),
+            "selfWeightedScore": round(self_raw * (self_weight / 100.0), 2),
+            "feedbackWeightedScore": 0.0,
+            "finalTotalScore": final_score,
+            "finalGrade": final_grade,
+            "performanceCategoryName": app.cycle.name if app.cycle else "General Evaluation",
+            "breakdown": result.get('breakdown', {})
+        })
 
 
 class AppraisalsCompatView(APIView):
@@ -2231,6 +2250,12 @@ class AppraisalsCompatView(APIView):
 
     def get(self, request):
         appraisals = Appraisal.objects.select_related('employee', 'cycle', 'reviewer').all()
+        user = request.user
+        if user.role == UserRole.INTERN:
+            appraisals = appraisals.filter(employee__user=user)
+        elif user.role == UserRole.MANAGER and not user.is_superuser:
+            appraisals = appraisals.filter(Q(employee__manager=user) | Q(reviewer=user))
+
         employee_id = request.query_params.get('employeeId')
         cycle_id = request.query_params.get('cycleId')
         if employee_id:
@@ -2241,7 +2266,20 @@ class AppraisalsCompatView(APIView):
             )
         if cycle_id:
             appraisals = appraisals.filter(cycle__id=cycle_id)
-        return ok_response([map_appraisal(a) for a in appraisals])
+
+        mapped = []
+        for a in appraisals:
+            d = map_appraisal(a)
+            if user.role == UserRole.INTERN and a.status not in [AppraisalStatus.PUBLISHED, 'FINALIZED']:
+                d["overallScore"] = None
+                d["score"] = None
+                d["finalScore"] = None
+                d["finalGrade"] = "Pending Evaluation"
+                d["ratings"] = []
+                d["reviewerComments"] = None
+            mapped.append(d)
+
+        return ok_response(mapped)
 
     def post(self, request):
         data = request.data
@@ -2318,6 +2356,12 @@ class AppraisalsPublishCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
+        if request.user.role not in [UserRole.SUPER_ADMIN, UserRole.HR] and not request.user.is_superuser:
+            return Response(
+                {"detail": "Permission denied. Only HR and Super Admin can publish appraisal results."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         action_type = request.data.get("action", "publish")
         publish = action_type != "unpublish" and request.data.get("published", True) is not False
 
@@ -2332,8 +2376,9 @@ class AppraisalsPublishCompatView(APIView):
             if emp:
                 cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
                 if cycle:
-                    score_val = request.data.get("score", 75.0)
-                    class_val = request.data.get("classification", "Progressing")
+                    calc = ScoringService.calculate_cycle_score(emp, cycle)
+                    score_val = request.data.get("score") or calc['overall_score']
+                    class_val = request.data.get("classification") or calc['performance_grade']
                     app = Appraisal.objects.create(
                         employee=emp,
                         cycle=cycle,
@@ -2397,15 +2442,21 @@ class AppraisalsCalculateCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        app = Appraisal.objects.filter(id=pk).first()
-        if app:
-            ratings = app.ratings.all()
-            if ratings.exists():
-                avg = sum(float(r.score) for r in ratings) / len(ratings)
-                app.overall_score = round(Decimal(str(avg * 20 if avg <= 5 else avg)), 2)
-                app.save()
-            return ok_response(map_appraisal(app))
-        return ok_response({"score": 85.0})
+        try:
+            app = Appraisal.objects.filter(id=pk).select_related('employee', 'cycle').first()
+        except Exception:
+            app = None
+        if not app or not app.employee or not app.cycle:
+            return Response(
+                {"detail": "Appraisal not found or incomplete."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        result = ScoringService.calculate_cycle_score(app.employee, app.cycle)
+        app.overall_score = Decimal(str(result['overall_score']))
+        app.classification = result['performance_grade']
+        app.save(update_fields=['overall_score', 'classification'])
+        return ok_response(map_appraisal(app))
 
 
 class AppraisalsSignOffCompatView(APIView):
@@ -2413,16 +2464,23 @@ class AppraisalsSignOffCompatView(APIView):
 
     def post(self, request, pk, role="employee"):
         comment = request.data.get("comment") or request.query_params.get("comment") or ""
-        app = Appraisal.objects.filter(id=pk).first()
-        if app:
-            if role == "manager":
-                app.reviewer_comments = comment or app.reviewer_comments
-                app.reviewer = request.user
-            else:
-                app.self_comments = comment or app.self_comments
-            app.save()
-            return ok_response(map_appraisal(app))
-        return ok_response({"message": f"{role.title()} sign-off recorded"})
+        try:
+            app = Appraisal.objects.filter(id=pk).first()
+        except Exception:
+            app = None
+        if not app:
+            return Response(
+                {"detail": "Appraisal not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if role == "manager":
+            app.reviewer_comments = comment or app.reviewer_comments
+            app.reviewer = request.user
+        else:
+            app.self_comments = comment or app.self_comments
+        app.save()
+        return ok_response(map_appraisal(app))
 
 
 class ManagerEvaluationFormCompatView(APIView):
@@ -2761,10 +2819,12 @@ def resolve_employee(identifier):
     try:
         if str(identifier).isdigit():
             idx = int(identifier)
-            return EmployeeProfile.objects.all()[idx - 1] if idx > 0 else EmployeeProfile.objects.first()
+            profiles = list(EmployeeProfile.objects.all()[:idx])
+            if 0 < idx <= len(profiles):
+                return profiles[idx - 1]
     except Exception:
         pass
-    return EmployeeProfile.objects.first()
+    return None
 
 
 def resolve_cycle(identifier=None):
@@ -2781,6 +2841,7 @@ def resolve_cycle(identifier=None):
                 return c
         except Exception:
             pass
+        return None
     c = PerformanceCycle.objects.filter(status=CycleStatus.ACTIVE).first()
     if not c:
         c = PerformanceCycle.objects.order_by("-start_date").first()
@@ -3111,6 +3172,11 @@ class KpiGoalSetCompatView(APIView):
             gs = GoalSet.objects.filter(id=pk).first()
             if not gs:
                 return Response({"code": 404, "message": "Goal set not found"}, status=status.HTTP_404_NOT_FOUND)
+            if request.user.role == UserRole.INTERN and gs.employee.user != request.user:
+                return Response({"detail": "Permission denied. You can only view your own goals."}, status=status.HTTP_403_FORBIDDEN)
+            if request.user.role == UserRole.MANAGER and not request.user.is_superuser:
+                if gs.employee.manager != request.user:
+                    return Response({"detail": "Permission denied. You can only view goals of assigned direct reports."}, status=status.HTTP_403_FORBIDDEN)
             return ok_response(map_goal_set(gs))
 
         cycle_id = request.GET.get('cycleId') or request.GET.get('appraisalCycleId')
@@ -3120,6 +3186,11 @@ class KpiGoalSetCompatView(APIView):
             emp = resolve_employee(employee_id)
             if not emp:
                 return ok_response(None, message="No employee found")
+            if request.user.role == UserRole.INTERN and emp.user != request.user:
+                return Response({"detail": "Permission denied. You can only view your own goals."}, status=status.HTTP_403_FORBIDDEN)
+            if request.user.role == UserRole.MANAGER and not request.user.is_superuser:
+                if emp.manager != request.user:
+                    return Response({"detail": "Permission denied. You can only view goals of assigned direct reports."}, status=status.HTTP_403_FORBIDDEN)
             gs = GoalSet.objects.filter(employee=emp, cycle=cycle).first()
             return ok_response(map_goal_set(gs) if gs else None)
 
@@ -3151,7 +3222,14 @@ class KpiGoalSetCompatView(APIView):
                 qs = qs.filter(employee__department__id=dept_id)
             return ok_response([map_goal_set(gs) for gs in qs])
 
-        return ok_response([map_goal_set(gs) for gs in GoalSet.objects.filter(cycle=cycle)])
+        if request.user.role == UserRole.INTERN:
+            qs = GoalSet.objects.filter(cycle=cycle, employee__user=request.user)
+        elif request.user.role == UserRole.MANAGER and not request.user.is_superuser:
+            qs = GoalSet.objects.filter(cycle=cycle, employee__manager=request.user)
+        else:
+            qs = GoalSet.objects.filter(cycle=cycle)
+
+        return ok_response([map_goal_set(gs) for gs in qs])
 
     def post(self, request, pk=None):
         if 'bulk-assign' in request.path:
@@ -3473,28 +3551,23 @@ class KpiScoreCompatView(APIView):
         cycle = resolve_cycle(cycle_id)
 
         if not emp or not cycle:
-            return ok_response({
-                "id": 1,
-                "employeeId": str(emp.id) if emp else "1",
-                "employeeName": emp.full_name if emp else "Employee",
-                "cycleId": str(cycle.id) if cycle else "1",
-                "totalAchievementPercent": 85.0,
-                "weightedScore": 8.5,
-                "calculatedAt": timezone.now().isoformat()
-            })
+            return Response(
+                {"detail": "Employee or cycle not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         gs = GoalSet.objects.filter(employee=emp, cycle=cycle).first()
         items = list(gs.items.all()) if gs else []
         total_w = sum(i.weight_percent for i in items)
-        w_sum = sum(float(i.weighted_score) for i in items) if total_w > 0 else 85.0
+        w_sum = sum(float(i.weighted_score) for i in items) if total_w > 0 else 0.0
 
         return ok_response({
-            "id": gs.id if gs else 1,
+            "id": gs.id if gs else None,
             "employeeId": str(emp.id),
-            "employeeName": emp.full_name,
+            "employeeName": emp.full_name or emp.user.username,
             "cycleId": str(cycle.id),
-            "totalAchievementPercent": round(w_sum, 1),
-            "weightedScore": round(w_sum / 10.0, 2),
+            "totalAchievementPercent": round(w_sum, 1) if total_w > 0 else 0.0,
+            "weightedScore": round(w_sum / 10.0, 2) if total_w > 0 else 0.0,
             "calculatedAt": timezone.now().isoformat()
         })
 
@@ -3690,37 +3763,50 @@ class KpiSummaryReportCompatView(APIView):
 
     def get(self, request):
         employee_id = request.GET.get('employeeId')
-        cycle_ids_str = request.GET.get('cycleIds', '')
-        emp = resolve_employee(employee_id) if employee_id else EmployeeProfile.objects.first()
+        emp = resolve_employee(employee_id) if employee_id else getattr(request.user, 'profile', None)
+        if not emp:
+            return Response(
+                {"detail": "Employee not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         cycle_dtos = []
-        cycles = PerformanceCycle.objects.all()[:3]
+        cycles = PerformanceCycle.objects.all().order_by('-start_date')[:5]
+        scores = []
 
         for c in cycles:
-            gs = GoalSet.objects.filter(employee=emp, cycle=c).first() if emp else None
-            score = gs.score if gs else 85.0
-            items_dtos = [map_goal_item(i) for i in gs.items.all()] if gs else [
-                {"id": 1, "title": "Quality Engineering Deliverables", "weightPercent": 30, "targetValue": 100, "currentProgress": 90, "unit": "%", "scorePercent": 90.0, "weightedScore": 27.0},
-                {"id": 2, "title": "Operational Reliability & Uptime", "weightPercent": 30, "targetValue": 99.9, "currentProgress": 99.5, "unit": "%", "scorePercent": 99.6, "weightedScore": 29.88},
-                {"id": 3, "title": "Team Mentorship & Culture Lift", "weightPercent": 40, "targetValue": 100, "currentProgress": 85, "unit": "%", "scorePercent": 85.0, "weightedScore": 34.0},
-            ]
+            gs = GoalSet.objects.filter(employee=emp, cycle=c).first()
+            if gs and gs.items.exists():
+                items_dtos = [map_goal_item(i) for i in gs.items.all()]
+                score = gs.score
+                scores.append(score)
+                status_val = gs.status
+            else:
+                items_dtos = []
+                score = 0.0
+                status_val = gs.status if gs else 'NOT_STARTED'
+
             cycle_dtos.append({
                 "cycleId": str(c.id),
                 "cycleName": c.name,
                 "kpiScore": score,
-                "status": gs.status if gs else 'APPROVED',
+                "status": status_val,
                 "details": items_dtos,
                 "kpis": items_dtos,
                 "goalDetails": items_dtos
             })
 
+        avg_score = round(sum(scores) / len(scores), 1) if scores else None
+        overall_category = ScoringService.get_grade(Decimal(str(avg_score))) if avg_score is not None else "Not Evaluated"
+
         return ok_response({
-            "employeeId": str(emp.id) if emp else "1",
-            "employeeName": emp.full_name if emp else "Employee",
-            "employeeCode": emp.employee_code if emp else "EMP-001",
-            "departmentName": emp.department.name if (emp and emp.department) else "Engineering",
-            "positionName": emp.position.position_name if (emp and emp.position) else "Engineer",
-            "averageScore": 88.5,
-            "overallCategory": "Exceeds Expectations",
+            "employeeId": str(emp.id),
+            "employeeName": emp.full_name or emp.user.username,
+            "employeeCode": emp.employee_code,
+            "departmentName": emp.department.name if emp.department else "Unassigned",
+            "positionName": emp.position.position_name if emp.position else emp.designation,
+            "averageScore": avg_score,
+            "overallCategory": overall_category,
             "cycles": cycle_dtos
         })
 
@@ -3731,23 +3817,41 @@ class KpiActualsCompletionReportCompatView(APIView):
     def get(self, request):
         cycle_id = request.GET.get('cycleId')
         threshold_days = int(request.GET.get('thresholdDays', 30))
+        manager_id = request.GET.get('managerId')
+        department_id = request.GET.get('departmentId')
         cycle = resolve_cycle(cycle_id)
 
-        employees = EmployeeProfile.objects.all()
+        if not cycle:
+            return Response(
+                {"detail": "Evaluation cycle not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        employees = EmployeeProfile.objects.all().select_related('user', 'department', 'position')
+        if manager_id and str(manager_id) not in ('undefined', 'null', '0', ''):
+            employees = employees.filter(manager_id=manager_id)
+        if department_id and str(department_id) not in ('undefined', 'null', '0', ''):
+            employees = employees.filter(department_id=department_id)
+
         rows = []
         overdue_cnt = 0
         uptodate_cnt = 0
         nogoal_cnt = 0
+        now_dt = timezone.now()
 
         for emp in employees:
-            gs = GoalSet.objects.filter(employee=emp, cycle=cycle).first() if cycle else None
+            gs = GoalSet.objects.filter(employee=emp, cycle=cycle).first()
+            dept_name = emp.department.name if emp.department else "Unassigned"
+            pos_name = emp.position.position_name if emp.position else (emp.designation or "Unassigned")
+            emp_name = emp.full_name or (emp.user.username if emp.user else "Unknown")
+
             if not gs or not gs.items.exists():
                 nogoal_cnt += 1
                 rows.append({
                     "employeeId": str(emp.id),
-                    "employeeName": emp.full_name or emp.user.username,
-                    "departmentName": emp.department.name if emp.department else "Engineering",
-                    "positionName": emp.position.position_name if emp.position else "Engineer",
+                    "employeeName": emp_name,
+                    "departmentName": dept_name,
+                    "positionName": pos_name,
                     "totalKpiItems": 0,
                     "overdueItemCount": 0,
                     "lastUpdatedAt": "N/A",
@@ -3757,17 +3861,23 @@ class KpiActualsCompletionReportCompatView(APIView):
                 })
             else:
                 items_cnt = gs.items.count()
-                uptodate_cnt += 1
+                days_since = (now_dt.date() - gs.updated_at.date()).days if gs.updated_at else 0
+                is_overdue = days_since > threshold_days
+                if is_overdue:
+                    overdue_cnt += 1
+                else:
+                    uptodate_cnt += 1
+
                 rows.append({
                     "employeeId": str(emp.id),
-                    "employeeName": emp.full_name or emp.user.username,
-                    "departmentName": emp.department.name if emp.department else "Engineering",
-                    "positionName": emp.position.position_name if emp.position else "Engineer",
+                    "employeeName": emp_name,
+                    "departmentName": dept_name,
+                    "positionName": pos_name,
                     "totalKpiItems": items_cnt,
-                    "overdueItemCount": 0,
-                    "lastUpdatedAt": gs.updated_at.strftime("%Y-%m-%d"),
-                    "daysSinceLastUpdate": 5,
-                    "isOverdue": False,
+                    "overdueItemCount": items_cnt if is_overdue else 0,
+                    "lastUpdatedAt": gs.updated_at.strftime("%Y-%m-%d") if gs.updated_at else "N/A",
+                    "daysSinceLastUpdate": days_since,
+                    "isOverdue": is_overdue,
                     "status": gs.status
                 })
 
@@ -3775,9 +3885,9 @@ class KpiActualsCompletionReportCompatView(APIView):
         overdue_rate = round((overdue_cnt / total * 100), 1) if total > 0 else 0
 
         return ok_response({
-            "generatedAt": timezone.now().isoformat(),
-            "cycleId": str(cycle.id) if cycle else "1",
-            "cycleName": cycle.name if cycle else "Annual Appraisal Cycle 2026",
+            "generatedAt": now_dt.isoformat(),
+            "cycleId": str(cycle.id),
+            "cycleName": cycle.name,
             "thresholdDays": threshold_days,
             "totalEmployees": total,
             "overdueEmployeeCount": overdue_cnt,

@@ -23,8 +23,12 @@ from .models import (
     InternTask, TaskCategory, TaskPriority, TaskStatus,
     InternGoalComment, InternSelfAppraisalSubmission, InternFeedbackReply,
     InternForm, InternFormQuestion, InternFormSubmission,
-    FormStatus, QuestionType
+    FormStatus, QuestionType,
+    MiraiQuarterProgress, MiraiCertification, MiraiTimelineEvent,
+    QuarterCode, QuarterStatus, CertificationStatus, VerificationStatus,
+    ConversionDecision, TimelineEventType
 )
+from .services import MiraiJourneyService
 from .serializers import (
     InternGoalListSerializer, InternGoalProgressUpdateSerializer,
     InternGoalCommentSerializer, InternEvidenceSubmissionSerializer,
@@ -1004,6 +1008,15 @@ class InternJourneyView(APIView):
                 'data': None
             }, status=status.HTTP_404_NOT_FOUND)
 
+        # Allow authorized HR/Manager to inspect a specific intern's journey
+        target_intern_id = request.query_params.get('intern_id') or request.query_params.get('employee_id')
+        if target_intern_id and user.role in [UserRole.HR, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+            target_profile = EmployeeProfile.objects.filter(
+                Q(id=target_intern_id) | Q(user__id=target_intern_id)
+            ).first()
+            if target_profile:
+                profile = target_profile
+
         today = date.today()
         joining_date = profile.joining_date or (profile.created_at.date() if profile.created_at else today)
         days_active = max(1, (today - joining_date).days)
@@ -1208,6 +1221,9 @@ class InternJourneyView(APIView):
             }
         ]
 
+        # Evaluate 4-Quarter MIRAI Progression
+        mirai_eval = MiraiJourneyService.evaluate_intern_journey(profile)
+
         return Response({
             'code': 200,
             'data': {
@@ -1227,7 +1243,9 @@ class InternJourneyView(APIView):
                     'endDate': active_cycle.end_date.isoformat() if active_cycle else None,
                 } if active_cycle else None,
                 'currentStage': current_stage,
-                'overallProgressPercent': overall_progress,
+                'currentQuarter': mirai_eval['currentQuarter'],
+                'overallProgressPercent': mirai_eval['overallProgressPercent'],
+                'quarters': mirai_eval['quarters'],
                 'milestones': milestones,
                 'stats': {
                     'goalsTotal': total_goals,
@@ -1243,4 +1261,168 @@ class InternJourneyView(APIView):
                     'isResultsPublished': bool(published_appraisal)
                 }
             }
+        })
+
+
+class MiraiCertificationSubmitView(APIView):
+    """
+    Endpoint for intern to submit JLPT certification details, score, and certificate verification URL.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        try:
+            profile = get_authenticated_intern_profile(user)
+        except NotFound:
+            return Response({'code': 404, 'message': 'Profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        jlpt_level = data.get('jlpt_level') or data.get('jlptLevel')
+        if not jlpt_level:
+            return Response({'code': 400, 'message': 'jlpt_level is required (N5, N4, N3, N2, N1).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        quarter_code = data.get('quarter_code') or data.get('quarterCode')
+        if not quarter_code:
+            quarter_code = {'N5': 'Q1', 'N4': 'Q2', 'N3': 'Q3'}.get(jlpt_level, 'Q1')
+
+        name = data.get('name') or f"JLPT {jlpt_level} Japanese Proficiency Examination"
+        score = data.get('score', '')
+        exam_date_str = data.get('exam_date') or data.get('examDate')
+        clearance_date_str = data.get('clearance_date') or data.get('clearanceDate')
+        cert_url = data.get('certificate_url') or data.get('certificateUrl', '')
+        cert_status = data.get('status') or CertificationStatus.IN_PROGRESS
+
+        cert, created = MiraiCertification.objects.update_or_create(
+            intern=profile,
+            jlpt_level=jlpt_level,
+            defaults={
+                'name': name,
+                'quarter_code': quarter_code,
+                'status': cert_status,
+                'score': score,
+                'exam_date': exam_date_str if exam_date_str else None,
+                'clearance_date': clearance_date_str if clearance_date_str else None,
+                'certificate_url': cert_url,
+                'verification_status': VerificationStatus.PENDING if cert_url else VerificationStatus.NOT_SUBMITTED,
+            }
+        )
+
+        MiraiTimelineEvent.objects.create(
+            intern=profile,
+            quarter_code=quarter_code,
+            event_type=TimelineEventType.EXAM_CLEARED if cert_status == CertificationStatus.CLEARED else TimelineEventType.MILESTONE,
+            title=f"Submitted JLPT {jlpt_level} Details",
+            description=f"Submitted examination details. Certificate verification: {cert.verification_status}.",
+            event_date=date.today(),
+            actor=profile.full_name or user.username
+        )
+
+        eval_res = MiraiJourneyService.evaluate_intern_journey(profile)
+
+        return Response({
+            'code': 200,
+            'message': f"JLPT {jlpt_level} certification updated successfully.",
+            'data': eval_res
+        })
+
+
+class MiraiCertificationVerifyView(APIView):
+    """
+    Endpoint for HR or Mentor to verify or reject an intern's certification.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if user.role not in [UserRole.HR, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+            return Response({'code': 403, 'message': 'Only HR or Mentors can verify certificates.'}, status=status.HTTP_403_FORBIDDEN)
+
+        cert = MiraiCertification.objects.filter(id=pk).first()
+        if not cert:
+            return Response({'code': 404, 'message': 'Certification record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        is_verified = request.data.get('is_verified', True)
+        notes = request.data.get('notes', '')
+
+        if is_verified:
+            cert.verification_status = VerificationStatus.VERIFIED
+            cert.status = CertificationStatus.CLEARED
+            cert.verified_by = user
+            cert.verified_at = timezone.now()
+            cert.verification_notes = notes or f"Verified by {user.get_full_name() or user.username} ({user.role})"
+            cert.save()
+
+            MiraiTimelineEvent.objects.create(
+                intern=cert.intern,
+                quarter_code=cert.quarter_code,
+                event_type=TimelineEventType.STATUS_CHANGE,
+                title=f"{cert.name} Verified by HR",
+                description=f"Official certificate authenticated. {cert.verification_notes}",
+                event_date=date.today(),
+                actor=user.get_full_name() or user.username
+            )
+        else:
+            cert.verification_status = VerificationStatus.REJECTED
+            cert.verification_notes = notes or "Certificate rejected during verification review."
+            cert.save()
+
+        eval_res = MiraiJourneyService.evaluate_intern_journey(cert.intern)
+
+        return Response({
+            'code': 200,
+            'message': f"Certification {cert.name} has been {'verified' if is_verified else 'rejected'}.",
+            'data': eval_res
+        })
+
+
+class MiraiQuarterConfigureView(APIView):
+    """
+    Allows HR or authorized managers to customize quarter dates, requirements,
+    and conversion decisions dynamically.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, quarter_code):
+        user = request.user
+        if user.role not in [UserRole.HR, UserRole.SUPER_ADMIN]:
+            return Response({'code': 403, 'message': 'Only HR administrators can configure quarters.'}, status=status.HTTP_403_FORBIDDEN)
+
+        intern_id = request.data.get('intern_id')
+        if not intern_id:
+            return Response({'code': 400, 'message': 'intern_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = EmployeeProfile.objects.filter(Q(id=intern_id) | Q(user__id=intern_id)).first()
+        if not profile:
+            return Response({'code': 404, 'message': 'Intern profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        quarter = MiraiQuarterProgress.objects.filter(intern=profile, quarter_code=quarter_code).first()
+        if not quarter:
+            return Response({'code': 404, 'message': f"Quarter {quarter_code} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        if 'start_date' in data:
+            quarter.start_date = data['start_date']
+        if 'end_date' in data:
+            quarter.end_date = data['end_date']
+        if 'current_focus' in data:
+            quarter.current_focus = data['current_focus']
+        if 'project_name' in data:
+            quarter.project_name = data['project_name']
+        if 'conversion_decision' in data:
+            quarter.conversion_decision = data['conversion_decision']
+        if 'conversion_effective_date' in data:
+            quarter.conversion_effective_date = data['conversion_effective_date']
+        if 'hr_conversion_notes' in data:
+            quarter.hr_conversion_notes = data['hr_conversion_notes']
+        if 'requirements_config' in data:
+            quarter.requirements_config = data['requirements_config']
+
+        quarter.save()
+
+        eval_res = MiraiJourneyService.evaluate_intern_journey(profile)
+        return Response({
+            'code': 200,
+            'message': f"Quarter {quarter_code} configuration updated successfully.",
+            'data': eval_res
         })

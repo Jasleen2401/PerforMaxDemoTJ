@@ -411,6 +411,136 @@ export interface InternMilestoneItem {
   metrics: InternMilestoneMetric[];
 }
 
+export interface MiraiExamItem {
+  id: string;
+  name: string;
+  jlptLevel: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'CLEARED' | 'FAILED' | string;
+  score: string;
+  examDate: string | null;
+  clearanceDate: string | null;
+  certificateUrl: string;
+  verificationStatus: 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | string;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+  verificationNotes: string;
+}
+
+export interface MiraiTechnicalParameterItem {
+  id: string;
+  parameterName: string;
+  category: string;
+  targetScore: number;
+  achievedScore: number;
+  weightage: number;
+  assessmentDate: string;
+  assessorName: string;
+  mentorAssessment: string;
+  evidenceUrl: string;
+  status: string;
+}
+
+export interface MiraiCourseItem {
+  id: string;
+  courseName: string;
+  provider: string;
+  durationHours: number;
+  completionStatus: string;
+  completionPercentage: number;
+  completionDate: string | null;
+  certificateUrl: string;
+}
+
+export interface MiraiDeliverableTask {
+  id: string;
+  title: string;
+  category: string;
+  priority: string;
+  status: string;
+  dueDate: string | null;
+  isCompleted: boolean;
+  artifactUrl: string;
+  hoursSpent: number | null;
+  reviewedBy?: string | null;
+  reviewFeedback?: string;
+}
+
+export interface MiraiDeliverableEvidence {
+  id: string;
+  title: string;
+  description: string;
+  externalUrl: string;
+  reviewStatus: string;
+  reviewNotes: string;
+  createdAt: string;
+}
+
+export interface MiraiDeliverablesSection {
+  mentor: {
+    name: string;
+    designation: string;
+    email: string;
+  } | null;
+  projectName: string;
+  tasks: MiraiDeliverableTask[];
+  evidence: MiraiDeliverableEvidence[];
+  tasksTotal: number;
+  tasksCompleted: number;
+  evidenceApproved: number;
+}
+
+export interface MiraiFeedbackItem {
+  id: string;
+  type: string;
+  reviewerName: string;
+  reviewDate: string;
+  overallScore: number | null;
+  classification: string | null;
+  strengths: string[];
+  areasForImprovement: string[];
+  recommendations: string;
+  visibility: string;
+}
+
+export interface MiraiTimelineEventItem {
+  id: string;
+  eventType: string;
+  title: string;
+  description: string;
+  eventDate: string;
+  actor: string;
+}
+
+export interface MiraiQuarterItem {
+  id: string;
+  quarterCode: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+  title: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+  startDate: string | null;
+  endDate: string | null;
+  completionPercentage: number;
+  currentFocus: string;
+  prerequisitesMet: boolean;
+  completedRequirements: string[];
+  pendingRequirements: string[];
+  projectName: string;
+  attendancePercentage: number | null;
+  conversionDecision: string;
+  conversionEffectiveDate: string | null;
+  hrConversionNotes: string;
+  mentor: {
+    id: string | null;
+    name: string;
+    email: string;
+  };
+  exams: MiraiExamItem[];
+  technicalParameters: MiraiTechnicalParameterItem[];
+  courses: MiraiCourseItem[];
+  deliverables: MiraiDeliverablesSection;
+  feedback: MiraiFeedbackItem[];
+  timeline: MiraiTimelineEventItem[];
+}
+
 export interface InternJourneyData {
   intern: {
     name: string;
@@ -434,7 +564,9 @@ export interface InternJourneyData {
     endDate: string | null;
   } | null;
   currentStage: number;
+  currentQuarter?: 'Q1' | 'Q2' | 'Q3' | 'Q4';
   overallProgressPercent: number;
+  quarters?: MiraiQuarterItem[];
   milestones: InternMilestoneItem[];
   stats: {
     goalsTotal: number;

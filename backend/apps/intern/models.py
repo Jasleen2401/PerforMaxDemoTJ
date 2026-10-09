@@ -341,3 +341,192 @@ class InternFormSubmission(models.Model):
     def __str__(self):
         status_label = "Submitted" if self.is_submitted else "Draft"
         return f"{self.intern.user.username} - {self.form.title} [{status_label}]"
+
+
+class QuarterCode(models.TextChoices):
+    Q1 = 'Q1', 'Q1 — Japanese Foundations'
+    Q2 = 'Q2', 'Q2 — Internship Begins'
+    Q3 = 'Q3', 'Q3 — Technical Growth'
+    Q4 = 'Q4', 'Q4 — Full-Time Conversion'
+
+
+class QuarterStatus(models.TextChoices):
+    NOT_STARTED = 'NOT_STARTED', 'Not Started'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    COMPLETED = 'COMPLETED', 'Completed'
+
+
+class CertificationStatus(models.TextChoices):
+    NOT_STARTED = 'NOT_STARTED', 'Not Started'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    CLEARED = 'CLEARED', 'Cleared'
+    FAILED = 'FAILED', 'Failed'
+
+
+class VerificationStatus(models.TextChoices):
+    NOT_SUBMITTED = 'NOT_SUBMITTED', 'Not Submitted'
+    PENDING = 'PENDING', 'Pending Verification'
+    VERIFIED = 'VERIFIED', 'Verified'
+    REJECTED = 'REJECTED', 'Rejected'
+
+
+class ConversionDecision(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Evaluation'
+    RECOMMENDED = 'RECOMMENDED', 'Mentor Recommended'
+    OFFERED = 'OFFERED', 'Full-Time Offer Extended'
+    CONVERTED = 'CONVERTED', 'Converted to Full-Time'
+    NOT_CONVERTED = 'NOT_CONVERTED', 'Not Converted'
+
+
+class TimelineEventType(models.TextChoices):
+    MILESTONE = 'MILESTONE', 'Important Milestone'
+    STATUS_CHANGE = 'STATUS_CHANGE', 'Status Transition'
+    EXAM_CLEARED = 'EXAM_CLEARED', 'Exam Clearance'
+    COURSE_COMPLETED = 'COURSE_COMPLETED', 'Course Completion'
+    TASK_COMPLETED = 'TASK_COMPLETED', 'Deliverable / Milestone'
+    FEEDBACK_RECEIVED = 'FEEDBACK_RECEIVED', 'Assessment & Feedback'
+    CONVERSION_DECISION = 'CONVERSION_DECISION', 'Conversion Decision'
+
+
+class MiraiQuarterProgress(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    intern = models.ForeignKey(
+        'employees.EmployeeProfile',
+        on_delete=models.CASCADE,
+        related_name='mirai_quarters',
+        db_index=True
+    )
+    quarter_code = models.CharField(max_length=10, choices=QuarterCode.choices, db_index=True)
+    title = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=20,
+        choices=QuarterStatus.choices,
+        default=QuarterStatus.NOT_STARTED,
+        db_index=True
+    )
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    current_focus = models.CharField(max_length=255, blank=True, default='')
+    completion_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+    prerequisites_met = models.BooleanField(default=True)
+    pending_requirements = models.JSONField(default=list, blank=True)
+    completed_requirements = models.JSONField(default=list, blank=True)
+    mentor_assigned = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mirai_mentored_quarters'
+    )
+    project_name = models.CharField(max_length=255, blank=True, default='')
+    attendance_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    conversion_decision = models.CharField(
+        max_length=30,
+        choices=ConversionDecision.choices,
+        default=ConversionDecision.PENDING
+    )
+    conversion_effective_date = models.DateField(null=True, blank=True)
+    hr_conversion_notes = models.TextField(blank=True, default='')
+    requirements_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Flexible requirements config editable by authorized HR users."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'MIRAI Quarter Progress'
+        verbose_name_plural = 'MIRAI Quarter Progresses'
+        unique_together = ('intern', 'quarter_code')
+        ordering = ['quarter_code']
+
+    def __str__(self):
+        return f"{self.intern.user.username} - {self.quarter_code}: {self.title} [{self.get_status_display()}]"
+
+
+class MiraiCertification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    intern = models.ForeignKey(
+        'employees.EmployeeProfile',
+        on_delete=models.CASCADE,
+        related_name='mirai_certifications',
+        db_index=True
+    )
+    name = models.CharField(max_length=255)
+    jlpt_level = models.CharField(
+        max_length=10,
+        choices=[
+            ('N5', 'JLPT N5'),
+            ('N4', 'JLPT N4'),
+            ('N3', 'JLPT N3'),
+            ('N2', 'JLPT N2'),
+            ('N1', 'JLPT N1'),
+            ('OTHER', 'Other Certification')
+        ],
+        default='OTHER'
+    )
+    quarter_code = models.CharField(max_length=10, choices=QuarterCode.choices, default=QuarterCode.Q1)
+    status = models.CharField(
+        max_length=20,
+        choices=CertificationStatus.choices,
+        default=CertificationStatus.NOT_STARTED
+    )
+    score = models.CharField(max_length=50, blank=True, default='')
+    exam_date = models.DateField(null=True, blank=True)
+    clearance_date = models.DateField(null=True, blank=True)
+    certificate_url = models.CharField(max_length=500, blank=True, default='')
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.NOT_SUBMITTED
+    )
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_certifications'
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'MIRAI Certification'
+        verbose_name_plural = 'MIRAI Certifications'
+        ordering = ['quarter_code', 'name']
+
+    def __str__(self):
+        return f"{self.intern.user.username} - {self.name} [{self.get_status_display()}]"
+
+
+class MiraiTimelineEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    intern = models.ForeignKey(
+        'employees.EmployeeProfile',
+        on_delete=models.CASCADE,
+        related_name='mirai_timeline_events',
+        db_index=True
+    )
+    quarter_code = models.CharField(max_length=10, choices=QuarterCode.choices, default=QuarterCode.Q1)
+    event_type = models.CharField(
+        max_length=30,
+        choices=TimelineEventType.choices,
+        default=TimelineEventType.MILESTONE
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    event_date = models.DateField()
+    actor = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'MIRAI Timeline Event'
+        verbose_name_plural = 'MIRAI Timeline Events'
+        ordering = ['-event_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.quarter_code} [{self.event_date}]: {self.title}"
+

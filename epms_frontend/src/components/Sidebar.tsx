@@ -20,8 +20,11 @@ import {
   Layers,
   X,
   Database,
-  GraduationCap,
   Bell,
+  Compass,
+  ClipboardList,
+  Award,
+  User,
 } from "lucide-react";
 
 interface NavItem {
@@ -101,25 +104,28 @@ const Sidebar = ({ onClose }: SidebarProps) => {
     }
   });
 
-  const filteredNav = baseNav.flatMap((item: NavItem): NavItem[] => {
-    if (item.to === "/dashboard") {
-      const adjusted: NavItem = {
-        ...item,
-        label: isInternUser ? "Intern Dashboard" : item.label,
-      };
-      if (isInternUser) {
-        const portalItem: NavItem = {
-          label: "Intern Learning Portal",
-          to: "/intern",
-          icon: GraduationCap,
-          end: true,
-        };
-        return [adjusted, portalItem];
-      }
-      return [adjusted];
-    }
-    return [item];
-  });
+  const internNav: NavItem[] = [
+    { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, end: true },
+    { label: "My Goals", to: "/kpi/my", icon: Target },
+    { label: "My Tasks", to: "/dashboard?tab=tasks", icon: ClipboardList },
+    { label: "MIRAI Journey", to: "/dashboard?tab=journey", icon: Compass },
+    { label: "Performance Reviews", to: "/appraisal", icon: Award },
+    { label: "Continuous Feedback", to: "/continuous-feedback", icon: MessageSquare },
+    { label: "Reminders", to: "/notifications", icon: Bell },
+    { label: "Profile", to: "/profile", icon: User },
+  ];
+
+  const filteredNav = isInternUser
+    ? internNav
+    : baseNav.map((item: NavItem): NavItem => {
+        if (item.to === "/dashboard") {
+          return {
+            ...item,
+            label: item.label,
+          };
+        }
+        return item;
+      });
 
   const perfSubItems: Array<{ to: string; label: string; end?: boolean }> = [
     { to: "/kpi", label: "KPI Intelligence Hub", end: true },
@@ -188,9 +194,12 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
           <div className="space-y-0.5">
             {filteredNav.map((item) => {
-              const isActive = item.end
-                ? location.pathname === item.to
-                : location.pathname.startsWith(item.to);
+              const currentUrl = location.pathname + (location.search || "");
+              const isActive = item.to.includes("?")
+                ? currentUrl === item.to
+                : item.end
+                ? location.pathname === item.to && !location.search
+                : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard");
 
               return (
                 <NavLink
@@ -290,47 +299,49 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
         )}
         {/* Performance & KRAs Accordion */}
-        <div>
-          <button
-            onClick={() => setPerfOpen(!perfOpen)}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] text-purple-100 hover:bg-white/10 hover:text-white transition-colors group"
-          >
-            <span className="flex items-center gap-2.5 font-normal">
-              <Target size={16} className="text-purple-200 group-hover:text-white" />
-              KRAs & Objectives
-            </span>
-            <ChevronDown
-              size={14}
-              className={`text-purple-200 transition-transform duration-200 ${
-                perfOpen ? "rotate-180" : ""
-              }`}
-            />
-          </button>
+        {!isInternUser && (
+          <div>
+            <button
+              onClick={() => setPerfOpen(!perfOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] text-purple-100 hover:bg-white/10 hover:text-white transition-colors group"
+            >
+              <span className="flex items-center gap-2.5 font-normal">
+                <Target size={16} className="text-purple-200 group-hover:text-white" />
+                KRAs & Objectives
+              </span>
+              <ChevronDown
+                size={14}
+                className={`text-purple-200 transition-transform duration-200 ${
+                  perfOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
 
-          {perfOpen && (
-            <div className="ml-5 pl-2.5 mt-1 border-l border-white/20 space-y-0.5">
-              {perfSubItems.map((sub) => {
-                const isActive = sub.end
-                  ? location.pathname === sub.to
-                  : location.pathname.startsWith(sub.to);
-                return (
-                  <NavLink
-                    key={sub.to}
-                    to={sub.to}
-                    className={`block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
-                      isActive
-                        ? "text-white font-semibold bg-white/20 shadow-xs"
-                        : "text-purple-200 hover:text-white hover:bg-white/10"
-                    }`}
-                    onClick={handleNavClick}
-                  >
-                    {sub.label}
-                  </NavLink>
-                );
-              })}
-            </div>
-          )}
-        </div>
+            {perfOpen && (
+              <div className="ml-5 pl-2.5 mt-1 border-l border-white/20 space-y-0.5">
+                {perfSubItems.map((sub) => {
+                  const isActive = sub.end
+                    ? location.pathname === sub.to
+                    : location.pathname.startsWith(sub.to);
+                  return (
+                    <NavLink
+                      key={sub.to}
+                      to={sub.to}
+                      className={`block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
+                        isActive
+                          ? "text-white font-semibold bg-white/20 shadow-xs"
+                          : "text-purple-200 hover:text-white hover:bg-white/10"
+                      }`}
+                      onClick={handleNavClick}
+                    >
+                      {sub.label}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Governance & Administration */}
         {(isAdmin || isHR) && (

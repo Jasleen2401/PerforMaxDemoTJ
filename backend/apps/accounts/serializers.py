@@ -35,7 +35,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 attrs['email'] = user.email
 
         if user:
-            demo_passwords = {'Admin@123', 'password123', 'admin123', 'SarahPassword123!', 'MarcusPassword123!', 'AlexPassword123!'}
+            demo_passwords = {'Admin@123', 'AdminPassword123!', 'password123', 'admin123', 'SarahPassword123!', 'MarcusPassword123!', 'AlexPassword123!'}
             if password in demo_passwords and not user.check_password(password):
                 user.set_password(password)
                 user.save()

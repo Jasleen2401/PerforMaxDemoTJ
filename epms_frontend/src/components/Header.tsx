@@ -85,6 +85,9 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     ? "Tech Manager"
     : "Intern";
 
+  const isInternUser = !isAdmin && !isHR && !isManager;
+  const displayTitle = (pathname === "/dashboard" && isInternUser) ? "Intern Dashboard" : pageInfo.title;
+
   return (
     <header className="flex items-center justify-between app-header sticky top-0 z-30 shrink-0 px-6 h-14 select-none">
       <div className="flex items-center gap-3">
@@ -106,12 +109,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
               </span>
               <ChevronRight size={12} className="hidden sm:block text-purple-300" aria-hidden="true" />
               <span className="text-sm font-semibold text-slate-900 tracking-tight">
-                {pageInfo.title}
+                {displayTitle}
               </span>
             </>
           ) : (
             <span className="text-sm font-semibold text-slate-900 tracking-tight">
-              {pageInfo.title}
+              {displayTitle}
             </span>
           )}
         </nav>

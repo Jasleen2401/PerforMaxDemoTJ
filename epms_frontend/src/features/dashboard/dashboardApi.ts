@@ -169,6 +169,24 @@ export const dashboardApi = api.injectEndpoints({
       invalidatesTags: ["Appraisal", "Profile"],
     }),
 
+    // MIRAI Certification Endpoints
+    submitMiraiCertification: builder.mutation<any, { jlptLevel: string; quarterCode?: string; name?: string; score?: string; examDate?: string; clearanceDate?: string; certificateUrl?: string; status?: string }>({
+      query: (body) => ({
+        url: "/intern/journey/certifications/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Profile", "GoalSet", "Appraisal"],
+    }),
+    verifyMiraiCertification: builder.mutation<any, { id: string; is_verified: boolean; notes?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/intern/journey/certifications/${id}/verify/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Profile", "GoalSet", "Appraisal"],
+    }),
+
     // Notification Endpoints
     getUnreadNotificationsCount: builder.query<{ unread_count: number }, void>({
       query: () => "/notifications/unread-count/",
@@ -214,6 +232,8 @@ export const {
   useGetInternFormsQuery,
   useGetInternFormDetailQuery,
   useSubmitInternFormMutation,
+  useSubmitMiraiCertificationMutation,
+  useVerifyMiraiCertificationMutation,
   useGetUnreadNotificationsCountQuery,
   useMarkNotificationReadMutation,
   useMarkAllNotificationsReadMutation,

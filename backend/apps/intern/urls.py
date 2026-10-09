@@ -46,5 +46,8 @@ urlpatterns = [
 
     # Comprehensive Internship Journey & Milestones Roadmap (100% Dynamic)
     path('journey/', views.InternJourneyView.as_view(), name='journey'),
+    path('journey/certifications/', views.MiraiCertificationSubmitView.as_view(), name='journey_submit_certification'),
+    path('journey/certifications/<uuid:pk>/verify/', views.MiraiCertificationVerifyView.as_view(), name='journey_verify_certification'),
+    path('journey/quarters/<str:quarter_code>/configure/', views.MiraiQuarterConfigureView.as_view(), name='journey_configure_quarter'),
 ]
 

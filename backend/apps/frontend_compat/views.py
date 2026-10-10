@@ -49,8 +49,9 @@ def map_employee(profile: EmployeeProfile) -> dict:
     user = profile.user
     dept_name = profile.department.name if profile.department else "Engineering"
     dept_id = str(profile.department.id) if profile.department else "1"
-    parent_dept_name = profile.parent_department.name if profile.parent_department else dept_name
-    parent_dept_id = str(profile.parent_department.id) if profile.parent_department else dept_id
+    p_dept = getattr(profile, 'parent_department', None)
+    parent_dept_name = p_dept.name if p_dept else dept_name
+    parent_dept_id = str(p_dept.id) if p_dept else dept_id
     mgr_name = profile.manager.username if profile.manager else None
     mgr_id = str(profile.manager.id) if profile.manager else None
 
@@ -60,16 +61,18 @@ def map_employee(profile: EmployeeProfile) -> dict:
     elif user.role == UserRole.INTERN:
         roles.append('EMPLOYEE')
 
-    position_id = profile.position.id if profile.position else 1
-    position_name = profile.position.position_name if profile.position else profile.designation
-    level_name = profile.position.level.level_name if (profile.position and profile.position.level) else user.role
-    level_rank = profile.position.level.level_rank if (profile.position and profile.position.level) else 1
+    pos = getattr(profile, 'position', None)
+    position_id = pos.id if pos else 1
+    position_name = pos.position_name if pos else profile.designation
+    pos_level = getattr(pos, 'level', None) if pos else None
+    level_name = pos_level.level_name if pos_level else user.role
+    level_rank = pos_level.level_rank if pos_level else 1
 
     return {
         "id": str(profile.id),
         "employeeCode": profile.employee_code,
         "staffName": profile.full_name or user.username,
-        "otherName": profile.other_name or "",
+        "otherName": getattr(profile, 'other_name', '') or "",
         "email": user.email,
         "phoneNo": profile.phone_number or "",
         "profileImage": profile.profile_image.url if (hasattr(profile, 'profile_image') and profile.profile_image) else None,
@@ -88,26 +91,26 @@ def map_employee(profile: EmployeeProfile) -> dict:
         "directManagerId": mgr_id,
         "roles": roles,
         "permissions": [f"ROLE_{r}" for r in roles] + ["ALL"],
-        "dateOfAppointment": str(profile.date_of_appointment or profile.joining_date or ""),
-        "dateOfConfirmation": str(profile.date_of_confirmation) if profile.date_of_confirmation else "",
-        "dateOfPromotion": str(profile.date_of_promotion) if profile.date_of_promotion else "",
-        "dateOfBirth": str(profile.date_of_birth) if profile.date_of_birth else "",
-        "gender": profile.gender or "",
-        "stateCode": profile.nrc_state_code,
-        "nrcStateCode": profile.nrc_state_code,
-        "township": profile.nrc_township or "",
-        "nrcType": profile.nrc_type or "(N)",
-        "number": profile.nrc_number or "",
-        "salary": float(profile.salary) if profile.salary is not None else None,
-        "currency": profile.currency or "MMK",
-        "maritalStatus": profile.marital_status or "",
-        "spouseName": profile.spouse_name or "",
-        "fatherName": profile.father_name or "",
-        "race": profile.race or "",
-        "religion": profile.religion or "",
-        "birthPlace": profile.birth_place or "",
-        "contactAddress": profile.contact_address or "",
-        "permanentAddress": profile.permanent_address or "",
+        "dateOfAppointment": str(getattr(profile, "date_of_appointment", None) or profile.joining_date or ""),
+        "dateOfConfirmation": str(getattr(profile, "date_of_confirmation", "")) if getattr(profile, "date_of_confirmation", None) else "",
+        "dateOfPromotion": str(getattr(profile, "date_of_promotion", "")) if getattr(profile, "date_of_promotion", None) else "",
+        "dateOfBirth": str(getattr(profile, "date_of_birth", "")) if getattr(profile, "date_of_birth", None) else "",
+        "gender": getattr(profile, "gender", "") or "",
+        "stateCode": getattr(profile, "nrc_state_code", "") or "",
+        "nrcStateCode": getattr(profile, "nrc_state_code", "") or "",
+        "township": getattr(profile, "nrc_township", "") or "",
+        "nrcType": getattr(profile, "nrc_type", "(N)") or "(N)",
+        "number": getattr(profile, "nrc_number", "") or "",
+        "salary": float(profile.salary) if getattr(profile, "salary", None) is not None else None,
+        "currency": getattr(profile, "currency", "MMK") or "MMK",
+        "maritalStatus": getattr(profile, "marital_status", "") or "",
+        "spouseName": getattr(profile, "spouse_name", "") or "",
+        "fatherName": getattr(profile, "father_name", "") or "",
+        "race": getattr(profile, "race", "") or "",
+        "religion": getattr(profile, "religion", "") or "",
+        "birthPlace": getattr(profile, "birth_place", "") or "",
+        "contactAddress": getattr(profile, "contact_address", "") or "",
+        "permanentAddress": getattr(profile, "permanent_address", "") or "",
     }
 
 
@@ -396,11 +399,11 @@ class DepartmentMembersCompatView(APIView):
             profiles = EmployeeProfile.objects.filter(
                 Q(department=dept) | Q(department__name__iexact=dept.name)
             ).select_related(
-                "user", "department", "parent_department", "manager", "position", "position__level"
+                "user", "department", "manager"
             )
         else:
             profiles = EmployeeProfile.objects.filter(department_id=pk).select_related(
-                "user", "department", "parent_department", "manager", "position", "position__level"
+                "user", "department", "manager"
             )
         data = [map_employee(p) for p in profiles]
         return ok_response(data)
@@ -1287,7 +1290,7 @@ class EmployeeCompatView(APIView):
                 return ok_response(map_employee(profile))
 
             qs = EmployeeProfile.objects.select_related(
-                "user", "department", "parent_department", "manager", "position", "position__level"
+                "user", "department", "manager"
             )
             profile = None
             if is_valid_uuid(pk):
@@ -1307,7 +1310,7 @@ class EmployeeCompatView(APIView):
         exclude_self = request.query_params.get("excludeSelf")
 
         profiles_qs = EmployeeProfile.objects.all().select_related(
-            "user", "department", "parent_department", "manager", "position", "position__level"
+            "user", "department", "manager"
         )
 
         if query:
@@ -1315,7 +1318,6 @@ class EmployeeCompatView(APIView):
             profiles_qs = profiles_qs.filter(
                 Q(first_name__icontains=q_clean) |
                 Q(last_name__icontains=q_clean) |
-                Q(other_name__icontains=q_clean) |
                 Q(user__username__icontains=q_clean) |
                 Q(user__email__icontains=q_clean) |
                 Q(employee_code__icontains=q_clean) |
@@ -1482,11 +1484,11 @@ class EmployeeCompatView(APIView):
         try:
             if not pk or not is_valid_uuid(str(pk)):
                 profile = EmployeeProfile.objects.select_related(
-                    "user", "department", "parent_department", "manager", "position"
+                    "user", "department", "manager"
                 ).filter(Q(employee_code__iexact=str(pk)) | Q(user__username__iexact=str(pk))).first()
             else:
                 profile = EmployeeProfile.objects.select_related(
-                    "user", "department", "parent_department", "manager", "position"
+                    "user", "department", "manager"
                 ).filter(Q(id=pk) | Q(user__id=pk)).first()
             if not profile:
                 return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -1674,7 +1676,7 @@ class CurrentUserProfileCompatView(APIView):
     def get(self, request, pk=None):
         if pk and str(pk).lower() != 'me':
             qs = EmployeeProfile.objects.select_related(
-                "user", "department", "parent_department", "manager", "position", "position__level"
+                "user", "department", "manager"
             )
             profile = None
             if is_valid_uuid(pk):
@@ -1690,7 +1692,7 @@ class CurrentUserProfileCompatView(APIView):
     def put(self, request, pk=None):
         if pk and str(pk).lower() != 'me':
             qs = EmployeeProfile.objects.select_related(
-                "user", "department", "parent_department", "manager", "position"
+                "user", "department", "manager"
             )
             profile = None
             if is_valid_uuid(pk):
@@ -1735,7 +1737,7 @@ class CurrentUserProfileCompatView(APIView):
     def post(self, request, pk=None):
         if pk and str(pk).lower() != 'me':
             qs = EmployeeProfile.objects.select_related(
-                "user", "department", "parent_department", "manager", "position"
+                "user", "department", "manager"
             )
             profile = None
             if is_valid_uuid(pk):
@@ -1778,7 +1780,7 @@ class EmployeeAllCompatView(APIView):
 
     def get(self, request):
         profiles = EmployeeProfile.objects.all().select_related(
-            "user", "department", "parent_department", "manager", "position", "position__level"
+            "user", "department", "manager"
         )
         return ok_response([map_employee(p) for p in profiles])
 
@@ -1801,7 +1803,7 @@ class EmployeeDirectReportsCompatView(APIView):
             reports = EmployeeProfile.objects.filter(
                 Q(manager=profile.user) | Q(user__role=UserRole.INTERN)
             ).exclude(user=profile.user).select_related(
-                "user", "department", "parent_department", "manager", "position", "position__level"
+                "user", "department", "manager"
             )
             return ok_response([map_employee(r) for r in reports])
         except Exception:

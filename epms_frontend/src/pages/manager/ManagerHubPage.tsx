@@ -55,10 +55,14 @@ export const ManagerHubPage: React.FC = () => {
 
   useEffect(() => {
     setActiveTab(getTabFromLocation());
+    const q = searchParams.get('search');
+    if (q !== null) {
+      setMenteeSearch(q);
+    }
   }, [location.pathname, searchParams]);
 
   // Search & Filter state for Mentees
-  const [menteeSearch, setMenteeSearch] = useState('');
+  const [menteeSearch, setMenteeSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('');
   const [menteePage, setMenteePage] = useState(0);
   const menteePageSize = 12;

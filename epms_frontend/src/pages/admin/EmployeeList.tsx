@@ -14,8 +14,8 @@ import {
 import { useGetActiveDepartmentsQuery } from "../../features/org/departmentApi";
 import { useGetTeamsQuery } from "../../features/org/teamApi";
 import { useDownloadReportMutation } from "../../features/report/reportApi";
-import { Link } from "react-router-dom";
-import { useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useRef, useState, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -54,9 +54,20 @@ const selectStyle: React.CSSProperties = {
 };
 
 const EmployeeList = () => {
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(0);
   const [size] = useState(10);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get("search") || searchParams.get("query") || ""
+  );
+
+  useEffect(() => {
+    const q = searchParams.get("search") || searchParams.get("query");
+    if (q !== null) {
+      setSearchQuery(q);
+      setPage(0);
+    }
+  }, [searchParams]);
   const [selectedDeptId, setSelectedDeptId] = useState<string>("");
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   const [selectedEmp, setSelectedEmp] = useState<number | null>(null);

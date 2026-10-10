@@ -43,19 +43,19 @@ export const employeeApi = api.injectEndpoints({
       providesTags: ["Employee"],
     }),
 
-    getDirectReports: builder.query<EmployeeResponse[], number>({
+    getDirectReports: builder.query<EmployeeResponse[], string | number>({
       query: (id) => `/emp/${id}/direct-reports`,
       transformResponse: (response: ApiResponse<EmployeeResponse[]>) =>
         response.data,
     }),
 
-    getManager: builder.query<EmployeeResponse, number>({
+    getManager: builder.query<EmployeeResponse, string | number>({
       query: (id) => `/emp/${id}/manager`,
       transformResponse: (response: ApiResponse<EmployeeResponse>) =>
         response.data,
     }),
 
-    getEmployeeById: builder.query<EmployeeResponse, number>({
+    getEmployeeById: builder.query<EmployeeResponse, string | number>({
       query: (id) => `/emp/${id}`,
       transformResponse: (response: ApiResponse<EmployeeResponse>) =>
         response.data,
@@ -88,7 +88,7 @@ export const employeeApi = api.injectEndpoints({
 
     updateEmployee: builder.mutation<
       EmployeeResponse,
-      { id: number; body: UpdateEmployeeRequest }
+      { id: string | number; body: UpdateEmployeeRequest }
     >({
       query: ({ id, body }) => ({
         url: `/emp/${id}`,
@@ -103,7 +103,7 @@ export const employeeApi = api.injectEndpoints({
       ],
     }),
 
-    deleteEmployee: builder.mutation<void, number>({
+    deleteEmployee: builder.mutation<void, string | number>({
       query: (id) => ({
         url: `/emp/${id}`,
         method: "DELETE",
@@ -112,7 +112,7 @@ export const employeeApi = api.injectEndpoints({
     }),
 
 
-    activateEmployee: builder.mutation<void, number>({
+    activateEmployee: builder.mutation<void, string | number>({
       query: (id) => ({
         url: `/emp/${id}/activate`,
         method: "PATCH",
@@ -120,7 +120,7 @@ export const employeeApi = api.injectEndpoints({
       invalidatesTags: ["Employee"],
     }),
 
-    deactivateEmployee: builder.mutation<void, number>({
+    deactivateEmployee: builder.mutation<void, string | number>({
       query: (id) => ({
         url: `/emp/${id}/deactivate`,
         method: "PATCH",
@@ -174,7 +174,7 @@ export const employeeApi = api.injectEndpoints({
 
     uploadProfileImage: builder.mutation<
       ApiResponse<any>,
-      { id: number; file: File }
+      { id: string | number; file: File }
     >({
       query: ({ id, file }) => {
         const formData = new FormData();

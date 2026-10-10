@@ -474,7 +474,7 @@ const EmployeeProfileView = () => {
             {employee.employmentStatus === "TERMINATED" ? "Reactivate Account" : "Deactivate Account"}
           </button>
           <Link
-            to={`/employees/edit/${employee.id}`}
+            to={`/employees/edit/${employee.id || employeeId}`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
           >
             <UserRound size={13} />

@@ -88,7 +88,7 @@ const App = () => {
               {kpiRoutes.filter(r => ['/kpi/team', '/kpi/manage', '/kpi/assign/:employeeId', '/kpi/org-history'].includes(r.path)).map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}
-              {adminRoutes.filter(r => ['/employees', '/employees/:id/profile'].includes(r.path)).map((route) => (
+              {adminRoutes.filter(r => ['/employees', '/employees/:id/profile', '/employees/edit/:id'].includes(r.path)).map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}
             </Route>
@@ -96,7 +96,7 @@ const App = () => {
             {/* HR/Admin Management Routes */}
             <Route element={<ProtectedRoute allowedRoles={["ADMIN", "HR"]} />}>
               {/* Shared HR + Admin routes (departments, org, etc.) */}
-              {adminRoutes.filter(r => !['/roles', '/permissions', '/permissions/matrix', '/permissions/assign', '/employees', '/employees/:id/profile'].includes(r.path)).map((route) => (
+              {adminRoutes.filter(r => !['/roles', '/permissions', '/permissions/matrix', '/permissions/assign', '/employees', '/employees/:id/profile', '/employees/edit/:id'].includes(r.path)).map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}
 

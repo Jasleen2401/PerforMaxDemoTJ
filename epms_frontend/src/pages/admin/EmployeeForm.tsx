@@ -17,7 +17,7 @@ const EmployeeForm = () => {
   const navigate = useNavigate();
   const isEdit = !!id;
 
-  const { data: employeeData, isLoading: isLoadingEmployee } = useGetEmployeeByIdQuery(Number(id), { skip: !isEdit });
+  const { data: employeeData, isLoading: isLoadingEmployee } = useGetEmployeeByIdQuery(id as any, { skip: !isEdit });
   const { data: roles } = useGetRolesQuery();
   const { data: departments } = useGetActiveDepartmentsQuery();
   const { data: employeesData } = useGetEmployeesQuery({ page: 0, size: 1000 });
@@ -74,7 +74,7 @@ const EmployeeForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      let targetId = Number(id);
+      let targetId: string | number = id || "";
       const cleanedData = {
         ...formData,
         salary: (formData.salary as any) === "" ? undefined : formData.salary,
@@ -98,7 +98,12 @@ const EmployeeForm = () => {
       if (selectedFile) {
         await uploadProfileImage({ id: targetId, file: selectedFile }).unwrap();
       }
-      navigate("/employees");
+      toast.success(isEdit ? "Employee profile updated successfully!" : "Staff member registered successfully!");
+      if (isEdit) {
+        navigate(`/employees/${targetId}/profile`);
+      } else {
+        navigate("/employees");
+      }
     } catch (err: any) {
       console.error("Failed to save employee", err);
       toast.error("Failed to save employee. Please check all required fields.");

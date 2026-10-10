@@ -157,12 +157,12 @@ const AppraisalList: React.FC = () => {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/manager-evaluation`);
+                  navigate(`/appraisal/${appraisal.appraisalId}/self-assessment`);
                 }}
                 style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                 className="hover:underline flex items-center gap-1 font-semibold"
               >
-                <ClipboardList size={12} /> Evaluate Form
+                <ClipboardList size={12} /> Self Assessment
               </button>
               <button
                 onClick={(e) => {

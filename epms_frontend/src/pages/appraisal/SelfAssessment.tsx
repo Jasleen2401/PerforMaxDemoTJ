@@ -28,7 +28,7 @@ const inputStyle: React.CSSProperties = {
 const SelfAssessment = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin, isHR } = useAuth();
 
   const { data: formData, isLoading } = useGetSelfAssessmentFormQuery(id || '', { skip: !id });
   const [saveAnswers, { isLoading: isSaving }] = useSaveSelfAssessmentAnswersMutation();
@@ -69,28 +69,44 @@ const SelfAssessment = () => {
   const handleCompletionChange = (qId: string, val: boolean) => setResponses(p => ({ ...p, [qId]: { ...p[qId], isCompleted: val } }));
   const handleCommentChange = (qId: string, val: string) => setResponses(p => ({ ...p, [qId]: { ...p[qId], comment: val } }));
 
-  const buildPayload = () => Object.keys(responses).map(qId => ({
-    questionId: Number(qId),
-    ratingValue: responses[qId].ratingValue,
-    isCompleted: true,
-    comment: responses[qId].comment || null,
-  }));
+  const buildPayload = () => Object.keys(responses).map(qId => {
+    let critId = qId;
+    if (formData?.categories) {
+      for (const cat of formData.categories) {
+        const found = cat.questions?.find((q: any) => String(q.questionId) === String(qId));
+        if (found?.criterionId) {
+          critId = found.criterionId;
+          break;
+        }
+      }
+    }
+    return {
+      questionId: qId,
+      criterionId: critId,
+      ratingValue: responses[qId].ratingValue,
+      isCompleted: true,
+      comment: responses[qId].comment || null,
+    };
+  });
 
   const handleSaveDraft = async () => {
-    if (!formData?.selfAssessmentId) return;
+    const targetId = formData?.selfAssessmentId || id;
+    if (!targetId) return;
     try {
-      await saveAnswers({ id: formData.selfAssessmentId, answers: buildPayload() }).unwrap();
-      await saveDraftMutation({ selfAssessmentId: formData.selfAssessmentId, overallReflection: comment }).unwrap();
+      await saveAnswers({ id: targetId, answers: buildPayload() }).unwrap();
+      await saveDraftMutation({ selfAssessmentId: targetId, overallReflection: comment }).unwrap();
       toast.success('Draft saved!');
     } catch (err: any) { toast.error('Save failed.'); }
   };
 
   const handleSubmit = async () => {
     if (completedCount < totalQuestions) { toast.warning('Please answer all questions before submitting.'); return; }
+    const targetId = formData?.selfAssessmentId || id;
+    if (!targetId) return;
     try {
-      await saveAnswers({ id: formData.selfAssessmentId, answers: buildPayload() }).unwrap();
-      await saveDraftMutation({ selfAssessmentId: formData.selfAssessmentId, overallReflection: comment }).unwrap();
-      await submitSelfAssessment(formData.selfAssessmentId).unwrap();
+      await saveAnswers({ id: targetId, answers: buildPayload() }).unwrap();
+      await saveDraftMutation({ selfAssessmentId: targetId, overallReflection: comment }).unwrap();
+      await submitSelfAssessment(targetId).unwrap();
       toast.success('Self-assessment submitted!');
       navigate('/appraisal');
     } catch (err: any) { toast.error('Submit failed.'); }
@@ -103,12 +119,22 @@ const SelfAssessment = () => {
     </div>
   );
 
-  const isOwner = Number(user?.id) === Number(formData.employeeId);
-  const isReadOnly = !!formData.submitted || !isOwner;
+  const isPrivileged = isAdmin || isHR;
+  const isOwner = Boolean(
+    formData.isOwner ||
+    (user?.id && formData.employeeUserId && String(user.id).toLowerCase() === String(formData.employeeUserId).toLowerCase()) ||
+    (user?.id && formData.employeeId && String(user.id).toLowerCase() === String(formData.employeeId).toLowerCase()) ||
+    ((user as any)?.userId && formData.employeeId && String((user as any).userId).toLowerCase() === String(formData.employeeId).toLowerCase()) ||
+    (user?.email && formData.employeeEmail && String(user.email).toLowerCase() === String(formData.employeeEmail).toLowerCase()) ||
+    (user?.staffName && formData.employeeName && String(user.staffName).toLowerCase() === String(formData.employeeName).toLowerCase()) ||
+    (user?.employeeCode && formData.employeeCode && String(user.employeeCode).toLowerCase() === String(formData.employeeCode).toLowerCase())
+  );
+  const canEdit = isOwner ? !formData.submitted : (isAdmin && !formData.submitted);
+  const isReadOnly = !canEdit;
   const isDisabled = isSubmitting || isReadOnly;
   const canExport = appraisalDetail?.status === 'HR_APPROVED' || appraisalDetail?.status === 'FINALIZED' || appraisalDetail?.status === 'ARCHIVED';
 
-  if (!isOwner && !formData.submitted) return (
+  if (!isOwner && !isPrivileged && !formData.submitted) return (
     <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '32px 24px', textAlign: 'center', maxWidth: 480, margin: '40px auto' }}>
       <div style={{ width: 48, height: 48, borderRadius: 8, background: '#EEF3FD', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <Target size={20} style={{ color: '#1A56DB' }} />
@@ -152,7 +178,7 @@ const SelfAssessment = () => {
               try {
                 await downloadReport({
                   endpoint: 'self-assessment',
-                  params: { appraisalId: Number(id), format: 'pdf' },
+                  params: { appraisalId: formData.appraisalId || id, format: 'pdf' },
                   fileName: `Self_Assessment_${formData.employeeName ?? 'Form'}.pdf`,
                 }).unwrap();
               } catch (err: any) {
@@ -247,8 +273,8 @@ const SelfAssessment = () => {
                 const qId = q.questionId.toString();
                 const resp = responses[qId] || { ratingValue: 0, isCompleted: null };
                 const hasYN = q.questionType === 'YESNO' || q.secondaryQuestionType === 'YESNO';
-                const hasRating = q.questionType === 'RATING' || q.secondaryQuestionType === 'RATING';
-                const hasText = q.questionType === 'TEXT' || q.secondaryQuestionType === 'TEXT';
+                const hasRating = !q.questionType || q.questionType === 'RATING' || q.secondaryQuestionType === 'RATING';
+                const hasText = !q.questionType || q.questionType === 'TEXT' || q.secondaryQuestionType === 'TEXT';
                 const ratingLocked = hasYN && hasRating && resp.isCompleted === null;
                 const selectedScale = resp.ratingValue ? RATING_SCALE.find(s => s.v === resp.ratingValue) : null;
 

@@ -23,6 +23,10 @@ from apps.frontend_compat.views import (
     ManagerEvaluationAnswersCompatView,
     ManagerEvaluationDraftCompatView,
     ManagerEvaluationSubmitCompatView,
+    SelfAssessmentFormCompatView,
+    SelfAssessmentAnswersCompatView,
+    SelfAssessmentDraftCompatView,
+    SelfAssessmentSubmitCompatView,
     KpiActiveCycleCompatView,
     KpiAuditOrgCompatView,
     KpiAuditTeamCompatView,
@@ -99,6 +103,12 @@ urlpatterns = [
     re_path(r'^manager-evaluations/(?P<pk>[^/]+)/answers/?$', ManagerEvaluationAnswersCompatView.as_view(), name='compat_mgr_eval_answers'),
     re_path(r'^manager-evaluations/(?P<pk>[^/]+)/draft/?$', ManagerEvaluationDraftCompatView.as_view(), name='compat_mgr_eval_draft'),
     re_path(r'^manager-evaluations/(?P<pk>[^/]+)/submit/?$', ManagerEvaluationSubmitCompatView.as_view(), name='compat_mgr_eval_submit'),
+
+    # Self Assessments
+    re_path(r'^(?:self-assessments|self-assessment)/form/(?P<pk>[^/]+)/?$', SelfAssessmentFormCompatView.as_view(), name='compat_self_assess_form'),
+    re_path(r'^(?:self-assessments|self-assessment)/(?P<pk>[^/]+)/answers/?$', SelfAssessmentAnswersCompatView.as_view(), name='compat_self_assess_answers'),
+    re_path(r'^(?:self-assessments|self-assessment)/(?P<pk>[^/]+)/draft/?$', SelfAssessmentDraftCompatView.as_view(), name='compat_self_assess_draft'),
+    re_path(r'^(?:self-assessments|self-assessment)/(?P<pk>[^/]+)/submit/?$', SelfAssessmentSubmitCompatView.as_view(), name='compat_self_assess_submit'),
 
     # Continuous Feedback & Tags
     re_path(r'^tags/(?P<pk>[^/]+)/?$', TagsCompatView.as_view(), name='compat_tags_detail'),

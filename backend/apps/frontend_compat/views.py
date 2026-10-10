@@ -1969,6 +1969,17 @@ class AppraisalsMyAssessmentsView(APIView):
 
     def get(self, request):
         user = request.user
+        emp = EmployeeProfile.objects.filter(user=user).first()
+        if emp:
+            active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+            if active_cycle and not Appraisal.objects.filter(employee=emp, cycle=active_cycle).exists():
+                Appraisal.objects.create(
+                    employee=emp,
+                    cycle=active_cycle,
+                    reviewer=emp.manager,
+                    status=AppraisalStatus.DRAFT,
+                    appraisal_type=AppraisalType.ANNUAL
+                )
         appraisals = Appraisal.objects.filter(employee__user=user)
         if not appraisals.exists() and user.role in [UserRole.MANAGER, UserRole.SUPER_ADMIN, UserRole.HR]:
             if user.role == UserRole.MANAGER:
@@ -2705,15 +2716,59 @@ class ManagerEvaluationSubmitCompatView(APIView):
         return ok_response({"message": "Manager evaluation submitted successfully", "data": map_appraisal(app)})
 
 
+def resolve_appraisal_for_self_assessment(pk, user):
+    app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'employee__manager', 'cycle', 'reviewer').filter(id=pk).first()
+    if not app:
+        app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'employee__manager', 'cycle', 'reviewer').filter(
+            Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+        ).order_by('-created_at').first()
+    if not app:
+        emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
+        if not emp and (not pk or str(pk).lower() in ('me', 'current', 'my-assessment', 'undefined', 'null')):
+            emp = EmployeeProfile.objects.filter(user=user).first()
+        if emp:
+            cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+            if cycle:
+                app, _ = Appraisal.objects.get_or_create(
+                    employee=emp,
+                    cycle=cycle,
+                    defaults={
+                        'reviewer': emp.manager,
+                        'status': AppraisalStatus.DRAFT,
+                        'appraisal_type': AppraisalType.ANNUAL
+                    }
+                )
+    if not app:
+        emp = EmployeeProfile.objects.filter(user=user).first()
+        if emp:
+            app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'employee__manager', 'cycle', 'reviewer').filter(employee=emp).order_by('-created_at').first()
+    return app
+
+
 class SelfAssessmentFormCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        app = Appraisal.objects.filter(id=pk).first()
-        if not app:
-            app = Appraisal.objects.first()
+        app = resolve_appraisal_for_self_assessment(pk, request.user)
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        is_admin_or_hr = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'is_staff', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR, 'ADMIN', 'HR']
+        )
+        is_owner = (
+            (app.employee and app.employee.user_id and str(app.employee.user_id) == str(request.user.id)) or
+            (app.employee and str(app.employee.id) == str(request.user.id)) or
+            (app.employee and getattr(app.employee.user, 'email', '') and app.employee.user.email.lower() == getattr(request.user, 'email', '').lower())
+        )
+        is_assigned_manager = (
+            (app.employee and app.employee.manager_id and str(app.employee.manager_id) == str(request.user.id)) or
+            (app.reviewer_id and str(app.reviewer_id) == str(request.user.id)) or
+            (app.employee and app.employee.team_memberships.filter(team__manager=request.user).exists())
+        )
 
         existing_ratings = {str(r.criterion.id): r for r in app.ratings.all()}
         criteria = EvaluationCriterion.objects.filter(is_active=True)
@@ -2737,6 +2792,8 @@ class SelfAssessmentFormCompatView(APIView):
                 "criterionId": str(crit.id),
                 "questionText": crit.name,
                 "description": crit.description or f"Rate your proficiency and deliverables in {crit.name}.",
+                "questionType": "RATING",
+                "secondaryQuestionType": "TEXT",
                 "ratingValue": button_score,
                 "isCompleted": bool(button_score),
                 "comment": comment_val,
@@ -2747,10 +2804,20 @@ class SelfAssessmentFormCompatView(APIView):
         data = {
             "selfAssessmentId": str(app.id),
             "appraisalId": str(app.id),
+            "cycleId": str(app.cycle.id) if app.cycle else "",
+            "cycleName": app.cycle.name if app.cycle else "Current Cycle",
             "employeeId": str(app.employee.id),
+            "employeeUserId": str(app.employee.user_id) if app.employee and app.employee.user_id else "",
+            "employeeEmail": getattr(getattr(app.employee, 'user', None), 'email', '') or getattr(app.employee, 'email', ''),
             "employeeName": app.employee.full_name,
+            "employeeCode": getattr(app.employee, 'employee_code', ''),
+            "departmentName": app.employee.department.name if app.employee and app.employee.department else '',
+            "managerName": getattr(getattr(getattr(app.employee, 'manager', None), 'profile', None), 'full_name', '') or getattr(app.employee.manager, 'username', '') if app.employee and app.employee.manager else '',
             "overallReflection": app.self_comments or "",
             "submitted": has_submitted,
+            "isOwner": is_owner or is_admin_or_hr,
+            "canEdit": (is_owner or is_admin_or_hr) and not has_submitted,
+            "canView": is_owner or is_admin_or_hr or is_assigned_manager or has_submitted,
             "categories": [
                 {
                     "categoryId": 1,
@@ -2766,7 +2833,7 @@ class SelfAssessmentAnswersCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        app = Appraisal.objects.filter(id=pk).first()
+        app = resolve_appraisal_for_self_assessment(pk, request.user)
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2776,12 +2843,15 @@ class SelfAssessmentAnswersCompatView(APIView):
             criteria = list(EvaluationCriterion.objects.all())
 
         for ans in answers:
-            q_id = ans.get("questionId") or ans.get("criterionId")
+            crit_id = ans.get("criterionId")
+            q_id = ans.get("questionId")
             rating_val = ans.get("ratingValue") or ans.get("score")
             comment = ans.get("comment") or ans.get("comments") or ""
 
             target_crit = None
-            if q_id is not None:
+            if crit_id is not None:
+                target_crit = next((c for c in criteria if str(c.id).lower() == str(crit_id).lower() or c.name.lower() == str(crit_id).lower()), None)
+            if not target_crit and q_id is not None:
                 if str(q_id).isdigit() and 1 <= int(q_id) <= len(criteria):
                     target_crit = criteria[int(q_id) - 1]
                 else:
@@ -2799,14 +2869,14 @@ class SelfAssessmentAnswersCompatView(APIView):
                     }
                 )
 
-        return ok_response({"message": "Self assessment answers saved"})
+        return ok_response({"message": "Self assessment answers saved", "appraisalId": str(app.id)})
 
 
 class SelfAssessmentDraftCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        app = Appraisal.objects.filter(id=pk).first()
+        app = resolve_appraisal_for_self_assessment(pk, request.user)
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2814,14 +2884,14 @@ class SelfAssessmentDraftCompatView(APIView):
         if reflection:
             app.self_comments = reflection
             app.save()
-        return ok_response({"message": "Draft saved"})
+        return ok_response({"message": "Draft saved", "appraisalId": str(app.id)})
 
 
 class SelfAssessmentSubmitCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        app = Appraisal.objects.filter(id=pk).first()
+        app = resolve_appraisal_for_self_assessment(pk, request.user)
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 

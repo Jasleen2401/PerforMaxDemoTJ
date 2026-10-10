@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -64,12 +64,15 @@ export const ManagerHubPage: React.FC = () => {
   // Search & Filter state for Mentees
   const [menteeSearch, setMenteeSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('');
+  const [appraisalFilter, setAppraisalFilter] = useState<'ALL' | 'PENDING' | 'NOT_STARTED' | 'COMPLETED'>('ALL');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
+  const [evidenceStatusFilter, setEvidenceStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
   const [menteePage, setMenteePage] = useState(0);
   const menteePageSize = 12;
 
   useEffect(() => {
     setMenteePage(0);
-  }, [menteeSearch, statusFilter]);
+  }, [menteeSearch, statusFilter, appraisalFilter]);
 
   // Selected Mentee for detail or action
   const [selectedMentee, setSelectedMentee] = useState<MenteeItem | null>(null);
@@ -296,11 +299,51 @@ export const ManagerHubPage: React.FC = () => {
 
   // Metrics summary
   const totalMentees = mentees.length;
-  const totalMenteePages = Math.ceil(totalMentees / menteePageSize) || 1;
-  const pagedMentees = mentees.slice(menteePage * menteePageSize, (menteePage + 1) * menteePageSize);
   const totalActiveTasks = tasks.filter((t) => t.status !== 'COMPLETED').length;
   const totalPendingEvidence = evidenceList.filter((e) => e.reviewStatus === 'PENDING').length;
   const pendingAppraisals = mentees.filter((m) => m.activeAppraisal?.status === 'SUBMITTED' || m.activeAppraisal?.status === 'UNDER_REVIEW').length;
+
+  // Filtered Mentees
+  const filteredMentees = useMemo(() => {
+    return mentees.filter((m) => {
+      if (appraisalFilter === 'PENDING') {
+        const s = m.activeAppraisal?.status;
+        return s === 'SUBMITTED' || s === 'UNDER_REVIEW';
+      }
+      if (appraisalFilter === 'NOT_STARTED') {
+        const s = m.activeAppraisal?.status;
+        return !s || s === 'NOT_STARTED';
+      }
+      if (appraisalFilter === 'COMPLETED') {
+        const s = m.activeAppraisal?.status;
+        return s === 'HR_APPROVED' || s === 'FINALIZED' || s === 'PUBLISHED';
+      }
+      return true;
+    });
+  }, [mentees, appraisalFilter]);
+
+  const totalFilteredMentees = filteredMentees.length;
+  const totalMenteePages = Math.ceil(totalFilteredMentees / menteePageSize) || 1;
+  const pagedMentees = filteredMentees.slice(menteePage * menteePageSize, (menteePage + 1) * menteePageSize);
+
+  // Filtered Tasks
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (taskStatusFilter === 'ACTIVE') return t.status !== 'COMPLETED';
+      if (taskStatusFilter === 'COMPLETED') return t.status === 'COMPLETED';
+      return true;
+    });
+  }, [tasks, taskStatusFilter]);
+
+  // Filtered Evidence
+  const filteredEvidence = useMemo(() => {
+    return evidenceList.filter((e) => {
+      if (evidenceStatusFilter === 'PENDING') return e.reviewStatus === 'PENDING';
+      if (evidenceStatusFilter === 'APPROVED') return e.reviewStatus === 'APPROVED';
+      if (evidenceStatusFilter === 'REJECTED') return e.reviewStatus === 'REJECTED' || e.reviewStatus === 'REVISION_REQUESTED';
+      return true;
+    });
+  }, [evidenceList, evidenceStatusFilter]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -345,43 +388,105 @@ export const ManagerHubPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Telemetry Strip */}
+        {/* Telemetry Strip - Interactive Feature Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-8 pt-6 border-t border-white/10">
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+          {/* 1. Assigned Students */}
+          <button
+            type="button"
+            onClick={() => {
+              handleTabChange('mentees');
+              setAppraisalFilter('ALL');
+              setMenteePage(0);
+            }}
+            className={`group text-left p-4 rounded-2xl border transition-all cursor-pointer backdrop-blur-md ${
+              activeTab === 'mentees' && appraisalFilter === 'ALL'
+                ? 'bg-white/20 border-white/50 ring-2 ring-white/30 shadow-lg'
+                : 'bg-white/10 border-white/10 hover:bg-white/15 hover:border-white/25 hover:scale-[1.02] active:scale-95'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium">Assigned Students</span>
-              <Users size={16} className="text-indigo-300" />
+              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Assigned Students</span>
+              <Users size={16} className="text-indigo-300 group-hover:scale-110 transition-transform" />
             </div>
             <div className="text-2xl font-black mt-2 text-white">{totalMentees}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1">Directly reporting students</div>
-          </div>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-indigo-200/80">
+              <span>Directly reporting students</span>
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold text-[10px]">View All →</span>
+            </div>
+          </button>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+          {/* 2. Active Tasks */}
+          <button
+            type="button"
+            onClick={() => {
+              handleTabChange('tasks');
+              setTaskStatusFilter('ACTIVE');
+            }}
+            className={`group text-left p-4 rounded-2xl border transition-all cursor-pointer backdrop-blur-md ${
+              activeTab === 'tasks' && taskStatusFilter === 'ACTIVE'
+                ? 'bg-white/20 border-amber-300/50 ring-2 ring-amber-300/30 shadow-lg'
+                : 'bg-white/10 border-white/10 hover:bg-white/15 hover:border-white/25 hover:scale-[1.02] active:scale-95'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium">Active Tasks</span>
-              <Target size={16} className="text-amber-300" />
+              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Active Tasks</span>
+              <Target size={16} className="text-amber-300 group-hover:scale-110 transition-transform" />
             </div>
             <div className="text-2xl font-black mt-2 text-white">{totalActiveTasks}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1">In-flight deliverables</div>
-          </div>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-indigo-200/80">
+              <span>In-flight deliverables</span>
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-amber-300 font-bold text-[10px]">Filter Active →</span>
+            </div>
+          </button>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+          {/* 3. Pending Evidence */}
+          <button
+            type="button"
+            onClick={() => {
+              handleTabChange('evidence');
+              setEvidenceStatusFilter('PENDING');
+            }}
+            className={`group text-left p-4 rounded-2xl border transition-all cursor-pointer backdrop-blur-md ${
+              activeTab === 'evidence' && evidenceStatusFilter === 'PENDING'
+                ? 'bg-white/20 border-rose-300/50 ring-2 ring-rose-300/30 shadow-lg'
+                : 'bg-white/10 border-white/10 hover:bg-white/15 hover:border-white/25 hover:scale-[1.02] active:scale-95'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium">Pending Evidence</span>
-              <FolderOpen size={16} className="text-rose-300" />
+              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Pending Evidence</span>
+              <FolderOpen size={16} className="text-rose-300 group-hover:scale-110 transition-transform" />
             </div>
             <div className="text-2xl font-black mt-2 text-white">{totalPendingEvidence}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1">Submissions awaiting sign-off</div>
-          </div>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-indigo-200/80">
+              <span>Submissions awaiting sign-off</span>
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-rose-300 font-bold text-[10px]">Review Now →</span>
+            </div>
+          </button>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+          {/* 4. Pending Appraisals */}
+          <button
+            type="button"
+            onClick={() => {
+              handleTabChange('mentees');
+              setAppraisalFilter('PENDING');
+              setMenteePage(0);
+            }}
+            className={`group text-left p-4 rounded-2xl border transition-all cursor-pointer backdrop-blur-md ${
+              activeTab === 'mentees' && appraisalFilter === 'PENDING'
+                ? 'bg-white/20 border-emerald-300/50 ring-2 ring-emerald-300/30 shadow-lg'
+                : 'bg-white/10 border-white/10 hover:bg-white/15 hover:border-white/25 hover:scale-[1.02] active:scale-95'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium">Pending Appraisals</span>
-              <Award size={16} className="text-emerald-300" />
+              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Pending Appraisals</span>
+              <Award size={16} className="text-emerald-300 group-hover:scale-110 transition-transform" />
             </div>
             <div className="text-2xl font-black mt-2 text-white">{pendingAppraisals}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1">Reviews ready for manager scoring</div>
-          </div>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-indigo-200/80">
+              <span>Reviews ready for scoring</span>
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-emerald-300 font-bold text-[10px]">Score Reviews →</span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -432,7 +537,7 @@ export const ManagerHubPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -444,9 +549,23 @@ export const ManagerHubPage: React.FC = () => {
                 <option value="COMPLETED">Completed</option>
               </select>
 
+              <select
+                value={appraisalFilter}
+                onChange={(e) => {
+                  setAppraisalFilter(e.target.value as any);
+                  setMenteePage(0);
+                }}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-hidden font-medium"
+              >
+                <option value="ALL">All Appraisal States</option>
+                <option value="PENDING">Pending Appraisals ({pendingAppraisals})</option>
+                <option value="NOT_STARTED">Not Started</option>
+                <option value="COMPLETED">Approved / Finalized</option>
+              </select>
+
               <button
                 onClick={() => refetchMentees()}
-                className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
+                className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
                 title="Refresh Students"
               >
                 <RefreshCw size={15} />
@@ -454,16 +573,45 @@ export const ManagerHubPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Active Filter Indicator Pill */}
+          {appraisalFilter !== 'ALL' && (
+            <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 px-4 py-2.5 rounded-xl text-xs text-indigo-900">
+              <span className="flex items-center gap-2">
+                <Award size={15} className="text-indigo-600" />
+                Filtering by: <strong>{appraisalFilter === 'PENDING' ? 'Pending Appraisals (Ready for Scoring)' : appraisalFilter}</strong> ({totalFilteredMentees} of {totalMentees} students)
+              </span>
+              <button
+                onClick={() => {
+                  setAppraisalFilter('ALL');
+                  setMenteePage(0);
+                }}
+                className="text-xs font-bold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer"
+              >
+                Clear Filter ✕
+              </button>
+            </div>
+          )}
+
           {/* Mentees Grid */}
           {menteesLoading ? (
             <div className="py-20 text-center text-xs text-slate-400">Loading assigned students...</div>
-          ) : mentees.length === 0 ? (
+          ) : filteredMentees.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <Users size={36} className="mx-auto text-slate-300 mb-3" />
               <h3 className="text-base font-bold text-slate-800">No Students Found</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                No students match your current search filters or are assigned under your manager portfolio.
+                {appraisalFilter === 'PENDING'
+                  ? 'No students currently have pending appraisals awaiting scoring.'
+                  : 'No students match your current search filters or are assigned under your manager portfolio.'}
               </p>
+              {appraisalFilter !== 'ALL' && (
+                <button
+                  onClick={() => setAppraisalFilter('ALL')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 cursor-pointer"
+                >
+                  Show All Students
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -586,10 +734,10 @@ export const ManagerHubPage: React.FC = () => {
               ))}
             </div>
 
-            {totalMentees > menteePageSize && (
+            {totalFilteredMentees > menteePageSize && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 mt-4 shadow-2xs">
                 <span className="text-xs text-slate-500">
-                  Showing <strong className="text-slate-800">{menteePage * menteePageSize + 1}–{Math.min((menteePage + 1) * menteePageSize, totalMentees)}</strong> of <strong className="text-slate-800">{totalMentees}</strong> students
+                  Showing <strong className="text-slate-800">{menteePage * menteePageSize + 1}–{Math.min((menteePage + 1) * menteePageSize, totalFilteredMentees)}</strong> of <strong className="text-slate-800">{totalFilteredMentees}</strong> students
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -643,17 +791,53 @@ export const ManagerHubPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Task Filters */}
+          <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+            <span className="text-xs font-bold text-slate-500 px-1">Filter Deliverables:</span>
+            {[
+              { id: 'ALL', label: `All Tasks (${tasks.length})` },
+              { id: 'ACTIVE', label: `In-Flight / Active (${totalActiveTasks})` },
+              { id: 'COMPLETED', label: `Completed (${tasks.length - totalActiveTasks})` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setTaskStatusFilter(f.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  taskStatusFilter === f.id
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           {tasksLoading ? (
             <div className="py-16 text-center text-xs text-slate-400">Loading tasks...</div>
-          ) : tasks.length === 0 ? (
+          ) : filteredTasks.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <Target size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Tasks Assigned Yet</h3>
-              <p className="text-xs text-slate-500 mt-1">Assign deliverables to students/interns to start tracking progress.</p>
+              <h3 className="text-base font-bold text-slate-800">
+                {taskStatusFilter === 'ACTIVE' ? 'No Active Tasks in Flight' : 'No Tasks Found'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {taskStatusFilter === 'ACTIVE'
+                  ? 'All assigned deliverables are completed or not started.'
+                  : 'Assign deliverables to students/interns to start tracking progress.'}
+              </p>
+              {taskStatusFilter !== 'ALL' && (
+                <button
+                  onClick={() => setTaskStatusFilter('ALL')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 cursor-pointer"
+                >
+                  Show All Tasks
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
-              {tasks.map((task) => (
+              {filteredTasks.map((task) => (
                 <div
                   key={task.id}
                   className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-slate-300 transition-all shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -967,15 +1151,52 @@ export const ManagerHubPage: React.FC = () => {
             </button>
           </div>
 
-          {evidenceList.length === 0 ? (
+          {/* Evidence Filters */}
+          <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+            <span className="text-xs font-bold text-slate-500 px-1">Filter Submissions:</span>
+            {[
+              { id: 'ALL', label: `All Evidence (${evidenceList.length})` },
+              { id: 'PENDING', label: `Pending Review (${totalPendingEvidence})` },
+              { id: 'APPROVED', label: 'Approved' },
+              { id: 'REJECTED', label: 'Revision / Rejected' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setEvidenceStatusFilter(f.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  evidenceStatusFilter === f.id
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {filteredEvidence.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <FolderOpen size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Evidence Submissions Found</h3>
-              <p className="text-xs text-slate-500 mt-1">Direct reports have not submitted evidence for review yet.</p>
+              <h3 className="text-base font-bold text-slate-800">
+                {evidenceStatusFilter === 'PENDING' ? 'No Pending Evidence Submissions' : 'No Evidence Submissions Found'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {evidenceStatusFilter === 'PENDING'
+                  ? 'There are no intern submissions currently awaiting sign-off.'
+                  : 'Direct reports have not submitted evidence matching this filter.'}
+              </p>
+              {evidenceStatusFilter !== 'ALL' && (
+                <button
+                  onClick={() => setEvidenceStatusFilter('ALL')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 cursor-pointer"
+                >
+                  Show All Submissions
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {evidenceList.map((item) => (
+              {filteredEvidence.map((item) => (
                 <div
                   key={item.id}
                   className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-slate-300 transition-all shadow-xs flex flex-col justify-between"

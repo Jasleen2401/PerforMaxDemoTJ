@@ -145,8 +145,8 @@ const ManagerEvaluation = () => {
     );
   }
 
-  const isManager = isAssignedManager;
-  const isReadOnly = !isManager || formData.appraisalStatus === 'HR_APPROVED' || formData.appraisalStatus === 'FINALIZED';
+  const canEvaluate = isHR || isAdmin || isAssignedManager;
+  const isReadOnly = !canEvaluate || formData.appraisalStatus === 'HR_APPROVED' || formData.appraisalStatus === 'FINALIZED';
   const isDisabled = isSubmitting || isReadOnly;
 
   const grandTotal = Object.values(managerRatings).reduce((a, b) => a + b, 0);

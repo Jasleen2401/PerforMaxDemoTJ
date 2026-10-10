@@ -76,7 +76,7 @@ class ManagerMenteesView(APIView):
 
             mentees_data.append({
                 'id': str(emp.id),
-                'userId': emp.user.id,
+                'userId': str(emp.user.id),
                 'employeeCode': emp.employee_code,
                 'firstName': emp.first_name,
                 'lastName': emp.last_name,

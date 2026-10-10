@@ -40,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Executive Dashboard", to: "/dashboard", icon: LayoutDashboard },
   { label: "Announcement Hub", to: "/superadmin/notifications", icon: Bell, adminOnly: true },
   { label: "Assigned Mentees", to: "/manager/mentees", icon: Users, hideForAdmin: true },
-  { label: "Performance Appraisals", to: "/appraisal", icon: ClipboardCheck, end: true, hideForAdmin: true },
+  { label: "Performance Appraisals", to: "/appraisal", icon: ClipboardCheck, end: true },
   { label: "Performance Pulse", to: "/performance-history/admin", icon: History },
   { label: "Team Pulse", to: "/performance-history/manager", icon: History, privilegedOnly: true, hideForAdmin: true },
   { label: "Continuous Feedback", to: "/continuous-feedback", icon: MessageSquare },
@@ -92,7 +92,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
     switch (item.label) {
       case "Announcement Hub":    return isAdmin;
       case "Assigned Mentees":    return isManager || isHR;
-      case "Performance Appraisals": return isManager || isHR;
+      case "Performance Appraisals": return true;
       case "Performance Pulse":   return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
       case "Team Pulse":          return hasPermission("APPRAISAL_VIEW_TEAM") && !isAdmin && !isHR;
       case "Continuous Feedback": return true;

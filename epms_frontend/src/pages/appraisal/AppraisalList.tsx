@@ -108,15 +108,14 @@ const AppraisalList: React.FC = () => {
 
   const { data: formSets = [] } = useGetAppraisalFormSetsQuery(undefined, { skip: !isPrivileged });
 
-  const isLoading = loadingAppraisals || loadingTeam || (isPrivileged && (loadingCycles || loadingForms || (!!selectedCycleId && loadingCycleData)));
-
-  if (isLoading) return <div className="py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>Loading…</div>;
-
-  if (errorAppraisals) return (
-    <div className="py-8 text-center" style={{ color: '#791F1F', fontSize: 13, background: '#FCEBEB', border: '0.5px solid #F5C2C2', borderRadius: 12, padding: '16px 18px' }}>
-      No assessments are assigned.
-    </div>
-  );
+  const isTabLoading =
+    activeTab === 'appraisals'
+      ? loadingAppraisals
+      : activeTab === 'team'
+      ? loadingTeam
+      : activeTab === 'cycles'
+      ? loadingCycles || (!!selectedCycleId && loadingCycleData)
+      : loadingForms;
 
   const safeFormatDate = (dateString: string | null | undefined) => {
     if (!dateString) return 'N/A';
@@ -137,55 +136,74 @@ const AppraisalList: React.FC = () => {
   const canDeleteCycle = (cycle: any) =>
     isPrivileged && !cycle?.isAssigned && !cycle?.isActive && cycle?.status === 'PLANNING' && !isArchivedCycle(cycle);
 
-  const renderAppraisals = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {appraisals.length > 0 ? appraisals.map((appraisal: any) => {
-        const s = getStatusStyle(appraisal.status);
-        return (
-          <div key={appraisal.appraisalId} style={{ ...panelStyle, padding: '16px 18px', cursor: 'pointer' }}
-            className="hover:border-[#1A56DB] transition-colors"
-            onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}>
-            <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-              <span style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{appraisal.cycleName}</span>
-              <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
-                {appraisal.status.replace('_', ' ')}
-              </span>
-            </div>
-            <p style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginBottom: 4 }}>{appraisal.employeeName}</p>
-            <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>Performance Assessment</p>
-            <div className="flex items-center justify-between" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6', marginTop: 10 }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/self-assessment`);
-                }}
-                style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                className="hover:underline flex items-center gap-1 font-semibold"
-              >
-                <ClipboardList size={12} /> Self Assessment
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
-                }}
-                style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                className="hover:underline flex items-center gap-1 font-medium"
-              >
-                <Calculator size={12} /> Preview Score
-              </button>
-            </div>
-          </div>
-        );
-      }) : (
-        <div className="col-span-full py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>No assessments assigned.</div>
-      )}
-    </div>
-  );
+  const renderAppraisals = () => {
+    if (isTabLoading) {
+      return <div className="col-span-full py-16 text-center text-slate-400 text-xs">Loading assessments…</div>;
+    }
 
-  const renderTeamEvaluations = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {teamEvaluations.length > 0 ? teamEvaluations.map((appraisal: any) => {
+    if (errorAppraisals) {
+      return (
+        <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-slate-50 border border-slate-200 rounded-2xl p-6">
+          No personal assessments currently assigned to your profile.
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {appraisals.length > 0 ? appraisals.map((appraisal: any) => {
+          const s = getStatusStyle(appraisal.status);
+          return (
+            <div key={appraisal.appraisalId} style={{ ...panelStyle, padding: '16px 18px', cursor: 'pointer' }}
+              className="hover:border-[#1A56DB] transition-colors"
+              onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}>
+              <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{appraisal.cycleName}</span>
+                <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
+                  {appraisal.status.replace('_', ' ')}
+                </span>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginBottom: 4 }}>{appraisal.employeeName}</p>
+              <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>Performance Assessment</p>
+              <div className="flex items-center justify-between" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6', marginTop: 10 }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/appraisal/${appraisal.appraisalId}/self-assessment`);
+                  }}
+                  style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  className="hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                >
+                  <ClipboardList size={12} /> Self Assessment
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                  }}
+                  style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  className="hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                >
+                  <Calculator size={12} /> Preview Score
+                </button>
+              </div>
+            </div>
+          );
+        }) : (
+          <div className="col-span-full py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>No assessments assigned.</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderTeamEvaluations = () => {
+    if (loadingTeam) {
+      return <div className="col-span-full py-16 text-center text-slate-400 text-xs">Loading team evaluations…</div>;
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {teamEvaluations.length > 0 ? teamEvaluations.map((appraisal: any) => {
         const s = getStatusStyle(appraisal.status);
         return (
           <div key={appraisal.appraisalId} style={{ ...panelStyle, padding: '16px 18px', cursor: 'pointer' }}
@@ -228,6 +246,7 @@ const AppraisalList: React.FC = () => {
       )}
     </div>
   );
+};
 
   const renderCycles = () => {
     const getDaysRemaining = (endDate: string) => {

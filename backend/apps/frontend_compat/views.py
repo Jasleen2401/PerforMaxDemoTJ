@@ -1978,7 +1978,7 @@ class AppraisalsMyAssessmentsView(APIView):
                     cycle=active_cycle,
                     reviewer=emp.manager,
                     status=AppraisalStatus.DRAFT,
-                    appraisal_type=AppraisalType.ANNUAL
+                    appraisal_type=AppraisalType.ANNUAL_REVIEW
                 )
         appraisals = Appraisal.objects.filter(employee__user=user)
         if not appraisals.exists() and user.role in [UserRole.MANAGER, UserRole.SUPER_ADMIN, UserRole.HR]:
@@ -2735,7 +2735,7 @@ def resolve_appraisal_for_self_assessment(pk, user):
                     defaults={
                         'reviewer': emp.manager,
                         'status': AppraisalStatus.DRAFT,
-                        'appraisal_type': AppraisalType.ANNUAL
+                        'appraisal_type': AppraisalType.ANNUAL_REVIEW
                     }
                 )
     if not app:

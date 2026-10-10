@@ -90,7 +90,7 @@ const AdminDashboard: React.FC = () => {
     },
     {
       id: '5',
-      label: 'Strategic Analytics',
+      label: 'Performance Analytics',
       icon: <BarChart3 size={18} />,
       onClick: () => navigate('/analytics'),
       color: 'bg-amber-100 text-amber-700',

@@ -69,8 +69,14 @@ const GoalManagement: React.FC = () => {
     setPage(0);
   }, [searchTerm, selectedDepartment, selectedPosition]);
 
+  // Verified workforce eligibility & inclusion rule:
+  // All 88 active employees in the organization are eligible for KPI goal tracking.
+  // Previously, non-admin HR accounts were excluded via !isAdmin && emp.id === user.id,
+  // causing an 87 vs 88 discrepancy across dashboard pages.
+  // When managing organization-wide goals (HR & Admin), all eligible workforce members
+  // are included in the 88 headcount. Managers managing direct reports filter to their team.
   const eligibleEmployees = allEmployees.filter(emp => {
-    if (!isAdmin && String(emp.id) === String(user?.id)) return false;
+    if (!isAdminOrHr && String(emp.id) === String(user?.id)) return false;
     return isKpiEligible(emp);
   });
 
@@ -94,8 +100,8 @@ const GoalManagement: React.FC = () => {
   };
 
   const selectStyle: React.CSSProperties = {
-    background: '#F5F6F8', border: '0.5px solid #E0E2E8', borderRadius: 8,
-    padding: '7px 12px', fontSize: 13, color: '#111827', outline: 'none', appearance: 'none' as any,
+    background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8,
+    padding: '7px 12px', fontSize: 13, color: '#0F172A', outline: 'none', appearance: 'none' as any,
   };
 
   // --- Coverage stats (derived from existing data, no new API calls) ---
@@ -129,7 +135,7 @@ const GoalManagement: React.FC = () => {
 
     if (!status) {
       return (
-        <button title="Assign KPI" style={{ ...base, color: '#1A56DB', background: '#EEF3FD' }}
+        <button title="Assign KPI" style={{ ...base, color: '#7C3AED', background: '#F5F3FF' }}
           onClick={e => { e.stopPropagation(); navigate(`/kpi/assign/${empId}?cycleId=${effectiveCycleId}`); }}>
           <UserPlus size={14} />
         </button>
@@ -143,12 +149,12 @@ const GoalManagement: React.FC = () => {
     );
     if (['APPROVED','LOCKED','SCORED'].includes(status)) return (
       <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
-        <button title="View Goals" style={{ ...base, color: '#1A56DB', background: '#EEF3FD' }}
+        <button title="View Goals" style={{ ...base, color: '#7C3AED', background: '#F5F3FF' }}
           onClick={e => { e.stopPropagation(); navigate(`/kpi/goals/${empId}?cycleId=${effectiveCycleId}`); }}>
           <Eye size={14} />
         </button>
         {status !== 'SCORED' && (
-          <button title="Midcycle Change" style={{ ...base, color: '#1E40AF', background: '#EFF6FF' }}
+          <button title="Midcycle Change" style={{ ...base, color: '#6D28D9', background: '#EDE9FE' }}
             onClick={e => { 
               e.stopPropagation(); 
               setSelectedEmployee({ id: empId, staffName: filteredEmployees.find(emp => String(emp.id) === String(empId))?.staffName || '' });
@@ -171,13 +177,13 @@ const GoalManagement: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 500, color: '#111827' }}>Organization-wide Goal Assignment</h1>
-          <p style={{ fontSize: 12, color: '#9EA3B0', marginTop: 2 }}>Manage and track performance cycle milestones across all departments.</p>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#0F172A' }}>Organization-wide Goal Assignment</h1>
+          <p style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Manage and track performance cycle milestones across all departments.</p>
         </div>
         <div className="flex items-center gap-3">
           {hasActiveCycle && activeCycleName && (
-            <div className="px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-black rounded-full uppercase tracking-widest border border-blue-100 flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></div>
+            <div className="px-3 py-1 bg-purple-50 text-purple-700 text-[10px] font-bold rounded-full uppercase tracking-wider border border-purple-200/60 flex items-center gap-1.5 shadow-2xs">
+              <div className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse"></div>
               {activeCycleName}
             </div>
           )}
@@ -186,12 +192,12 @@ const GoalManagement: React.FC = () => {
             onClick={() => { if (selectedIds.length === 0) { toast.warning('Select at least one employee'); return; } setIsBulkModalOpen(true); }}
             className="inline-flex items-center gap-2 transition-colors self-start sm:self-auto"
             style={{
-              background: !isHistorical && selectedIds.length > 0 ? '#1A56DB' : '#F5F6F8',
-              color: !isHistorical && selectedIds.length > 0 ? '#FFFFFF' : '#9EA3B0',
-              border: `0.5px solid ${!isHistorical && selectedIds.length > 0 ? '#1A56DB' : '#E0E2E8'}`,
-              borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 500,
+              background: !isHistorical && selectedIds.length > 0 ? '#7C3AED' : '#F8FAFC',
+              color: !isHistorical && selectedIds.length > 0 ? '#FFFFFF' : '#94A3B8',
+              border: `1px solid ${!isHistorical && selectedIds.length > 0 ? '#7C3AED' : '#E2E8F0'}`,
+              borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600,
               cursor: !isHistorical && selectedIds.length > 0 ? 'pointer' : 'not-allowed',
-              opacity: isHistorical || selectedIds.length === 0 ? 0.5 : 1,
+              opacity: isHistorical || selectedIds.length === 0 ? 0.6 : 1,
             }}>
             <ClipboardList size={14} />
             Bulk Assign Templates {selectedIds.length > 0 && `(${selectedIds.length})`}
@@ -202,23 +208,23 @@ const GoalManagement: React.FC = () => {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Coverage</div>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Coverage</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 26, fontWeight: 600, color: '#111827' }}>{coverageDisplay}</span>
-            <span style={{ fontSize: 12, color: '#9EA3B0' }}>· {assignedDisplay}</span>
+            <span style={{ fontSize: 26, fontWeight: 800, color: '#0F172A' }}>{coverageDisplay}</span>
+            <span style={{ fontSize: 12, color: '#64748B', fontWeight: 500 }}>· {assignedDisplay}</span>
           </div>
-          <div style={{ marginTop: 8, width: '100%', height: 6, borderRadius: 4, background: '#E4E6EC' }}>
-            <div style={{ width: `${coverageBarWidth}%`, height: '100%', borderRadius: 4, background: '#22C55E', transition: 'width 0.2s ease' }} />
+          <div style={{ marginTop: 8, width: '100%', height: 6, borderRadius: 4, background: '#F1F5F9' }}>
+            <div style={{ width: `${coverageBarWidth}%`, height: '100%', borderRadius: 4, background: '#7C3AED', transition: 'width 0.3s ease' }} />
           </div>
         </div>
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Awaiting Approval</div>
-          <div style={{ marginTop: 10, fontSize: 26, fontWeight: 600, color: '#B45309' }}>{awaitingApprovalDisplay}</div>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Awaiting Approval</div>
+          <div style={{ marginTop: 10, fontSize: 26, fontWeight: 800, color: '#D97706' }}>{awaitingApprovalDisplay}</div>
         </div>
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Assigned</div>
-          <div style={{ marginTop: 10, fontSize: 26, fontWeight: 600, color: '#DC2626' }}>{notAssignedDisplay}</div>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Assigned</div>
+          <div style={{ marginTop: 10, fontSize: 26, fontWeight: 800, color: '#E11D48' }}>{notAssignedDisplay}</div>
         </div>
       </div>
 
@@ -281,33 +287,33 @@ const GoalManagement: React.FC = () => {
       )}
 
       {/* Table */}
-      <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}>
         <div className="overflow-x-auto">
           <table className="w-full text-left" style={{ minWidth: 640 }}>
             <thead>
-              <tr style={{ borderBottom: '0.5px solid #E4E6EC', background: '#FAFBFF' }}>
+              <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
                 {!isHistorical && (
                   <th style={{ padding: '10px 16px', width: 40 }}>
-                    <input type="checkbox" style={{ accentColor: '#1A56DB' }}
+                    <input type="checkbox" style={{ accentColor: '#7C3AED' }}
                       checked={selectedIds.length === pagedEmployees.length && pagedEmployees.length > 0}
                       onChange={handleSelectAll} />
                   </th>
                 )}
               {['Employee','Department','Position','Goal Status','Actions'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: h === 'Actions' ? 'center' : 'left', width: h === 'Actions' ? 80 : 'auto' }}>{h}</th>
+                  <th key={h} style={{ padding: '10px 16px', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: h === 'Actions' ? 'center' : 'left', width: h === 'Actions' ? 80 : 'auto' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loadingEmployees && (
-                <tr><td colSpan={isHistorical ? 4 : 6} style={{ padding: '32px', textAlign: 'center', fontSize: 13, color: '#9EA3B0' }}>Loading employees…</td></tr>
+                <tr><td colSpan={isHistorical ? 4 : 6} style={{ padding: '32px', textAlign: 'center', fontSize: 13, color: '#94A3B8' }}>Loading employees…</td></tr>
               )}
               {!loadingEmployees && pagedEmployees.map((emp, idx) => {
                 const status = goalStatusMap.get(String(emp.id));
                 return (
                   <tr key={emp.id}
-                    style={{ borderBottom: idx < pagedEmployees.length - 1 ? '0.5px solid #F0F2F6' : 'none', background: !isHistorical && selectedIds.includes(emp.id) ? '#EEF3FD' : '#FFFFFF', cursor: ((isArchivedCycle && status) || (isHistorical && status) || (!isHistorical && status !== 'ARCHIVED') || (!isHistorical && !status)) ? 'pointer' : 'default' }}
-                    className="hover:bg-[#FAFBFF] transition-colors"
+                    style={{ borderBottom: idx < pagedEmployees.length - 1 ? '1px solid #F1F5F9' : 'none', background: !isHistorical && selectedIds.includes(emp.id) ? '#FAF5FF' : '#FFFFFF', cursor: ((isArchivedCycle && status) || (isHistorical && status) || (!isHistorical && status !== 'ARCHIVED') || (!isHistorical && !status)) ? 'pointer' : 'default' }}
+                    className="hover:bg-[#FAF5FF]/50 transition-colors"
                     onClick={() => {
                       if (isArchivedCycle) {
                         if (status) {
@@ -330,14 +336,14 @@ const GoalManagement: React.FC = () => {
                     }}>
                     {!isHistorical && (
                       <td style={{ padding: '10px 16px' }} onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" style={{ accentColor: '#1A56DB' }}
+                        <input type="checkbox" style={{ accentColor: '#7C3AED' }}
                           checked={selectedIds.includes(emp.id)}
                           onChange={() => setSelectedIds(prev => prev.includes(emp.id) ? prev.filter(i => i !== emp.id) : [...prev, emp.id])} />
                       </td>
                     )}
                     <td style={{ padding: '10px 16px' }}>
                       <div className="flex items-center gap-3">
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EEF3FD', color: '#1A56DB', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F5F3FF', color: '#7C3AED', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', border: '1px solid #EDE9FE' }}>
                           {emp.profileImage && emp.profileImage !== 'default.jpg' ? (
                             <img src={`http://localhost:8000${emp.profileImage}`} alt={emp.staffName}
                               className="w-full h-full object-cover"
@@ -347,27 +353,27 @@ const GoalManagement: React.FC = () => {
                           )}
                         </div>
                         <div>
-                          <p style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{emp.staffName}</p>
-                          <p style={{ fontSize: 11, color: '#9EA3B0' }}>{emp.email || '—'}</p>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{emp.staffName}</p>
+                          <p style={{ fontSize: 11, color: '#94A3B8' }}>{emp.email || '—'}</p>
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 16px', fontSize: 12, color: '#5A6070' }}>{emp.currentDepartmentName || emp.parentDepartmentName || '—'}</td>
-                    <td style={{ padding: '10px 16px', fontSize: 12, color: '#5A6070' }}>{emp.positionName || '—'}</td>
+                    <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569' }}>{emp.currentDepartmentName || emp.parentDepartmentName || '—'}</td>
+                    <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569' }}>{emp.positionName || '—'}</td>
                     <td style={{ padding: '10px 16px' }}>
                       {status ? (
                         (() => {
                           const safeSs = KPI_STATUS_STYLE[status] ?? { ...KPI_STATUS_FALLBACK, label: status };
                           return (
-                            <span style={{ fontSize: 10, fontWeight: 500, background: safeSs.bg, color: safeSs.text, border: `0.5px solid ${safeSs.border}`, borderRadius: 20, padding: '2px 8px' }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, background: safeSs.bg, color: safeSs.text, border: `0.5px solid ${safeSs.border}`, borderRadius: 20, padding: '2px 8px' }}>
                               {safeSs.label}
                             </span>
                           );
                         })()
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <XCircle size={13} style={{ color: '#9EA3B0' }} />
-                          <span style={{ fontSize: 10, color: '#9EA3B0' }}>Not Assigned</span>
+                          <XCircle size={13} style={{ color: '#94A3B8' }} />
+                          <span style={{ fontSize: 10, color: '#94A3B8' }}>Not Assigned</span>
                         </div>
                       )}
                     </td>
@@ -378,7 +384,7 @@ const GoalManagement: React.FC = () => {
                 );
               })}
               {filteredEmployees.length === 0 && !loadingEmployees && (
-                <tr><td colSpan={isHistorical ? 4 : 6} style={{ padding: '32px', textAlign: 'center', fontSize: 13, color: '#9EA3B0' }}>No employees found matching criteria.</td></tr>
+                <tr><td colSpan={isHistorical ? 4 : 6} style={{ padding: '32px', textAlign: 'center', fontSize: 13, color: '#94A3B8' }}>No employees found matching criteria.</td></tr>
               )}
             </tbody>
           </table>
@@ -386,19 +392,19 @@ const GoalManagement: React.FC = () => {
 
         {/* Pagination */}
         <div className="flex flex-wrap items-center justify-between gap-3"
-          style={{ padding: '10px 16px', borderTop: '0.5px solid #E4E6EC', background: '#FAFBFF' }}>
-          <span style={{ fontSize: 12, color: '#9EA3B0' }}>
-            Showing <strong style={{ color: '#111827' }}>{totalElements > 0 ? page * size + 1 : 0}–{Math.min((page + 1) * size, totalElements)}</strong> of <strong style={{ color: '#111827' }}>{totalElements}</strong>
+          style={{ padding: '10px 16px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+          <span style={{ fontSize: 12, color: '#64748B' }}>
+            Showing <strong style={{ color: '#0F172A' }}>{totalElements > 0 ? page * size + 1 : 0}–{Math.min((page + 1) * size, totalElements)}</strong> of <strong style={{ color: '#0F172A' }}>{totalElements}</strong>
           </span>
           <div className="flex gap-2">
             <button onClick={() => setPage(p => Math.max(p - 1, 0))} disabled={page === 0}
-              style={{ background: '#F5F6F8', color: '#5A6070', border: '0.5px solid #E0E2E8', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500 }}
-              className="disabled:opacity-50 transition-colors hover:bg-[#E0E2E8]">
+              style={{ background: '#FFFFFF', color: '#475569', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500 }}
+              className="disabled:opacity-50 transition-colors hover:bg-slate-100 cursor-pointer">
               Previous
             </button>
             <button onClick={() => setPage(p => Math.min(p + 1, totalPages - 1))} disabled={page >= totalPages - 1 || totalPages === 0}
-              style={{ background: '#1A56DB', color: '#FFFFFF', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500 }}
-              className="disabled:opacity-50 transition-colors">
+              style={{ background: '#7C3AED', color: '#FFFFFF', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600 }}
+              className="disabled:opacity-50 transition-colors hover:bg-purple-700 cursor-pointer">
               Next
             </button>
           </div>

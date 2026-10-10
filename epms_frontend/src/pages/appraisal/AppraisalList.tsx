@@ -32,10 +32,12 @@ import {
   Search,
   Mail,
   Trash2,
-  Calculator
+  Calculator,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../components/Can';
+import EvaluationAttentionQueue from '../../components/appraisal/EvaluationAttentionQueue';
 
 const panelStyle: React.CSSProperties = {
   background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12,
@@ -67,9 +69,18 @@ const AppraisalList: React.FC = () => {
   const { isAdmin, isHR, isManager } = useAuth();
   const isPrivileged = isAdmin || isHR;
 
-  const [activeTab, setActiveTab] = React.useState<'appraisals' | 'team' | 'cycles' | 'forms'>(
-    location.state?.activeTab || (isPrivileged ? 'cycles' : (isManager ? 'team' : 'appraisals'))
+  const [activeTab, setActiveTab] = React.useState<'appraisals' | 'team' | 'cycles' | 'forms' | 'queue'>(
+    location.state?.activeTab || (isPrivileged ? 'queue' : (isManager ? 'team' : 'appraisals'))
   );
+
+  React.useEffect(() => {
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+    } else if (isPrivileged && (activeTab === 'appraisals' || activeTab === 'forms')) {
+      setActiveTab('queue');
+    }
+  }, [location.state?.activeTab, isPrivileged]);
+
   const [selectedCycleId, setSelectedCycleId] = React.useState<number | null>(null);
   const [expandedCycle, setExpandedCycle] = React.useState<string | null>(location.state?.expandedCycle || null);
   const [expandedSet, setExpandedSet] = React.useState<string | null>(location.state?.expandedSet || null);
@@ -112,7 +123,7 @@ const AppraisalList: React.FC = () => {
 
   if (isLoading) return <div className="py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>Loading…</div>;
 
-  if (errorAppraisals) return (
+  if (errorAppraisals && !isPrivileged && activeTab === 'appraisals') return (
     <div className="py-8 text-center" style={{ color: '#791F1F', fontSize: 13, background: '#FCEBEB', border: '0.5px solid #F5C2C2', borderRadius: 12, padding: '16px 18px' }}>
       No assessments are assigned.
     </div>
@@ -864,21 +875,27 @@ const AppraisalList: React.FC = () => {
   return (
     <div className="space-y-4 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 500, color: '#111827' }}>Appraisal Hub</h1>
-          <p style={{ fontSize: 13, color: '#9EA3B0', marginTop: 2 }}>Organisation performance & evaluation management</p>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Performance Appraisals</h1>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">Review submissions, manage evaluations, and publish performance outcomes.</p>
         </div>
         <Can permission="APPRAISAL_CYCLE_MANAGE">
           {isPrivileged && (
-            <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-              <button onClick={() => navigate('/appraisal/create-cycle')} className="inline-flex items-center gap-2 transition-colors"
-                style={{ background: '#FFFFFF', color: '#111827', border: '0.5px solid #E4E6EC', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 500 }}>
-                <Calendar size={14} style={{ color: '#1A56DB' }} /> New Cycle
+            <div className="flex flex-wrap gap-2.5 self-start sm:self-auto items-center">
+              <button
+                onClick={() => navigate('/appraisal/create-cycle')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200/90 rounded-xl hover:bg-purple-50/50 hover:text-purple-700 hover:border-purple-200 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Calendar size={14} className="text-purple-600" />
+                <span>New Cycle</span>
               </button>
-              <button onClick={() => navigate('/appraisal/assign')} className="inline-flex items-center gap-2 transition-colors"
-                style={{ background: '#1A56DB', color: '#FFFFFF', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 500, border: 'none' }}>
-                <Plus size={14} /> Bulk Assign
+              <button
+                onClick={() => navigate('/appraisal/assign')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-purple-700 hover:bg-purple-800 rounded-xl transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus size={14} />
+                <span>Bulk Assign</span>
               </button>
             </div>
           )}
@@ -887,21 +904,30 @@ const AppraisalList: React.FC = () => {
 
       {/* Tab navigation */}
       {(isPrivileged || isManager) && (
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '4px', display: 'inline-flex', flexWrap: 'wrap', gap: 2 }}>
+        <div className="inline-flex p-1 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
           {[
-            { id: 'appraisals', label: 'My Assessments', icon: ClipboardList },
-            ...(isManager ? [{ id: 'team', label: 'Team', icon: Users }] : []),
+            ...(isPrivileged ? [
+              { id: 'queue', label: 'Evaluation & Publishing Queue', icon: AlertCircle },
+            ] : []),
+            ...(isManager && !isPrivileged ? [{ id: 'team', label: 'Team', icon: Users }] : []),
             ...(isPrivileged ? [
               { id: 'cycles', label: 'Cycles', icon: Target },
-              { id: 'forms', label: 'Form Templates', icon: Layers },
             ] : []),
           ].map((tab) => {
             const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
             return (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id as any); setSelectedCycleId(null); setExpandedCycle(null); setExpandedSet(null); resetParticipantFilters(); }}
-                className="flex items-center gap-2 transition-colors"
-                style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', background: activeTab === tab.id ? '#EEF3FD' : 'transparent', color: activeTab === tab.id ? '#1A56DB' : '#5A6070' }}>
-                <Icon size={13} /> {tab.label}
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id as any); setSelectedCycleId(null); setExpandedCycle(null); setExpandedSet(null); resetParticipantFilters(); }}
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-purple-50 text-purple-700 shadow-2xs border border-purple-200/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
+                }`}
+              >
+                <Icon size={14} className={isActive ? 'text-purple-700' : 'text-slate-400'} />
+                <span>{tab.label}</span>
               </button>
             );
           })}
@@ -909,6 +935,9 @@ const AppraisalList: React.FC = () => {
       )}
 
       {/* Content */}
+      {activeTab === 'queue' && isPrivileged && (
+        <EvaluationAttentionQueue initialFilter={location.state?.initialFilter} />
+      )}
       {activeTab === 'appraisals' && renderAppraisals()}
       {activeTab === 'team' && renderTeamEvaluations()}
       {activeTab === 'cycles' && renderCycles()}

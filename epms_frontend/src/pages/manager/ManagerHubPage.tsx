@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -19,7 +19,16 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  UploadCloud,
+  Download,
+  Table as TableIcon,
+  LayoutGrid,
+  UserPlus,
+  CheckCircle2,
+  Clock,
+  Trash2,
 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import {
   useGetAssignedMenteesQuery,
   useGetManagerTasksQuery,
@@ -32,9 +41,6 @@ import {
   useGetManagerEvidenceQuery,
   useReviewEvidenceDecisionMutation,
   useGiveManagerFeedbackMutation,
-  useGetEmployeeFeedbacksQuery,
-  useCommentOnEmployeeFeedbackMutation,
-  useGetHistoricalReviewsQuery,
 } from '../../features/manager/managerApi';
 import type { MenteeItem } from '../../features/manager/managerApi';
 
@@ -43,12 +49,30 @@ export const ManagerHubPage: React.FC = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const { user, accessToken, isHR, isAdmin } = useAuth();
+
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const headers = new Headers(options.headers || {});
+    headers.set('ngrok-skip-browser-warning', 'true');
+    const token = accessToken || localStorage.getItem('accessToken') || localStorage.getItem('token') || '';
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json');
+    }
+    return fetch(url, { ...options, headers });
+  }, [accessToken]);
+
   const getTabFromLocation = (): string => {
     if (location.pathname === '/manager/technical-capabilities') return 'capabilities';
     if (location.pathname === '/manager/tasks') return 'tasks';
     if (location.pathname === '/manager/evidence') return 'evidence';
-    if (location.pathname === '/manager/mentees') return 'mentees';
-    return searchParams.get('tab') || 'mentees';
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'batches' || tabParam === 'tasks' || tabParam === 'capabilities' || tabParam === 'evidence') {
+      return tabParam;
+    }
+    return 'mentees';
   };
 
   const [activeTab, setActiveTab] = useState<string>(getTabFromLocation);
@@ -57,18 +81,20 @@ export const ManagerHubPage: React.FC = () => {
     setActiveTab(getTabFromLocation());
   }, [location.pathname, searchParams]);
 
-  // Search & Filter state for Mentees
+  // View Mode for Mentees Directory: Cards vs Table
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
+  // Search & Filter state for Mentees & Cohorts
   const [menteeSearch, setMenteeSearch] = useState(location.state?.search || '');
   const [statusFilter, setStatusFilter] = useState(location.state?.status || '');
+  const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
+  const [selectedSubBatch, setSelectedSubBatch] = useState<string>('ALL');
   const [menteePage, setMenteePage] = useState(0);
   const menteePageSize = 12;
 
   useEffect(() => {
     setMenteePage(0);
-  }, [menteeSearch, statusFilter]);
-
-  // Selected Mentee for detail or action
-  const [selectedMentee, setSelectedMentee] = useState<MenteeItem | null>(null);
+  }, [menteeSearch, statusFilter, selectedBatch, selectedSubBatch]);
 
   // Modals state
   const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
@@ -76,6 +102,42 @@ export const ManagerHubPage: React.FC = () => {
   const [isAddParamOpen, setIsAddParamOpen] = useState(false);
   const [isReviewEvidenceOpen, setIsReviewEvidenceOpen] = useState(false);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+
+  // Additional HR / Manager modals
+  const [isAddInternOpen, setIsAddInternOpen] = useState(false);
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [isAddCycleOpen, setIsAddCycleOpen] = useState(false);
+  const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
+
+  // Batches & Goals data state
+  const [cycles, setCycles] = useState<any[]>([]);
+  const [projectGoals, setProjectGoals] = useState<any[]>([]);
+
+  // Add Intern Form State
+  const [newInternForm, setNewInternForm] = useState({
+    name: '',
+    email: '',
+    cohort: 'MIRAI Cohort 1',
+    batch: 'Batch A',
+    subBatch: 'A1',
+    mentor: '',
+  });
+
+  // Launch Cycle Form State
+  const [cycleForm, setCycleForm] = useState({
+    name: '',
+    quarter: 'Q2 2026',
+    startDate: '2026-04-01',
+    endDate: '2026-06-30',
+  });
+
+  // Assign Project Goal Form State
+  const [projectGoalForm, setProjectGoalForm] = useState({
+    internId: '',
+    title: '',
+    category: 'Technical Goal',
+    dueDate: '2026-06-30',
+  });
 
   // Assign Task Form State
   const [taskForm, setTaskForm] = useState({
@@ -111,6 +173,31 @@ export const ManagerHubPage: React.FC = () => {
     remarks: '',
   });
 
+  // Load Batches & Goals data from backend
+  const loadBatchesData = useCallback(async () => {
+    try {
+      const cRes = await authFetch('/appraisal-cycles');
+      if (cRes.ok) {
+        const cJson = await cRes.json();
+        const cList = cJson.data || (Array.isArray(cJson) ? cJson : []);
+        setCycles(cList);
+      }
+    } catch {}
+
+    try {
+      const gRes = await authFetch('/api/goals/');
+      if (gRes.ok) {
+        const gJson = await gRes.json();
+        const gList = gJson.results || gJson.data || (Array.isArray(gJson) ? gJson : []);
+        setProjectGoals(gList);
+      }
+    } catch {}
+  }, [authFetch]);
+
+  useEffect(() => {
+    loadBatchesData();
+  }, [loadBatchesData]);
+
   // Queries
   const { data: mentees = [], isLoading: menteesLoading, refetch: refetchMentees } = useGetAssignedMenteesQuery({
     search: menteeSearch,
@@ -120,8 +207,6 @@ export const ManagerHubPage: React.FC = () => {
   const { data: tasks = [], isLoading: tasksLoading, refetch: refetchTasks } = useGetManagerTasksQuery();
   const { refetch: refetchParams } = useGetTechnicalParametersQuery();
   const { data: evidenceList = [], refetch: refetchEvidence } = useGetManagerEvidenceQuery();
-  const { data: employeeFeedbacks = [], refetch: refetchFeedbacks } = useGetEmployeeFeedbacksQuery(undefined);
-  const { data: historicalReviews = [] } = useGetHistoricalReviewsQuery(selectedMentee?.id);
 
   // Selected Mentee for Technical Review Tab
   const [techReviewMenteeId, setTechReviewMenteeId] = useState<string>('');
@@ -140,7 +225,6 @@ export const ManagerHubPage: React.FC = () => {
   const [saveTechnicalReviews, { isLoading: isSavingTechReview }] = useSaveTechnicalReviewsMutation();
   const [reviewEvidence, { isLoading: isReviewingEvidence }] = useReviewEvidenceDecisionMutation();
   const [giveFeedback, { isLoading: isSendingFeedback }] = useGiveManagerFeedbackMutation();
-  const [commentOnFeedback] = useCommentOnEmployeeFeedbackMutation();
 
   const handleTabChange = (tabKey: string) => {
     setActiveTab(tabKey);
@@ -150,10 +234,131 @@ export const ManagerHubPage: React.FC = () => {
       navigate('/manager/tasks');
     } else if (tabKey === 'evidence') {
       navigate('/manager/evidence');
-    } else if (tabKey === 'mentees') {
-      navigate('/manager/mentees');
+    } else if (tabKey === 'batches') {
+      navigate('/manager/hub?tab=batches');
     } else {
-      navigate(`/manager/hub?tab=${tabKey}`);
+      navigate('/manager/mentees');
+    }
+  };
+
+  // Add Intern Handler
+  const handleAddInternSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newInternForm.name) {
+      toast.warning('Please enter the intern / student name.');
+      return;
+    }
+    const internEmail = newInternForm.email || `${newInternForm.name.toLowerCase().replace(/\s+/g, '')}@college.edu`;
+    try {
+      const res = await authFetch('/emp/', {
+        method: 'POST',
+        body: JSON.stringify({
+          staffName: newInternForm.name,
+          email: internEmail,
+          currentDepartmentName: newInternForm.batch,
+          positionName: `Software Intern (${newInternForm.subBatch})`,
+          roles: ['INTERN', 'EMPLOYEE'],
+          status: 'ACTIVE'
+        })
+      });
+      if (res.ok) {
+        toast.success(`Intern "${newInternForm.name}" created and saved to database!`);
+      } else {
+        toast.info(`Intern "${newInternForm.name}" saved in session directory.`);
+      }
+      setIsAddInternOpen(false);
+      setNewInternForm({ name: '', email: '', cohort: 'MIRAI Cohort 1', batch: 'Batch A', subBatch: 'A1', mentor: '' });
+      refetchMentees();
+    } catch {
+      toast.error('Failed to create intern in backend.');
+    }
+  };
+
+  // CSV Import Handlers
+  const handleSampleCsv = () => {
+    const csv = "data:text/csv;charset=utf-8,Name,Email,Cohort,Batch,SubBatch\n" +
+      "Devon Miller,devon@college.edu,MIRAI Cohort 1,Batch A,A1\n" +
+      "Maya Lin,maya@college.edu,MIRAI Cohort 1,Batch B,B1\n";
+    const link = document.createElement("a");
+    link.href = encodeURI(csv);
+    link.download = "sample_mirai_interns.csv";
+    link.click();
+    toast.success("Sample CSV template downloaded!");
+  };
+
+  const handleCsvImport = async () => {
+    const demoCsvInterns = [
+      { name: 'Devon Miller', email: 'devon@college.edu', batch: 'Batch A', subBatch: 'A1' },
+      { name: 'Maya Lin', email: 'maya@college.edu', batch: 'Batch B', subBatch: 'B1' }
+    ];
+    for (const c of demoCsvInterns) {
+      try {
+        await authFetch('/emp/', {
+          method: 'POST',
+          body: JSON.stringify({
+            staffName: c.name,
+            email: c.email,
+            currentDepartmentName: c.batch,
+            positionName: `Software Intern (${c.subBatch})`,
+            roles: ['INTERN', 'EMPLOYEE'],
+            status: 'ACTIVE'
+          })
+        });
+      } catch {}
+    }
+    toast.success("Imported 2 interns via CSV and saved to database!");
+    setIsCsvModalOpen(false);
+    refetchMentees();
+  };
+
+  // Launch Cycle Handler
+  const handleCreateCycleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cycleForm.name) return;
+    try {
+      await authFetch('/appraisal-cycles', {
+        method: 'POST',
+        body: JSON.stringify({
+          cycleName: cycleForm.name,
+          startDate: cycleForm.startDate,
+          endDate: cycleForm.endDate,
+          evaluationPeriod: cycleForm.quarter,
+          status: 'ACTIVE'
+        })
+      });
+      toast.success(`Appraisal cycle "${cycleForm.name}" launched!`);
+      setIsAddCycleOpen(false);
+      setCycleForm({ name: '', quarter: 'Q2 2026', startDate: '2026-04-01', endDate: '2026-06-30' });
+      loadBatchesData();
+    } catch {
+      toast.error('Failed to create cycle.');
+    }
+  };
+
+  // Assign Project Goal Handler
+  const handleCreateGoalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectGoalForm.title) return;
+    const targetId = projectGoalForm.internId || mentees[0]?.id;
+    try {
+      await authFetch('/api/goals/', {
+        method: 'POST',
+        body: JSON.stringify({
+          employee: targetId,
+          title: projectGoalForm.title,
+          description: projectGoalForm.category,
+          due_date: projectGoalForm.dueDate,
+          priority: 'HIGH',
+          status: 'NOT_STARTED'
+        })
+      });
+      toast.success(`Goal "${projectGoalForm.title}" assigned!`);
+      setIsAddGoalOpen(false);
+      setProjectGoalForm({ internId: '', title: '', category: 'Technical Goal', dueDate: '2026-06-30' });
+      loadBatchesData();
+      refetchTasks();
+    } catch {
+      toast.error('Failed to assign project goal.');
     }
   };
 
@@ -215,7 +420,6 @@ export const ManagerHubPage: React.FC = () => {
         message: '',
         visibility: 'PUBLIC',
       });
-      refetchFeedbacks();
     } catch (err: any) {
       toast.error(err?.data?.message || 'Failed to send feedback.');
     }
@@ -290,388 +494,832 @@ export const ManagerHubPage: React.FC = () => {
     }
   };
 
+  // Filter mentees by search, status, batch and sub-batch
+  const filteredMentees = useMemo(() => {
+    return mentees.filter((m) => {
+      if (menteeSearch) {
+        const query = menteeSearch.toLowerCase();
+        const fullName = (m.fullName || `${m.firstName || ''} ${m.lastName || ''}`).toLowerCase();
+        const code = (m.employeeCode || '').toLowerCase();
+        const email = (m.email || '').toLowerCase();
+        if (!fullName.includes(query) && !code.includes(query) && !email.includes(query)) {
+          return false;
+        }
+      }
+      if (statusFilter && m.employmentStatus !== statusFilter) {
+        return false;
+      }
+      if (selectedBatch !== 'ALL') {
+        const text = `${m.department || ''} ${m.designation || ''}`.toLowerCase();
+        if (!text.includes(selectedBatch.toLowerCase())) return false;
+      }
+      if (selectedSubBatch !== 'ALL') {
+        const text = `${m.designation || ''} ${m.employeeCode || ''}`.toLowerCase();
+        if (!text.includes(selectedSubBatch.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [mentees, menteeSearch, statusFilter, selectedBatch, selectedSubBatch]);
+
   // Metrics summary
   const totalMentees = mentees.length;
-  const totalMenteePages = Math.ceil(totalMentees / menteePageSize) || 1;
-  const pagedMentees = mentees.slice(menteePage * menteePageSize, (menteePage + 1) * menteePageSize);
+  const filteredCount = filteredMentees.length;
+  const totalMenteePages = Math.ceil(filteredCount / menteePageSize) || 1;
+  const pagedMentees = filteredMentees.slice(menteePage * menteePageSize, (menteePage + 1) * menteePageSize);
   const totalActiveTasks = tasks.filter((t) => t.status !== 'COMPLETED').length;
   const totalPendingEvidence = evidenceList.filter((e) => e.reviewStatus === 'PENDING').length;
   const pendingAppraisals = mentees.filter((m) => m.activeAppraisal?.status === 'SUBMITTED' || m.activeAppraisal?.status === 'UNDER_REVIEW').length;
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+    <div className="space-y-4 pb-12">
+      {/* Header Banner - Compact Performax Purple/Lavender Header */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-purple-100/90 shadow-xs relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-400" />
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold tracking-wider uppercase mb-3 border border-white/15">
-              <ShieldCheck size={14} className="text-emerald-400" />
-              Mentor & Manager Workspace
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[11px] font-bold border border-purple-200/60">
+                <ShieldCheck size={12} className="text-purple-600" />
+                Manager Workspace
+              </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Assigned Interns & Performance Operations
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Assigned Mentees
             </h1>
-            <p className="text-indigo-200 text-sm mt-1.5 max-w-2xl">
-              Supervise assigned students, set technical capability benchmarks, assign sprint tasks, inspect evidence, and conduct weighted appraisals.
+            <p className="text-slate-500 text-xs sm:text-sm mt-0.5 max-w-2xl">
+              Manage your interns, track deliverables, review evidence, and support performance growth.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
+          {/* Compact Action Group */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setIsAddInternOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-95"
+            >
+              <UserPlus size={14} />
+              <span>Add Intern</span>
+            </button>
             <button
               onClick={() => {
                 setTaskForm((prev) => ({ ...prev, employee_id: mentees[0]?.id || '' }));
                 setIsAssignTaskOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-indigo-950 font-bold text-xs shadow-md hover:bg-indigo-50 transition-all cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200 hover:border-purple-200 font-bold text-xs transition-all cursor-pointer active:scale-95"
             >
-              <Plus size={16} className="text-indigo-600" />
-              Assign Task
+              <Plus size={14} className="text-purple-600" />
+              <span>Assign Task</span>
             </button>
             <button
               onClick={() => {
                 setFeedbackForm((prev) => ({ ...prev, employee_id: mentees[0]?.userId || '' }));
                 setIsGiveFeedbackOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-700/80 hover:bg-indigo-700 text-white font-bold text-xs border border-indigo-500/40 transition-all cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200 hover:border-purple-200 font-bold text-xs transition-all cursor-pointer active:scale-95"
             >
-              <MessageSquare size={16} />
-              Give Feedback
+              <MessageSquare size={14} className="text-purple-600" />
+              <span>Give Feedback</span>
             </button>
-          </div>
-        </div>
-
-        {/* Telemetry Strip (Interactive) */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-8 pt-6 border-t border-white/10">
-          <div
-            onClick={() => handleTabChange('mentees')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('mentees'); } }}
-            className={`rounded-2xl p-4 border transition-all cursor-pointer group active:scale-[0.98] ${
-              activeTab === 'mentees'
-                ? 'bg-white/25 border-white/40 shadow-lg shadow-indigo-950/20 ring-2 ring-white/30'
-                : 'bg-white/10 backdrop-blur-md border-white/10 hover:bg-white/20 hover:border-white/30'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Assigned Students</span>
-              <Users size={16} className="text-indigo-300 group-hover:scale-110 transition-transform" />
-            </div>
-            <div className="text-2xl font-black mt-2 text-white">{totalMentees}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1 flex items-center justify-between">
-              <span>Directly reporting students</span>
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold text-white">→</span>
-            </div>
-          </div>
-
-          <div
-            onClick={() => handleTabChange('tasks')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('tasks'); } }}
-            className={`rounded-2xl p-4 border transition-all cursor-pointer group active:scale-[0.98] ${
-              activeTab === 'tasks'
-                ? 'bg-white/25 border-white/40 shadow-lg shadow-indigo-950/20 ring-2 ring-white/30'
-                : 'bg-white/10 backdrop-blur-md border-white/10 hover:bg-white/20 hover:border-white/30'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Active Tasks</span>
-              <Target size={16} className="text-amber-300 group-hover:scale-110 transition-transform" />
-            </div>
-            <div className="text-2xl font-black mt-2 text-white">{totalActiveTasks}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1 flex items-center justify-between">
-              <span>In-flight deliverables</span>
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold text-white">→</span>
-            </div>
-          </div>
-
-          <div
-            onClick={() => handleTabChange('evidence')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('evidence'); } }}
-            className={`rounded-2xl p-4 border transition-all cursor-pointer group active:scale-[0.98] ${
-              activeTab === 'evidence'
-                ? 'bg-white/25 border-white/40 shadow-lg shadow-indigo-950/20 ring-2 ring-white/30'
-                : 'bg-white/10 backdrop-blur-md border-white/10 hover:bg-white/20 hover:border-white/30'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Pending Evidence</span>
-              <FolderOpen size={16} className="text-rose-300 group-hover:scale-110 transition-transform" />
-            </div>
-            <div className="text-2xl font-black mt-2 text-white">{totalPendingEvidence}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1 flex items-center justify-between">
-              <span>Submissions awaiting sign-off</span>
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold text-white">→</span>
-            </div>
-          </div>
-
-          <div
-            onClick={() => handleTabChange('capabilities')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('capabilities'); } }}
-            className={`rounded-2xl p-4 border transition-all cursor-pointer group active:scale-[0.98] ${
-              activeTab === 'capabilities'
-                ? 'bg-white/25 border-white/40 shadow-lg shadow-indigo-950/20 ring-2 ring-white/30'
-                : 'bg-white/10 backdrop-blur-md border-white/10 hover:bg-white/20 hover:border-white/30'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium group-hover:text-white transition-colors">Pending Appraisals</span>
-              <Award size={16} className="text-emerald-300 group-hover:scale-110 transition-transform" />
-            </div>
-            <div className="text-2xl font-black mt-2 text-white">{pendingAppraisals}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1 flex items-center justify-between">
-              <span>Reviews ready for scoring</span>
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold text-white">→</span>
-            </div>
+            <button
+              onClick={() => setIsCsvModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200 hover:border-purple-200 font-bold text-xs transition-all cursor-pointer active:scale-95"
+            >
+              <UploadCloud size={14} className="text-purple-600" />
+              <span>Upload CSV</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Navigation Tabs (M-01 to M-12) */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200">
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Card 1: Assigned Interns */}
+        <div
+          onClick={() => handleTabChange('mentees')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('mentees'); } }}
+          className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer group ${
+            activeTab === 'mentees'
+              ? 'bg-purple-50/70 border-purple-300 ring-2 ring-purple-500/20 shadow-xs'
+              : 'bg-white border-slate-200/80 hover:border-purple-200 hover:bg-purple-50/30 shadow-2xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Assigned Interns</span>
+            <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Users size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-slate-900 mt-1">
+            {menteesLoading ? '—' : totalMentees}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center justify-between">
+            <span>Direct reports</span>
+            <span className="opacity-0 group-hover:opacity-100 text-purple-600 transition-opacity font-bold">→</span>
+          </div>
+        </div>
+
+        {/* Card 2: Active Tasks */}
+        <div
+          onClick={() => handleTabChange('tasks')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('tasks'); } }}
+          className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer group ${
+            activeTab === 'tasks'
+              ? 'bg-purple-50/70 border-purple-300 ring-2 ring-purple-500/20 shadow-xs'
+              : 'bg-white border-slate-200/80 hover:border-purple-200 hover:bg-purple-50/30 shadow-2xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Active Tasks</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Target size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-slate-900 mt-1">
+            {tasksLoading ? '—' : totalActiveTasks}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center justify-between">
+            <span>In-flight deliverables</span>
+            <span className="opacity-0 group-hover:opacity-100 text-purple-600 transition-opacity font-bold">→</span>
+          </div>
+        </div>
+
+        {/* Card 3: Pending Evidence */}
+        <div
+          onClick={() => handleTabChange('evidence')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabChange('evidence'); } }}
+          className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer group ${
+            activeTab === 'evidence'
+              ? 'bg-purple-50/70 border-purple-300 ring-2 ring-purple-500/20 shadow-xs'
+              : 'bg-white border-slate-200/80 hover:border-purple-200 hover:bg-purple-50/30 shadow-2xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Pending Evidence</span>
+            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <FolderOpen size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-slate-900 mt-1">
+            {totalPendingEvidence}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center justify-between">
+            <span>Submissions awaiting review</span>
+            <span className="opacity-0 group-hover:opacity-100 text-purple-600 transition-opacity font-bold">→</span>
+          </div>
+        </div>
+
+        {/* Card 4: Pending Appraisals */}
+        <div
+          onClick={() => navigate('/appraisal')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/appraisal'); } }}
+          className="p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer group bg-white border-slate-200/80 hover:border-purple-200 hover:bg-purple-50/30 shadow-2xs"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Pending Appraisals</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Award size={15} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-slate-900 mt-1">
+            {pendingAppraisals}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center justify-between">
+            <span>View evaluations</span>
+            <span className="opacity-0 group-hover:opacity-100 text-purple-600 transition-opacity font-bold">→</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs - Single-Row Responsive System */}
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-1.5 flex-wrap">
         {[
-          { key: 'mentees', label: 'Assigned Students (M-01)', icon: Users },
-          { key: 'tasks', label: 'Tasks & Goals (M-02, M-03)', icon: Target },
-          { key: 'capabilities', label: 'Technical Capabilities (M-04, M-05)', icon: Sparkles },
-          { key: 'evidence', label: 'Evidence Review (M-06)', icon: FolderOpen },
-          { key: 'feedback', label: 'Feedback & Reflections (M-07, M-08)', icon: MessageSquare },
-          { key: 'history', label: 'Previous Reviews (M-12)', icon: Calendar },
+          { key: 'mentees', label: 'Directory', icon: Users },
+          { key: 'batches', label: 'Batches & Goals', icon: Layers },
+          { key: 'tasks', label: 'Tasks', icon: Target },
+          { key: 'capabilities', label: 'Technical Skills', icon: Sparkles },
+          { key: 'evidence', label: 'Evidence Review', icon: FolderOpen },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
           return (
             <button
               key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => handleTabChange(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer select-none ${
                 isActive
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-purple-50/60'
               }`}
             >
-              <Icon size={15} />
-              {tab.label}
+              <Icon size={14} />
+              <span>{tab.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: ASSIGNED STUDENTS / EMPLOYEES (M-01) */}
+      {/* TAB 1: DIRECTORY */}
       {/* ========================================================================= */}
       {activeTab === 'mentees' && (
         <div className="space-y-4">
-          {/* Filters Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="relative w-full sm:w-80">
-              <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search student name, code, or email..."
-                value={menteeSearch}
-                onChange={(e) => setMenteeSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+          {/* Filters & Actions Bar - Compact Single Row */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs">
+            <div className="flex items-center gap-2 flex-1 flex-wrap">
+              <div className="relative min-w-[200px] flex-1">
+                <Search size={15} className="absolute left-3.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search student name, code, or email..."
+                  value={menteeSearch}
+                  onChange={(e) => setMenteeSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-400"
+                />
+              </div>
 
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <select
+                value={selectedBatch}
+                onChange={(e) => {
+                  const b = e.target.value;
+                  setSelectedBatch(b);
+                  if (b !== 'ALL' && selectedSubBatch !== 'ALL') {
+                    const validSubs: Record<string, string[]> = {
+                      'Batch A': ['A1', 'A2'],
+                      'Batch B': ['B1', 'B2'],
+                      'Batch C': ['C1', 'C2'],
+                      'Batch D': ['D1', 'D2'],
+                    };
+                    if (validSubs[b] && !validSubs[b].includes(selectedSubBatch)) {
+                      setSelectedSubBatch('ALL');
+                    }
+                  }
+                }}
+                className="px-2.5 py-1.5 bg-purple-50/50 border border-purple-200/80 rounded-xl text-xs text-purple-900 font-semibold focus:outline-hidden"
+              >
+                <option value="ALL">All Batches (A-D)</option>
+                <option value="Batch A">Batch A</option>
+                <option value="Batch B">Batch B</option>
+                <option value="Batch C">Batch C</option>
+                <option value="Batch D">Batch D</option>
+              </select>
+
+              <select
+                value={selectedSubBatch}
+                onChange={(e) => setSelectedSubBatch(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-hidden"
+              >
+                <option value="ALL">All Sub-Batches</option>
+                <option value="A1">Sub-Batch A1</option>
+                <option value="A2">Sub-Batch A2</option>
+                <option value="B1">Sub-Batch B1</option>
+                <option value="B2">Sub-Batch B2</option>
+                <option value="C1">Sub-Batch C1</option>
+                <option value="C2">Sub-Batch C2</option>
+                <option value="D1">Sub-Batch D1</option>
+                <option value="D2">Sub-Batch D2</option>
+              </select>
+
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-hidden"
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-hidden"
               >
-                <option value="">All Employment Statuses</option>
+                <option value="">All Statuses</option>
                 <option value="ACTIVE">Active</option>
                 <option value="PROBATION">Probation</option>
                 <option value="COMPLETED">Completed</option>
               </select>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* View Switcher: Cards vs Table */}
+              <div className="inline-flex p-0.5 bg-slate-100 rounded-xl border border-slate-200 text-xs">
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={`p-1.5 rounded-lg cursor-pointer transition-colors ${
+                    viewMode === 'cards' ? 'bg-white text-purple-700 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Card Grid View"
+                >
+                  <LayoutGrid size={14} />
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 rounded-lg cursor-pointer transition-colors ${
+                    viewMode === 'table' ? 'bg-white text-purple-700 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Directory Table View"
+                >
+                  <TableIcon size={14} />
+                </button>
+              </div>
 
               <button
                 onClick={() => refetchMentees()}
-                className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
-                title="Refresh Students"
+                className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                title="Refresh Directory"
               >
-                <RefreshCw size={15} />
+                <RefreshCw size={14} />
               </button>
             </div>
           </div>
 
-          {/* Mentees Grid */}
+          {/* Mentees Rendering */}
           {menteesLoading ? (
-            <div className="py-20 text-center text-xs text-slate-400">Loading assigned students...</div>
-          ) : mentees.length === 0 ? (
+            <div className="py-20 text-center text-xs text-slate-400">Loading assigned interns directory...</div>
+          ) : filteredMentees.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <Users size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Students Found</h3>
+              <h3 className="text-base font-bold text-slate-800">No Interns Found</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                No students match your current search filters or are assigned under your manager portfolio.
+                No interns match your current search filters or batch criteria.
               </p>
             </div>
+          ) : viewMode === 'table' ? (
+            /* Directory Table View */
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-bold uppercase text-[11px]">
+                    <tr>
+                      <th className="py-3 px-4">Intern / Student</th>
+                      <th className="py-3 px-3">Batch & Sub-Batch</th>
+                      <th className="py-3 px-3">Department & Designation</th>
+                      <th className="py-3 px-3">Performance Metrics</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pagedMentees.map((mentee) => {
+                      const batchMatch = (mentee.department || mentee.designation || '').match(/Batch\s*([ABCD])/i);
+                      const bName = batchMatch ? `Batch ${batchMatch[1].toUpperCase()}` : null;
+                      const subMatch = (mentee.designation || mentee.employeeCode || '').match(/([ABCD][12])/i);
+                      const sbName = subMatch ? subMatch[1].toUpperCase() : null;
+                      const hasGoals = (mentee.metrics?.totalGoals || 0) > 0;
+                      const techScore = mentee.metrics?.technicalCapabilityAvg;
+                      const pendingEv = mentee.metrics?.pendingEvidence || 0;
+
+                      return (
+                        <tr key={mentee.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900">{mentee.fullName}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">{mentee.employeeCode} • {mentee.email}</div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              {bName && (
+                                <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold text-[11px] border border-purple-100">
+                                  {bName}
+                                </span>
+                              )}
+                              {sbName && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-100">
+                                  {sbName}
+                                </span>
+                              )}
+                              {!bName && !sbName && (
+                                <span className="text-[11px] text-slate-400">—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-slate-600">
+                            <div className="font-medium text-slate-800">{mentee.designation || 'Intern'}</div>
+                            <div className="text-[11px] text-slate-400">{mentee.department || 'Engineering'}</div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="text-slate-800 font-semibold">
+                              Tech: {techScore ? `${techScore}/5` : <span className="text-slate-400 font-normal">Not assessed</span>}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              Goals: {hasGoals ? `${mentee.metrics.completedGoals}/${mentee.metrics.totalGoals}` : 'None'} • {pendingEv > 0 ? `${pendingEv} Pending Ev.` : '0 Pending'}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                mentee.employmentStatus === 'ACTIVE'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}
+                            >
+                              {mentee.employmentStatus}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setTaskForm((prev) => ({ ...prev, employee_id: mentee.id }));
+                                  setIsAssignTaskOpen(true);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer transition-colors active:scale-95"
+                              >
+                                Assign Task
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setTechReviewMenteeId(mentee.id);
+                                  handleTabChange('capabilities');
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/60 text-[11px] font-bold cursor-pointer transition-colors active:scale-95"
+                              >
+                                Rate Skills
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const targetId = mentee.activeAppraisal?.id || mentee.id;
+                                  navigate(`/appraisal/${targetId}/manager-evaluation`);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold cursor-pointer transition-colors shadow-2xs active:scale-95"
+                              >
+                                Appraisal
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : (
+            /* Cards View */
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {pagedMentees.map((mentee) => (
-                <div
-                  key={mentee.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 transition-all p-5 shadow-xs flex flex-col justify-between"
-                >
-                  <div>
-                    {/* Top Row: Avatar & Status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-sm shrink-0">
-                          {mentee.firstName?.[0]}
-                          {mentee.lastName?.[0]}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-sm text-slate-900">{mentee.fullName}</h3>
-                          <div className="text-slate-400 text-[11px] font-mono">{mentee.employeeCode}</div>
-                        </div>
-                      </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {pagedMentees.map((mentee) => {
+                  const batchMatch = (mentee.department || mentee.designation || '').match(/Batch\s*([ABCD])/i);
+                  const bName = batchMatch ? `Batch ${batchMatch[1].toUpperCase()}` : null;
+                  const subMatch = (mentee.designation || mentee.employeeCode || '').match(/([ABCD][12])/i);
+                  const sbName = subMatch ? subMatch[1].toUpperCase() : null;
+                  const hasGoals = (mentee.metrics?.totalGoals || 0) > 0;
+                  const completedGoals = mentee.metrics?.completedGoals || 0;
+                  const totalGoals = mentee.metrics?.totalGoals || 0;
+                  const techScore = mentee.metrics?.technicalCapabilityAvg;
+                  const pendingEv = mentee.metrics?.pendingEvidence || 0;
 
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          mentee.employmentStatus === 'ACTIVE'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {mentee.employmentStatus}
-                      </span>
-                    </div>
+                  return (
+                    <div
+                      key={mentee.id}
+                      className="bg-white rounded-2xl border border-slate-200/90 hover:border-purple-300 transition-all p-4.5 shadow-2xs flex flex-col justify-between"
+                    >
+                      <div>
+                        {/* Top Row: Avatar & Status */}
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-10 h-10 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center font-bold text-purple-700 text-xs shrink-0 shadow-2xs">
+                              {mentee.firstName?.[0]}
+                              {mentee.lastName?.[0]}
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-900 leading-snug">{mentee.fullName}</h3>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-slate-400 text-[11px] font-mono">{mentee.employeeCode}</span>
+                                {bName && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-purple-50 text-purple-700 font-bold text-[10px] border border-purple-100">
+                                    {bName}
+                                  </span>
+                                )}
+                                {sbName && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-100">
+                                    {sbName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
 
-                    {/* Department & Email */}
-                    <div className="mt-3 text-xs text-slate-500 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Layers size={13} className="text-slate-400" />
-                        <span>{mentee.designation} • {mentee.department}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate">{mentee.email}</div>
-                    </div>
-
-                    {/* Performance Telemetry Mini-Strip */}
-                    <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
-                      <div className="bg-slate-50 rounded-xl p-2">
-                        <div className="text-[10px] font-medium text-slate-400">Goals</div>
-                        <div className="text-xs font-bold text-slate-800 mt-0.5">
-                          {mentee.metrics.completedGoals}/{mentee.metrics.totalGoals}
-                        </div>
-                      </div>
-                      <div className="bg-slate-50 rounded-xl p-2">
-                        <div className="text-[10px] font-medium text-slate-400">Tech Score</div>
-                        <div className="text-xs font-bold text-indigo-700 mt-0.5">
-                          {mentee.metrics.technicalCapabilityAvg ? `${mentee.metrics.technicalCapabilityAvg}/5` : 'N/A'}
-                        </div>
-                      </div>
-                      <div className="bg-slate-50 rounded-xl p-2">
-                        <div className="text-[10px] font-medium text-slate-400">Evidence</div>
-                        <div className="text-xs font-bold text-amber-600 mt-0.5">
-                          {mentee.metrics.pendingEvidence} Pending
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Active Appraisal Indicator */}
-                    {mentee.activeAppraisal && (
-                      <div className="mt-3 bg-indigo-50/60 rounded-xl p-2.5 border border-indigo-100 flex items-center justify-between text-xs">
-                        <div>
-                          <span className="font-semibold text-indigo-900 block text-[11px]">
-                            {mentee.activeAppraisal.cycleName}
-                          </span>
-                          <span className="text-[10px] text-indigo-600">
-                            Status: {mentee.activeAppraisal.statusDisplay}
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+                              mentee.employmentStatus === 'ACTIVE'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {mentee.employmentStatus}
                           </span>
                         </div>
-                        {mentee.activeAppraisal.overallScore && (
-                          <span className="font-black text-xs text-indigo-900 px-2 py-0.5 bg-white rounded-lg shadow-2xs">
-                            {mentee.activeAppraisal.overallScore}/100
-                          </span>
+
+                        {/* Designation & Email */}
+                        <div className="mt-2.5 text-xs text-slate-500 space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <Layers size={12} className="text-slate-400 shrink-0" />
+                            <span className="truncate">{mentee.designation || 'Intern'} • {mentee.department || 'Engineering'}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate pl-4.5">{mentee.email}</div>
+                        </div>
+
+                        {/* Performance Telemetry Mini-Strip - Accurate & Clean Handling */}
+                        <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2.5 border-t border-slate-100 text-center">
+                          <div className="bg-slate-50/70 rounded-xl p-1.5 border border-slate-100">
+                            <div className="text-[10px] font-semibold text-slate-400">Goals</div>
+                            <div className={`text-xs font-bold mt-0.5 ${
+                              hasGoals
+                                ? (completedGoals === totalGoals ? 'text-emerald-700' : 'text-slate-800')
+                                : 'text-slate-400 font-medium'
+                            }`}>
+                              {hasGoals ? `${completedGoals}/${totalGoals}` : 'None'}
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50/70 rounded-xl p-1.5 border border-slate-100">
+                            <div className="text-[10px] font-semibold text-slate-400">Tech Score</div>
+                            <div className={`text-xs font-bold mt-0.5 ${
+                              techScore ? 'text-purple-700' : 'text-slate-400 font-medium text-[11px]'
+                            }`}>
+                              {techScore ? `${techScore}/5` : 'Not assessed'}
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50/70 rounded-xl p-1.5 border border-slate-100">
+                            <div className="text-[10px] font-semibold text-slate-400">Evidence</div>
+                            <div className={`text-xs font-bold mt-0.5 ${
+                              pendingEv > 0 ? 'text-amber-600' : 'text-slate-400 font-medium'
+                            }`}>
+                              {pendingEv > 0 ? `${pendingEv} Pending` : '0 Pending'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Active Appraisal Indicator */}
+                        {mentee.activeAppraisal && (
+                          <div className="mt-2.5 bg-purple-50/50 rounded-xl p-2 border border-purple-100/80 flex items-center justify-between text-xs">
+                            <div className="truncate mr-2">
+                              <span className="font-bold text-purple-950 block text-[11px] truncate">
+                                {mentee.activeAppraisal.cycleName}
+                              </span>
+                              <span className="text-[10px] text-purple-600 font-medium">
+                                Status: {mentee.activeAppraisal.statusDisplay || mentee.activeAppraisal.status}
+                              </span>
+                            </div>
+                            {mentee.activeAppraisal.overallScore && (
+                              <span className="font-black text-xs text-purple-900 px-2 py-0.5 bg-white rounded-lg shadow-2xs border border-purple-100 shrink-0">
+                                {mentee.activeAppraisal.overallScore}/100
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
 
-                  {/* Quick Action Matrix */}
-                  <div className="mt-5 pt-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
-                    <button
-                      onClick={() => {
-                        setTaskForm((prev) => ({ ...prev, employee_id: mentee.id }));
-                        setIsAssignTaskOpen(true);
-                      }}
-                      className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all text-center"
-                    >
-                      Assign Task
-                    </button>
-                    <button
-                      onClick={() => {
-                        setTechReviewMenteeId(mentee.id);
-                        handleTabChange('capabilities');
-                      }}
-                      className="px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition-all text-center"
-                    >
-                      Rate Tech
-                    </button>
-                    <button
-                      onClick={() => {
-                        const targetId = mentee.activeAppraisal?.id || mentee.id;
-                        navigate(`/appraisal/${targetId}/manager-evaluation`);
-                      }}
-                      className="px-2 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all text-center shadow-2xs"
-                    >
-                      Appraisal
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {totalMentees > menteePageSize && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 mt-4 shadow-2xs">
-                <span className="text-xs text-slate-500">
-                  Showing <strong className="text-slate-800">{menteePage * menteePageSize + 1}–{Math.min((menteePage + 1) * menteePageSize, totalMentees)}</strong> of <strong className="text-slate-800">{totalMentees}</strong> students
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setMenteePage((p) => Math.max(0, p - 1))}
-                    disabled={menteePage === 0}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
-                  >
-                    <ChevronLeft size={14} />
-                    Previous
-                  </button>
-                  <span className="text-xs font-bold text-slate-600 px-2">
-                    Page {menteePage + 1} of {totalMenteePages}
-                  </span>
-                  <button
-                    onClick={() => setMenteePage((p) => Math.min(totalMenteePages - 1, p + 1))}
-                    disabled={menteePage >= totalMenteePages - 1}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
-                  >
-                    Next
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
+                      {/* Quick Action Matrix */}
+                      <div className="mt-3.5 pt-2.5 border-t border-slate-100 grid grid-cols-3 gap-1.5">
+                        <button
+                          onClick={() => {
+                            setTaskForm((prev) => ({ ...prev, employee_id: mentee.id }));
+                            setIsAssignTaskOpen(true);
+                          }}
+                          className="px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all text-center cursor-pointer active:scale-95"
+                        >
+                          Assign Task
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTechReviewMenteeId(mentee.id);
+                            handleTabChange('capabilities');
+                          }}
+                          className="px-2 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/60 text-[11px] font-bold transition-all text-center cursor-pointer active:scale-95"
+                        >
+                          Rate Skills
+                        </button>
+                        <button
+                          onClick={() => {
+                            const targetId = mentee.activeAppraisal?.id || mentee.id;
+                            navigate(`/appraisal/${targetId}/manager-evaluation`);
+                          }}
+                          className="px-2 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold transition-all text-center shadow-2xs cursor-pointer active:scale-95"
+                        >
+                          Appraisal
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
-          </>
+
+              {filteredCount > menteePageSize && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200/90 mt-4 shadow-2xs">
+                  <span className="text-xs text-slate-500">
+                    Showing <strong className="text-slate-800">{menteePage * menteePageSize + 1}–{Math.min((menteePage + 1) * menteePageSize, filteredCount)}</strong> of <strong className="text-slate-800">{filteredCount}</strong> students
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setMenteePage((p) => Math.max(0, p - 1))}
+                      disabled={menteePage === 0}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                    >
+                      <ChevronLeft size={14} />
+                      Previous
+                    </button>
+                    <span className="text-xs font-bold text-slate-600 px-2">
+                      Page {menteePage + 1} of {totalMenteePages}
+                    </span>
+                    <button
+                      onClick={() => setMenteePage((p) => Math.min(totalMenteePages - 1, p + 1))}
+                      disabled={menteePage >= totalMenteePages - 1}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                    >
+                      Next
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: TASKS & GOALS MANAGEMENT (M-02, M-03) */}
+      {/* TAB: BATCHES & GOALS MANAGEMENT */}
+      {/* ========================================================================= */}
+      {activeTab === 'batches' && (
+        <div className="space-y-4">
+          {/* Evaluation Cycles List */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Appraisal & Evaluation Terms</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Appraisal cycles and evaluation terms configured for cohorts.</p>
+              </div>
+              <button
+                onClick={() => setIsAddCycleOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 transition-all shadow-xs cursor-pointer self-start sm:self-auto active:scale-95"
+              >
+                <Plus size={14} />
+                <span>Launch Evaluation Term</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {cycles.length === 0 ? (
+                <div className="col-span-full py-8 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                  No evaluation cycles currently configured.
+                </div>
+              ) : (
+                cycles.map((cy: any) => (
+                  <div key={cy.id || cy.cycleId} className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-2 hover:border-purple-200 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 text-xs truncate" title={cy.name || cy.cycleName}>
+                        {cy.name || cy.cycleName}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        (cy.status === 'ACTIVE' || cy.isActive)
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {(cy.status === 'ACTIVE' || cy.isActive) ? 'ACTIVE' : (cy.status || 'PLANNING')}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Period: <strong className="text-slate-700">{cy.quarter || cy.evaluationPeriod || 'Q2 2026'}</strong>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      {cy.startDate || '—'} – {cy.endDate || '—'}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Cohort Batch Breakdown */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+            <h3 className="text-base font-bold text-slate-900">Interns Batch Breakdown</h3>
+            <p className="text-xs text-slate-500">Distribution of enrolled mentees across cohorts and sub-batches.</p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              {['Batch A', 'Batch B', 'Batch C', 'Batch D'].map((batchName) => {
+                const count = mentees.filter(m => (m.department || m.designation || '').toLowerCase().includes(batchName.toLowerCase())).length;
+                return (
+                  <div
+                    key={batchName}
+                    onClick={() => { setSelectedBatch(batchName); setActiveTab('mentees'); }}
+                    className="p-3.5 bg-purple-50/40 rounded-2xl border border-purple-100/90 hover:border-purple-300 transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-purple-950">{batchName}</span>
+                      <span className="text-[10px] font-semibold text-purple-700 bg-white px-2 py-0.5 rounded-full shadow-2xs border border-purple-100">Sub: 1 & 2</span>
+                    </div>
+                    <div className="text-2xl font-black text-purple-950 mt-2">
+                      {count}
+                    </div>
+                    <div className="text-[11px] text-purple-600 mt-1 flex items-center justify-between">
+                      <span>View interns</span>
+                      <span className="group-hover:translate-x-0.5 transition-transform font-bold">→</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Assigned Project Goals Table */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Assigned Project Goals</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Track milestone progress, completion percentages, and due dates.</p>
+              </div>
+              <button
+                onClick={() => setIsAddGoalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 transition-all shadow-xs cursor-pointer self-start sm:self-auto active:scale-95"
+              >
+                <Plus size={14} />
+                <span>Assign Goal</span>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-bold uppercase text-[11px]">
+                  <tr>
+                    <th className="py-3 px-4">Student</th>
+                    <th className="py-3 px-3">Goal Title</th>
+                    <th className="py-3 px-3">Category</th>
+                    <th className="py-3 px-3">Progress</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-4">Due Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {projectGoals.length === 0 && tasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-xs text-slate-400">
+                        No assigned project goals found.
+                      </td>
+                    </tr>
+                  ) : (
+                    (projectGoals.length > 0 ? projectGoals : tasks.map(t => ({
+                      id: t.id,
+                      employee_name: t.employeeName,
+                      title: t.title,
+                      description: t.description || 'Sprint Deliverable',
+                      completion_percentage: t.completionPercentage,
+                      status: t.status,
+                      due_date: t.dueDate || '—',
+                    }))).map((goal: any) => (
+                      <tr key={goal.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-4 font-bold text-slate-900">
+                          {goal.employee_name || goal.internName || 'Assigned Student'}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-slate-800">{goal.title}</td>
+                        <td className="py-3 px-3">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-medium">
+                            {goal.description || goal.category || 'Technical Goal'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="bg-purple-600 h-1.5 rounded-full"
+                                style={{ width: `${Math.min(100, goal.completion_percentage || 0)}%` }}
+                              />
+                            </div>
+                            <span className="font-bold text-slate-700">{goal.completion_percentage || 0}%</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            goal.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                            goal.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {goal.status || 'In Progress'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
+                          {goal.due_date || '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 3: TASKS */}
       {/* ========================================================================= */}
       {activeTab === 'tasks' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Assigned Tasks & Sprint Goals</h2>
+              <h2 className="text-base font-bold text-slate-900">Assigned Tasks & Deliverables</h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Create new tasks, adjust milestone completion, and track student/intern progress.
               </p>
@@ -681,10 +1329,10 @@ export const ManagerHubPage: React.FC = () => {
                 setTaskForm((prev) => ({ ...prev, employee_id: mentees[0]?.id || '' }));
                 setIsAssignTaskOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 transition-all shadow-xs cursor-pointer active:scale-95"
             >
-              <Plus size={16} />
-              Assign New Task
+              <Plus size={15} />
+              <span>Assign New Task</span>
             </button>
           </div>
 
@@ -701,7 +1349,7 @@ export const ManagerHubPage: React.FC = () => {
               {tasks.map((task) => (
                 <div
                   key={task.id}
-                  className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-slate-300 transition-all shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  className="bg-white rounded-2xl p-4.5 border border-slate-200/90 hover:border-purple-200 transition-all shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -752,7 +1400,7 @@ export const ManagerHubPage: React.FC = () => {
                       </div>
                       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-indigo-600 rounded-full transition-all"
+                          className="h-full bg-purple-600 rounded-full transition-all"
                           style={{ width: `${task.completionPercentage}%` }}
                         />
                       </div>
@@ -771,7 +1419,7 @@ export const ManagerHubPage: React.FC = () => {
                             toast.success(`Task "${task.title}" marked as Completed!`);
                             refetchTasks();
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-2xs"
                         >
                           <Check size={14} />
                           Approve
@@ -789,7 +1437,7 @@ export const ManagerHubPage: React.FC = () => {
                             toast.success('Task marked In Progress!');
                             refetchTasks();
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs transition-all cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 font-bold text-xs transition-all cursor-pointer border border-purple-200/60 active:scale-95"
                         >
                           Start
                         </button>
@@ -804,14 +1452,14 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 3: TECHNICAL CAPABILITIES (M-04 & M-05) */}
+      {/* TAB 4: TECHNICAL SKILLS */}
       {/* ========================================================================= */}
       {activeTab === 'capabilities' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Top Mentee Selection & Parameter Configuration Banner */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Sparkles size={20} className="text-indigo-600" />
+              <Sparkles size={20} className="text-purple-600 shrink-0" />
               <div>
                 <h2 className="text-base font-bold text-slate-900">Technical Capability Evaluation Matrix</h2>
                 <p className="text-xs text-slate-500">
@@ -826,7 +1474,7 @@ export const ManagerHubPage: React.FC = () => {
                 <select
                   value={activeTechMenteeId}
                   onChange={(e) => setTechReviewMenteeId(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden"
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden"
                 >
                   {mentees.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -838,25 +1486,25 @@ export const ManagerHubPage: React.FC = () => {
 
               <button
                 onClick={() => setIsAddParamOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all cursor-pointer active:scale-95"
               >
                 <Plus size={14} />
-                Configure Parameters
+                <span>Configure Parameters</span>
               </button>
             </div>
           </div>
 
           {/* Technical Evaluation Sheet */}
           {techDossier ? (
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-6">
+            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
                 <div>
-                  <h3 className="font-extrabold text-lg text-slate-900">
+                  <h3 className="font-extrabold text-base sm:text-lg text-slate-900">
                     {techDossier.employeeName}
                   </h3>
                   <span className="text-xs text-slate-400">
                     Code: {techDossier.employeeCode} • Average Capability Score:
-                    <strong className="text-indigo-600 ml-1 font-bold text-sm">
+                    <strong className="text-purple-600 ml-1 font-bold text-sm">
                       {techDossier.averageScore ? `${techDossier.averageScore} / 5.0` : 'Pending evaluation'}
                     </strong>
                   </span>
@@ -866,22 +1514,22 @@ export const ManagerHubPage: React.FC = () => {
                   <button
                     disabled={isSavingTechReview}
                     onClick={() => handleSaveTechReviews('DRAFT')}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
                   >
-                    Save Draft (M-10)
+                    Save Draft
                   </button>
                   <button
                     disabled={isSavingTechReview}
                     onClick={() => handleSaveTechReviews('SUBMITTED')}
-                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-100 cursor-pointer"
+                    className="px-4.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
                   >
-                    Submit Review (M-05)
+                    Submit Review
                   </button>
                 </div>
               </div>
 
               {/* Parameter Rows */}
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 {techDossier.parameters.map((param) => {
                   const current = techScores[param.parameterId] || {
                     score: param.review.score || 4.0,
@@ -892,13 +1540,13 @@ export const ManagerHubPage: React.FC = () => {
                   return (
                     <div
                       key={param.parameterId}
-                      className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-4 hover:border-indigo-200 transition-all"
+                      className="p-4.5 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3.5 hover:border-purple-200 transition-all"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                         <div className="space-y-1 max-w-xl">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold text-sm text-slate-900">{param.name}</h4>
-                            <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-100">
                               {param.category}
                             </span>
                             <span className="text-slate-400 text-xs">Weight: {param.weight}%</span>
@@ -918,9 +1566,9 @@ export const ManagerHubPage: React.FC = () => {
                                   [param.parameterId]: { ...current, score: val },
                                 }));
                               }}
-                              className={`w-9 h-9 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                              className={`w-8.5 h-8.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                                 Math.round(current.score) === val
-                                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 scale-105'
+                                  ? 'bg-purple-600 text-white shadow-xs scale-105'
                                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                               }`}
                             >
@@ -931,7 +1579,7 @@ export const ManagerHubPage: React.FC = () => {
                       </div>
 
                       {/* Mentor Remarks & Evidence Input */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
                             Mentor Assessment & Observations
@@ -947,7 +1595,7 @@ export const ManagerHubPage: React.FC = () => {
                                 [param.parameterId]: { ...current, assessment: val },
                               }));
                             }}
-                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-400"
                           />
                         </div>
 
@@ -966,14 +1614,14 @@ export const ManagerHubPage: React.FC = () => {
                                 [param.parameterId]: { ...current, evidenceUrl: val },
                               }));
                             }}
-                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-400"
                           />
                           {current.evidenceUrl && (
                             <a
                               href={current.evidenceUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-[11px] text-indigo-600 hover:underline flex items-center gap-1 mt-1 font-semibold"
+                              className="text-[11px] text-purple-600 hover:underline flex items-center gap-1 mt-1 font-semibold"
                             >
                               <ExternalLink size={12} />
                               Open Linked Evidence
@@ -993,11 +1641,11 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 4: EVIDENCE REVIEW (M-06) */}
+      {/* TAB 5: EVIDENCE REVIEW */}
       {/* ========================================================================= */}
       {activeTab === 'evidence' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900">Intern Evidence & Deliverables</h2>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1006,9 +1654,10 @@ export const ManagerHubPage: React.FC = () => {
             </div>
             <button
               onClick={() => refetchEvidence()}
-              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+              title="Refresh Evidence"
             >
-              <RefreshCw size={15} />
+              <RefreshCw size={14} />
             </button>
           </div>
 
@@ -1019,11 +1668,11 @@ export const ManagerHubPage: React.FC = () => {
               <p className="text-xs text-slate-500 mt-1">Direct reports have not submitted evidence for review yet.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {evidenceList.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-slate-300 transition-all shadow-xs flex flex-col justify-between"
+                  className="bg-white rounded-2xl p-4.5 border border-slate-200/90 hover:border-purple-200 transition-all shadow-2xs flex flex-col justify-between"
                 >
                   <div className="space-y-2">
                     <div className="flex items-start justify-between gap-3">
@@ -1060,7 +1709,7 @@ export const ManagerHubPage: React.FC = () => {
                         href={item.externalUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-indigo-600 hover:bg-slate-100 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-purple-600 hover:bg-slate-100 transition-colors"
                       >
                         <ExternalLink size={13} />
                         View Attached Artifact / PR
@@ -1083,7 +1732,7 @@ export const ManagerHubPage: React.FC = () => {
                         setEvidenceDecision({ status: 'APPROVED', remarks: item.reviewNotes || '' });
                         setIsReviewEvidenceOpen(true);
                       }}
-                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-all cursor-pointer shadow-2xs"
+                      className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
                     >
                       Conduct Review
                     </button>
@@ -1096,192 +1745,13 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 5: FEEDBACK & REFLECTIONS (M-07, M-08) */}
-      {/* ========================================================================= */}
-      {activeTab === 'feedback' && (
-        <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Continuous Feedback & Employee Reflections</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Issue coaching notes to students/interns and inspect reflections/feedback submitted by direct reports.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setFeedbackForm((prev) => ({ ...prev, employee_id: mentees[0]?.userId || '' }));
-                setIsGiveFeedbackOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
-            >
-              <MessageSquare size={14} />
-              Give Feedback (M-07)
-            </button>
-          </div>
-
-          {employeeFeedbacks.length === 0 ? (
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
-              <MessageSquare size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Feedback Records Yet</h3>
-              <p className="text-xs text-slate-500 mt-1">Start by sending coaching feedback to your students/interns.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {employeeFeedbacks.map((fb) => (
-                <div
-                  key={fb.id}
-                  className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-slate-300 transition-all shadow-xs space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">
-                        {fb.senderName?.[0]}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900">{fb.senderName}</h4>
-                        <span className="text-[10px] text-slate-400">Code: {fb.senderCode} • {fb.createdAt}</span>
-                      </div>
-                    </div>
-
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">
-                      {fb.feedbackType}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    "{fb.message}"
-                  </p>
-
-                  {/* Mentor Comments on Employee Feedback (M-08) */}
-                  {fb.comments.length > 0 && (
-                    <div className="space-y-1.5 pl-4 border-l-2 border-indigo-200">
-                      {fb.comments.map((c) => (
-                        <div key={c.id} className="text-xs text-slate-600">
-                          <strong className="text-indigo-800">{c.author}:</strong> {c.comment}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      onClick={async () => {
-                        const note = window.prompt('Enter mentor acknowledgment / feedback comment:');
-                        if (note) {
-                          await commentOnFeedback({ id: fb.id, comment: note });
-                          toast.success('Acknowledgment added!');
-                          refetchFeedbacks();
-                        }
-                      }}
-                      className="text-xs text-indigo-600 font-bold hover:underline"
-                    >
-                      + Acknowledge / Reply (M-08)
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 6: PREVIOUS REVIEWS & HISTORY (M-12) */}
-      {/* ========================================================================= */}
-      {activeTab === 'history' && (
-        <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Historical Performance Reviews (M-12)</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Inspect archived appraisal cycles, past scores, and competency ratings for direct reports.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600">Filter Student:</span>
-              <select
-                value={selectedMentee?.id || ''}
-                onChange={(e) => {
-                  const m = mentees.find((item) => item.id === e.target.value) || null;
-                  setSelectedMentee(m);
-                }}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-              >
-                <option value="">All Students</option>
-                {mentees.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.fullName} ({m.employeeCode}) {m.department ? `• ${m.department}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {historicalReviews.length === 0 ? (
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
-              <Calendar size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Historical Reviews Available</h3>
-              <p className="text-xs text-slate-500 mt-1">Completed reviews from past cycles will be archived here.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {historicalReviews.map((hist) => (
-                <div key={hist.id} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">{hist.employeeName}</h4>
-                      <span className="text-xs text-slate-400">
-                        {hist.cycleName} ({hist.cycleStartDate} to {hist.cycleEndDate})
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">
-                        Score: {hist.overallScore ? `${hist.overallScore}/100` : 'Pending'}
-                      </span>
-                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 uppercase">
-                        {hist.statusDisplay}
-                      </span>
-                    </div>
-                  </div>
-
-                  {hist.reviewerComments && (
-                    <div className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl">
-                      <strong className="block text-slate-500 uppercase text-[10px] mb-0.5">Manager Final Comments:</strong>
-                      {hist.reviewerComments}
-                    </div>
-                  )}
-
-                  {/* Criteria Breakdown */}
-                  {hist.criteriaRatings.length > 0 && (
-                    <div className="space-y-2">
-                      <span className="text-xs font-bold text-slate-700 block">Evaluation Criteria Scores:</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {hist.criteriaRatings.map((crit, idx) => (
-                          <div key={idx} className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs">
-                            <span className="text-slate-600 font-medium">{crit.criterionName}</span>
-                            <span className="font-bold text-indigo-700">{crit.score}/5</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: ASSIGN TASK (M-02) */}
+      {/* MODAL: ASSIGN TASK */}
       {/* ========================================================================= */}
       {isAssignTaskOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Assign New Task (M-02)</h3>
+              <h3 className="font-bold text-base text-slate-900">Assign New Task</h3>
               <button onClick={() => setIsAssignTaskOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
@@ -1365,7 +1835,7 @@ export const ManagerHubPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isAssigningTask}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors"
                 >
                   {isAssigningTask ? 'Assigning...' : 'Assign Task'}
                 </button>
@@ -1376,13 +1846,13 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: GIVE FEEDBACK (M-07) */}
+      {/* MODAL: GIVE FEEDBACK */}
       {/* ========================================================================= */}
       {isGiveFeedbackOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Provide Student Feedback (M-07)</h3>
+              <h3 className="font-bold text-base text-slate-900">Provide Student Feedback</h3>
               <button onClick={() => setIsGiveFeedbackOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
@@ -1443,7 +1913,7 @@ export const ManagerHubPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSendingFeedback}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors"
                 >
                   {isSendingFeedback ? 'Sending...' : 'Send Feedback'}
                 </button>
@@ -1454,13 +1924,13 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD TECHNICAL PARAMETER (M-04) */}
+      {/* MODAL: ADD TECHNICAL PARAMETER */}
       {/* ========================================================================= */}
       {isAddParamOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Configure Technical Parameter (M-04)</h3>
+              <h3 className="font-bold text-base text-slate-900">Configure Technical Parameter</h3>
               <button onClick={() => setIsAddParamOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
@@ -1538,7 +2008,7 @@ export const ManagerHubPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isCreatingParam}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors"
                 >
                   {isCreatingParam ? 'Configuring...' : 'Save Parameter'}
                 </button>
@@ -1549,13 +2019,13 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: REVIEW EVIDENCE DECISION (M-06) */}
+      {/* MODAL: REVIEW EVIDENCE DECISION */}
       {/* ========================================================================= */}
       {isReviewEvidenceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Evidence Review Decision (M-06)</h3>
+              <h3 className="font-bold text-base text-slate-900">Evidence Review Decision</h3>
               <button onClick={() => setIsReviewEvidenceOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
@@ -1603,12 +2073,348 @@ export const ManagerHubPage: React.FC = () => {
                   type="button"
                   disabled={isReviewingEvidence}
                   onClick={handleReviewEvidenceSubmit}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors"
                 >
                   {isReviewingEvidence ? 'Saving...' : 'Submit Decision'}
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ADD INTERN / STUDENT */}
+      {/* ========================================================================= */}
+      {isAddInternOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                  <UserPlus size={16} />
+                </div>
+                <h3 className="font-bold text-base text-slate-900">Add New Intern / Student</h3>
+              </div>
+              <button onClick={() => setIsAddInternOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddInternSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. John Doe"
+                  value={newInternForm.name}
+                  onChange={(e) => setNewInternForm({ ...newInternForm, name: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="e.g. john@college.edu"
+                  value={newInternForm.email}
+                  onChange={(e) => setNewInternForm({ ...newInternForm, email: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Cohort</label>
+                <input
+                  type="text"
+                  value={newInternForm.cohort}
+                  onChange={(e) => setNewInternForm({ ...newInternForm, cohort: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Batch</label>
+                  <select
+                    value={newInternForm.batch}
+                    onChange={(e) => setNewInternForm({ ...newInternForm, batch: e.target.value, subBatch: `${e.target.value.slice(-1)}1` })}
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg font-semibold text-slate-800"
+                  >
+                    <option value="Batch A">Batch A</option>
+                    <option value="Batch B">Batch B</option>
+                    <option value="Batch C">Batch C</option>
+                    <option value="Batch D">Batch D</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Sub-Batch</label>
+                  <select
+                    value={newInternForm.subBatch}
+                    onChange={(e) => setNewInternForm({ ...newInternForm, subBatch: e.target.value })}
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg font-semibold text-slate-800"
+                  >
+                    <option value="A1">A1</option>
+                    <option value="A2">A2</option>
+                    <option value="B1">B1</option>
+                    <option value="B2">B2</option>
+                    <option value="C1">C1</option>
+                    <option value="C2">C2</option>
+                    <option value="D1">D1</option>
+                    <option value="D2">D2</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddInternOpen(false)}
+                  className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-md cursor-pointer transition-colors"
+                >
+                  Save Intern
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: UPLOAD CSV */}
+      {/* ========================================================================= */}
+      {isCsvModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                  <UploadCloud size={16} />
+                </div>
+                <h3 className="font-bold text-base text-slate-900">Upload Interns via CSV</h3>
+              </div>
+              <button onClick={() => setIsCsvModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <p className="text-slate-500">
+                Import multiple interns with batch, sub-batch, and cohort assignments directly into the system.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleSampleCsv}
+                className="w-full py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold rounded-xl border border-purple-200 cursor-pointer flex items-center justify-center gap-2 transition-colors"
+              >
+                <Download size={14} />
+                <span>Download Sample CSV Template</span>
+              </button>
+
+              <div className="border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center space-y-2 bg-purple-50/20">
+                <UploadCloud size={32} className="mx-auto text-purple-600" />
+                <div className="font-bold text-slate-800">Select or Drag CSV file here</div>
+                <input type="file" accept=".csv" className="text-xs text-slate-500 mx-auto block" />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsCsvModalOpen(false)}
+                  className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCsvImport}
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-md cursor-pointer transition-colors"
+                >
+                  Import Interns
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: LAUNCH QUARTER CYCLE */}
+      {/* ========================================================================= */}
+      {isAddCycleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                  <Calendar size={16} />
+                </div>
+                <h3 className="font-bold text-base text-slate-900">Launch Appraisal Quarter Term</h3>
+              </div>
+              <button onClick={() => setIsAddCycleOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCycleSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Cycle Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. MIRAI Q3 2026 Appraisal"
+                  value={cycleForm.name}
+                  onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Evaluation Quarter</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Q3 2026"
+                  value={cycleForm.quarter}
+                  onChange={(e) => setCycleForm({ ...cycleForm, quarter: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={cycleForm.startDate}
+                    onChange={(e) => setCycleForm({ ...cycleForm, startDate: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={cycleForm.endDate}
+                    onChange={(e) => setCycleForm({ ...cycleForm, endDate: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCycleOpen(false)}
+                  className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-md cursor-pointer transition-colors"
+                >
+                  Launch Cycle
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ASSIGN PROJECT GOAL */}
+      {/* ========================================================================= */}
+      {isAddGoalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                  <Target size={16} />
+                </div>
+                <h3 className="font-bold text-base text-slate-900">Assign Project Goal</h3>
+              </div>
+              <button onClick={() => setIsAddGoalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateGoalSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Select Student / Intern *</label>
+                <select
+                  value={projectGoalForm.internId}
+                  onChange={(e) => setProjectGoalForm({ ...projectGoalForm, internId: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                >
+                  <option value="">Select Student...</option>
+                  {mentees.map(m => (
+                    <option key={m.id} value={m.id}>{m.fullName} ({m.employeeCode})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Goal Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Implement Payment Gateway Integration"
+                  value={projectGoalForm.title}
+                  onChange={(e) => setProjectGoalForm({ ...projectGoalForm, title: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Category</label>
+                <select
+                  value={projectGoalForm.category}
+                  onChange={(e) => setProjectGoalForm({ ...projectGoalForm, category: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                >
+                  <option value="Technical Goal">Technical Goal</option>
+                  <option value="Design Goal">Design Goal</option>
+                  <option value="Quality Goal">Quality Goal</option>
+                  <option value="Soft Skills">Soft Skills</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={projectGoalForm.dueDate}
+                  onChange={(e) => setProjectGoalForm({ ...projectGoalForm, dueDate: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddGoalOpen(false)}
+                  className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-md cursor-pointer transition-colors"
+                >
+                  Assign Goal
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

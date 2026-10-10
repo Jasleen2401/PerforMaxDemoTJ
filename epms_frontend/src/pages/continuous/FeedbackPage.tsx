@@ -35,8 +35,8 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5,
 };
 const panelStyle: React.CSSProperties = {
-  background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 20, padding: '20px 24px',
-  boxShadow: '0 4px 20px -2px rgba(148, 163, 184, 0.08), 0 2px 8px -1px rgba(148, 163, 184, 0.04)',
+  background: '#FFFFFF', border: '1px solid #EDE9FE', borderRadius: 20, padding: '20px 24px',
+  boxShadow: '0 4px 20px -2px rgba(124, 58, 237, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.03)',
 };
 
 const FEEDBACK_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
@@ -48,19 +48,19 @@ const FEEDBACK_TYPE_STYLE: Record<string, { bg: string; text: string; border: st
 const officeStyles = `
   .office-panel {
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    border: 1px solid #EDE9FE;
     border-radius: 20px;
     padding: 20px 24px;
-    box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.08), 0 2px 8px -1px rgba(148, 163, 184, 0.04);
+    box-shadow: 0 4px 20px -2px rgba(124, 58, 237, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.03);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-panel:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 30px -4px rgba(99, 102, 241, 0.08), 0 4px 12px -2px rgba(99, 102, 241, 0.04);
-    border-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 12px 30px -4px rgba(124, 58, 237, 0.08), 0 4px 12px -2px rgba(124, 58, 237, 0.04);
+    border-color: rgba(124, 58, 237, 0.25);
   }
   .office-input {
-    background: #F8FAFC;
+    background: #FAFAFD;
     border: 1px solid #E2E8F0;
     border-radius: 12px;
     padding: 8px 14px;
@@ -74,15 +74,15 @@ const officeStyles = `
   }
   .office-input:focus {
     background: #FFFFFF;
-    border-color: #6366F1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    border-color: #7C3AED;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
   }
   .office-button-primary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    background: #6366F1;
+    background: linear-gradient(135deg, #7C3AED 0%, #6366F1 100%);
     color: #FFFFFF;
     border: none;
     border-radius: 12px;
@@ -90,13 +90,13 @@ const officeStyles = `
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-button-primary:hover {
-    background: #4F46E5;
+    background: linear-gradient(135deg, #6D28D9 0%, #4F46E5 100%);
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25);
+    box-shadow: 0 6px 16px rgba(124, 58, 237, 0.3);
   }
   .office-button-primary:active {
     transform: translateY(0);
@@ -122,16 +122,16 @@ const officeStyles = `
     border-color: #CBD5E1;
   }
   .office-tag-badge {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 10px;
+    font-family: inherit;
+    font-size: 11px;
     font-weight: 600;
-    background: #F1F5F9;
-    color: #475569;
-    border: 1px solid #E2E8F0;
-    border-radius: 6px;
+    background: #F5F3FF;
+    color: #7C3AED;
+    border: 1px solid #DDD6FE;
+    border-radius: 8px;
     padding: 2px 8px;
     display: inline-block;
-    letter-spacing: -0.2px;
+    letter-spacing: -0.1px;
   }
   .office-avatar-circle {
     width: 32px;
@@ -160,23 +160,23 @@ const officeStyles = `
     bottom: 0;
     left: 27px;
     width: 2px;
-    background: #E2E8F0;
+    background: #EDE9FE;
     z-index: 0;
   }
   .office-feed-card {
     position: relative;
     z-index: 1;
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    border: 1px solid #EDE9FE;
     border-radius: 20px;
     padding: 20px 24px;
-    box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.08), 0 2px 8px -1px rgba(148, 163, 184, 0.04);
+    box-shadow: 0 4px 20px -2px rgba(124, 58, 237, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.03);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-feed-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 30px -4px rgba(99, 102, 241, 0.08), 0 4px 12px -2px rgba(99, 102, 241, 0.04);
-    border-color: rgba(99, 102, 241, 0.25);
+    box-shadow: 0 12px 30px -4px rgba(124, 58, 237, 0.08), 0 4px 12px -2px rgba(124, 58, 237, 0.04);
+    border-color: rgba(124, 58, 237, 0.25);
   }
   .office-snapshot-bar {
     height: 8px;
@@ -191,9 +191,9 @@ const officeStyles = `
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-tab-active {
-    background: #6366F1 !important;
+    background: linear-gradient(135deg, #7C3AED 0%, #9333EA 100%) !important;
     color: #FFFFFF !important;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25) !important;
   }
   .office-pill-filter {
     padding: 5px 14px;
@@ -210,9 +210,6 @@ const officeStyles = `
 `;
 
 const FeedbackSnapshot = ({ stats }: { stats: { praise: number; improvement: number; correction: number } }) => {
-  const { isManager, isAdmin, isHR } = useAuth();
-  const showTips = isManager || isAdmin || isHR;
-
   const bars = [
     { label: 'Praise', val: stats.praise, bar: '#10B981', text: '#059669' },
     { label: 'Improvement', val: stats.improvement, bar: '#F59E0B', text: '#D97706' },
@@ -221,12 +218,18 @@ const FeedbackSnapshot = ({ stats }: { stats: { praise: number; improvement: num
 
   return (
     <div style={panelStyle} className="space-y-4">
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Feedback Snapshot</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Feedback Snapshot</p>
+        <span style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED', background: '#F5F3FF', padding: '2px 8px', borderRadius: 999, border: '1px solid #DDD6FE' }}>Distribution</span>
+      </div>
       <div className="space-y-3">
         {bars.map(b => (
           <div key={b.label} className="space-y-1">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>{b.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: b.bar }} />
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>{b.label}</span>
+              </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: b.text }}>{b.val}%</span>
             </div>
             <div className="office-snapshot-bar">
@@ -235,26 +238,6 @@ const FeedbackSnapshot = ({ stats }: { stats: { praise: number; improvement: num
           </div>
         ))}
       </div>
-
-      {showTips && (
-        <div style={{ background: '#4F46E5', borderRadius: 16, padding: '16px', marginTop: 4 }} className="space-y-3 shadow-xl shadow-indigo-200">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <svg style={{ width: 16, height: 16, color: '#E0E7FF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#FFFFFF' }}>Manager Tips</span>
-          </div>
-          <p style={{ fontSize: 12, color: '#C7D2FE', lineHeight: 1.6 }}>Giving constructive feedback works best when it's specific, actionable, and delivered within 24 hours.</p>
-          <div className="space-y-2">
-            {['Use the "Situation-Behavior-Impact" model.', 'Balance praise with growth opportunities.'].map(tip => (
-              <div key={tip} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px' }}>
-                <svg style={{ width: 12, height: 12, color: '#A5B4FC', flexShrink: 0, marginTop: 2 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                <p style={{ fontSize: 11, color: '#E0E7FF', lineHeight: 1.4 }}>{tip}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -299,15 +282,15 @@ const ReplyItem = ({
   const isHighlighted = highlightedReplyId === reply.replyId;
 
   const bubbleStyle: React.CSSProperties = isCurrentUser
-    ? { background: '#6366F1', color: '#FFFFFF', borderRadius: '18px 18px 4px 18px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(99,102,241,0.08)' }
-    : { background: '#F1F5F9', color: '#1E293B', borderRadius: '18px 18px 18px 4px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(148,163,184,0.04)', border: '1px solid #E2E8F0' };
+    ? { background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', color: '#FFFFFF', borderRadius: '18px 18px 4px 18px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(124,58,237,0.15)' }
+    : { background: '#F8FAFC', color: '#1E293B', borderRadius: '18px 18px 18px 4px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(148,163,184,0.04)', border: '1px solid #E2E8F0' };
 
-  const avatarBg = isCurrentUser || isHighlighted ? '#6366F1' : '#E2E8F0';
-  const avatarText = isCurrentUser || isHighlighted ? '#FFFFFF' : '#475569';
+  const avatarBg = isCurrentUser || isHighlighted ? '#7C3AED' : '#F1F5F9';
+  const avatarText = isCurrentUser || isHighlighted ? '#FFFFFF' : '#64748B';
 
   return (
     <div id={`reply-${reply.replyId}`} onContextMenu={(e) => onContextMenu(e, reply)}
-      style={isHighlighted ? { background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 16, padding: 12, margin: -12, transition: 'all 0.3s' } : { transition: 'all 0.3s' }}>
+      style={isHighlighted ? { background: '#FAF5FF', border: '1px solid #DDD6FE', borderRadius: 16, padding: 12, margin: -12, transition: 'all 0.3s' } : { transition: 'all 0.3s' }}>
       <div style={{ display: 'flex', gap: 10, ...(isCurrentUser ? { flexDirection: 'row-reverse' as const } : {}) }}>
         <div style={{ width: 28, height: 28, borderRadius: 8, background: avatarBg, color: avatarText, border: isCurrentUser || isHighlighted ? 'none' : '1px solid #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 4, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
           {reply.employeeName?.charAt(0) || '?'}
@@ -317,12 +300,12 @@ const ReplyItem = ({
             <span style={{ fontSize: 10, fontWeight: 700, color: '#1E293B', letterSpacing: '0.1px' }}>
               {isCurrentUser ? 'You' : reply.employeeName}
             </span>
-            {isAuthor && <span style={{ background: '#4F46E5', color: '#FFFFFF', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Author</span>}
+            {isAuthor && <span style={{ background: '#7C3AED', color: '#FFFFFF', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Author</span>}
             <span style={{ fontSize: 9, color: '#94A3B8' }}>{reply.createdAt ? format(new Date(reply.createdAt), 'h:mm a') : ''}</span>
           </div>
           <div style={bubbleStyle} className="group">
             <button onClick={(e) => onContextMenu(e as any, reply)}
-              style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', color: isCurrentUser ? '#C7D2FE' : '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex' }}
+              style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', color: isCurrentUser ? '#DDD6FE' : '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex' }}
               className="opacity-0 group-hover:opacity-100 transition-opacity">
               <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
             </button>
@@ -332,10 +315,10 @@ const ReplyItem = ({
               if (!parent) return null;
               return (
                 <div onClick={() => handleScrollToParent(parent.replyId)}
-                  style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 10, borderLeft: '3px solid #6366F1', background: isCurrentUser ? 'rgba(255,255,255,0.15)' : '#F1F5F9', cursor: 'pointer' }}
+                  style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 10, borderLeft: '3px solid #7C3AED', background: isCurrentUser ? 'rgba(255,255,255,0.15)' : '#F1F5F9', cursor: 'pointer' }}
                   className="hover:opacity-90 transition-opacity">
-                  <div style={{ fontSize: 9, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{parent.employeeName}</div>
-                  <div style={{ fontSize: 10, color: isCurrentUser ? '#CBD5E1' : '#475569', fontStyle: 'italic' }} className="line-clamp-2">"{parent.replyText}"</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{parent.employeeName}</div>
+                  <div style={{ fontSize: 10, color: isCurrentUser ? '#E9D5FF' : '#475569', fontStyle: 'italic' }} className="line-clamp-2">"{parent.replyText}"</div>
                 </div>
               );
             })()}
@@ -351,9 +334,9 @@ const ReplyItem = ({
                     e.target.value = val;
                   }} />
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button onClick={() => setEditingReplyId(null)} style={{ fontSize: 10, fontWeight: 600, color: isCurrentUser ? '#CBD5E1' : '#64748B', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => setEditingReplyId(null)} style={{ fontSize: 10, fontWeight: 600, color: isCurrentUser ? '#E9D5FF' : '#64748B', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
                   <button disabled={isUpdatingReply} onClick={() => handleUpdateReply(reply.replyId)}
-                    style={{ fontSize: 10, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#6366F1', background: 'none', border: 'none', cursor: isUpdatingReply ? 'not-allowed' : 'pointer', opacity: isUpdatingReply ? 0.5 : 1 }}>
+                    style={{ fontSize: 10, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#7C3AED', background: 'none', border: 'none', cursor: isUpdatingReply ? 'not-allowed' : 'pointer', opacity: isUpdatingReply ? 0.5 : 1 }}>
                     {isUpdatingReply ? 'Saving…' : 'Save'}
                   </button>
                 </div>
@@ -362,7 +345,7 @@ const ReplyItem = ({
               <>
                 <span style={{ fontSize: 13, color: isCurrentUser ? '#FFFFFF' : '#0F172A', lineHeight: 1.5, display: 'block', paddingRight: 10 }}>{reply.replyText}</span>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  <span style={{ fontSize: 8, fontWeight: 600, color: isCurrentUser ? '#C7D2FE' : '#94A3B8' }}>{formatRelativeTime(reply.createdAt)}</span>
+                  <span style={{ fontSize: 8, fontWeight: 600, color: isCurrentUser ? '#DDD6FE' : '#94A3B8' }}>{formatRelativeTime(reply.createdAt)}</span>
                   {isCurrentUser && <svg style={{ width: 10, height: 10, color: '#FFFFFF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                 </div>
               </>
@@ -586,7 +569,7 @@ const FeedbackPage = () => {
 
   if (isLoading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
-      <div style={{ width: 28, height: 28, border: '2px solid #E4E6EC', borderTopColor: '#1A56DB', borderRadius: '50%' }} className="animate-spin" />
+      <div style={{ width: 28, height: 28, border: '2px solid #EDE9FE', borderTopColor: '#7C3AED', borderRadius: '50%' }} className="animate-spin" />
     </div>
   );
 
@@ -602,18 +585,26 @@ const FeedbackPage = () => {
     correction: Math.round((publishedFeedbacks.filter(f => f.feedbackType === FeedbackType.WARNING).length / (publishedFeedbacks.length || 1)) * 100),
   };
   const btnPageStyle = (active: boolean): React.CSSProperties => ({
-    width: 30, height: 30, borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
-    background: active ? '#1A56DB' : 'transparent', color: active ? '#FFFFFF' : '#9EA3B0',
+    width: 32, height: 32, borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+    background: active ? 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)' : 'transparent',
+    color: active ? '#FFFFFF' : '#64748B',
+    boxShadow: active ? '0 2px 8px rgba(124, 58, 237, 0.25)' : 'none',
+    transition: 'all 0.2s ease',
   });
   return (
     <div className="space-y-4 pb-8">
       <style dangerouslySetInnerHTML={{ __html: officeStyles }} />
 
       {/* Header */}
-      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', letterSpacing: '-0.3px' }}>Continuous Feedback</h1>
-          <p style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Real-time performance insights, peer recognition, and continuous coaching.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px' }}>Continuous Feedback</h1>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 999, padding: '2px 8px', letterSpacing: '0.3px' }}>
+              Real-Time Coaching
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: '#64748B' }}>Real-time performance insights, peer recognition, and continuous coaching.</p>
         </div>
         {canCreate && (
           <button onClick={() => setShowModal(true)} className="office-button-primary">
@@ -623,16 +614,16 @@ const FeedbackPage = () => {
         )}
       </div>
 
-      <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Perspective selector tabs */}
-        <div className="bg-slate-100 border border-slate-200 rounded-2xl p-1.5 flex gap-2 w-fit shadow-inner">
+        <div className="bg-white/80 backdrop-blur-sm border border-purple-100/90 rounded-2xl p-1.5 flex gap-1.5 w-fit shadow-sm shadow-purple-500/5">
           <button
             type="button"
             onClick={() => { setPerspective('all'); setCurrentPage(1); }}
-            className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
               perspective === 'all'
-                ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50/60'
             }`}
           >
             All Feedback
@@ -640,10 +631,10 @@ const FeedbackPage = () => {
           <button
             type="button"
             onClick={() => { setPerspective('received'); setCurrentPage(1); }}
-            className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
               perspective === 'received'
-                ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50/60'
             }`}
           >
             Feedback Received
@@ -651,10 +642,10 @@ const FeedbackPage = () => {
           <button
             type="button"
             onClick={() => { setPerspective('given'); setCurrentPage(1); }}
-            className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
               perspective === 'given'
-                ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50/60'
             }`}
           >
             Feedback Given
@@ -663,7 +654,7 @@ const FeedbackPage = () => {
       </div>
 
       {/* Filter Toolbar */}
-      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', padding: '16px 20px' }}>
         <div style={{ flex: '1 1 130px', minWidth: 0 }}>
           <label style={labelStyle}>Type</label>
           <select className="office-input" value={filterFeedbackType ?? ''}
@@ -696,7 +687,7 @@ const FeedbackPage = () => {
           <button type="button"
             onClick={() => { setFilterFeedbackType(undefined); setFilterTagId(undefined); setFilterCreatedAfter(''); setFilterCreatedBefore(''); setCurrentPage(1); }}
             className="office-button-secondary"
-            style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+            style={{ padding: '8px 14px', whiteSpace: 'nowrap', height: 38 }}>
             Clear Filters
           </button>
         )}
@@ -706,8 +697,8 @@ const FeedbackPage = () => {
         {/* Main Feed */}
         <div className="lg:col-span-2 space-y-4 order-2 lg:order-1 office-timeline-line">
           {feedbacks?.length === 0 && (
-            <div style={{ padding: '48px 24px', textAlign: 'center', border: '2px dashed #E2E8F0', borderRadius: 20, background: '#FFFFFF' }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#EEF2FF', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <div style={{ padding: '48px 24px', textAlign: 'center', border: '2px dashed #EDE9FE', borderRadius: 20, background: '#FFFFFF' }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', border: '1px solid #DDD6FE' }}>
                 <svg style={{ width: 20, height: 20 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
@@ -730,7 +721,7 @@ const FeedbackPage = () => {
                       <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>
                         {fb.managerName}
                         {fb.employeeId !== user?.id && <span style={{ color: '#64748B', fontWeight: 400, marginLeft: 4, fontSize: 12 }}>to {fb.employeeName}</span>}
-                        {fb.employeeId === user?.id && fb.managerId === user?.id && <span style={{ color: '#64748B', fontWeight: 400, marginLeft: 4, fontSize: 12 }}>(Self)</span>}
+                        {fb.employeeId === user?.id && fb.managerId === user?.id && <span style={{ color: '#7C3AED', fontWeight: 500, marginLeft: 4, fontSize: 12 }}>(Self)</span>}
                       </h3>
                       <p style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
                         {fb.publishedAt
@@ -750,7 +741,7 @@ const FeedbackPage = () => {
                     </span>
                     {(fb.managerId === user?.id || isAdmin || isHR) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <button onClick={() => handleEdit(fb)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-[#EEF2FF] hover:text-[#6366F1] transition-colors">
+                        <button onClick={() => handleEdit(fb)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-purple-50 hover:text-purple-600 transition-colors">
                           <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         </button>
                         <button onClick={() => setFeedbackToDelete(fb.feedbackId)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-[#FFF5F5] hover:text-[#B91C1C] transition-colors">
@@ -767,15 +758,15 @@ const FeedbackPage = () => {
                 <p 
                   onClick={() => setExpandedFeedbackId(expandedFeedbackId === fb.feedbackId ? null : fb.feedbackId)}
                   style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, cursor: 'pointer' }}
-                  className="hover:text-[#6366F1] transition-colors"
+                  className="hover:text-purple-700 transition-colors"
                 >
                   {fb.description}
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, marginTop: 12, borderTop: '1px solid #F1F5F9' }}>
                   <button type="button"
                     onClick={() => setExpandedFeedbackId(expandedFeedbackId === fb.feedbackId ? null : fb.feedbackId)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: expandedFeedbackId === fb.feedbackId ? '#6366F1' : '#94A3B8', fontSize: 12, fontWeight: 600 }}
-                    className="hover:text-[#4F46E5] transition-colors">
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: expandedFeedbackId === fb.feedbackId ? '#7C3AED' : '#94A3B8', fontSize: 12, fontWeight: 600 }}
+                    className="hover:text-purple-700 transition-colors">
                     <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
@@ -784,7 +775,7 @@ const FeedbackPage = () => {
                   {fb.status === ContinuousStatus.DRAFT && (fb.managerId === user?.id || String(fb.managerId) === String(user?.id) || isAdmin || isHR) && (
                     <button type="button" onClick={() => handlePublish(fb.feedbackId)} disabled={isPublishing}
                       className="office-button-primary"
-                      style={{ padding: '6px 12px', fontSize: 11 }}>
+                      style={{ padding: '6px 14px', fontSize: 11 }}>
                       <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                       Publish
                     </button>
@@ -825,7 +816,7 @@ const FeedbackPage = () => {
         {/* Sidebar Widgets */}
         <div className="lg:col-span-1 space-y-4 order-1 lg:order-2 lg:sticky lg:top-6">
           <div className="office-panel" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 10, background: '#EEF2FF', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #C7D2FE' }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #DDD6FE' }}>
               <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
             </div>
             <div>
@@ -842,7 +833,7 @@ const FeedbackPage = () => {
               className="office-panel"
               style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left' }}
             >
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: '#FFFBEB', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #FDE68A' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: '#FFFBEB', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #FDE68A' }}>
                 <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
               </div>
               <div>
@@ -859,7 +850,7 @@ const FeedbackPage = () => {
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
           <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 20, width: '100%', maxWidth: 520, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
-            <div style={{ background: '#4F46E5', padding: '16px 24px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)', padding: '18px 24px' }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.3px' }}>{editingId ? 'Edit Feedback' : 'Give Performance Feedback'}</h2>
             </div>
             <div style={{ padding: 24, maxHeight: '80vh', overflowY: 'auto' }}>
@@ -868,12 +859,12 @@ const FeedbackPage = () => {
                   <div>
                     <label style={labelStyle}>Employee</label>
                     {editingId && editingEmployee ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 10, padding: '9px 14px' }}>
-                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#FFFFFF', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '9px 14px' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#FFFFFF', flexShrink: 0 }}>
                           {editingEmployee.name.charAt(0)}
                         </div>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{editingEmployee.name}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px', background: '#E2E8F0', borderRadius: 6, padding: '2px 6px' }}>Fixed</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.4px', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 6, padding: '2px 6px' }}>Fixed</span>
                       </div>
                     ) : (
                       <select required className="office-input" value={newFeedback.employeeId || ""}
@@ -914,7 +905,7 @@ const FeedbackPage = () => {
                       <label style={{ ...labelStyle, marginBottom: 0 }}>Tag</label>
                       {!isAddingTag && (
                         <button type="button" onClick={() => setIsAddingTag(true)}
-                          style={{ fontSize: 10, fontWeight: 700, color: '#6366F1', background: 'none', border: 'none', cursor: 'pointer' }}>+ New Tag</button>
+                          style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', background: 'none', border: 'none', cursor: 'pointer' }}>+ New Tag</button>
                       )}
                     </div>
                     {isAddingTag ? (
@@ -1184,13 +1175,13 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
           onClick={(e) => e.stopPropagation()}>
           <button onClick={() => { startReply(contextMenu.reply); setContextMenu(null); }}
             style={{ width: '100%', padding: '8px 14px', textAlign: 'left', fontSize: 13, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-            className="hover:bg-[#F1F5F9] transition-colors">
-            <svg style={{ width: 14, height: 14, color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+            className="hover:bg-purple-50 transition-colors">
+            <svg style={{ width: 14, height: 14, color: '#7C3AED' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
             Reply
           </button>
           <button onClick={() => { navigator.clipboard.writeText(contextMenu.reply.replyText); setContextMenu(null); }}
             style={{ width: '100%', padding: '8px 14px', textAlign: 'left', fontSize: 13, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-            className="hover:bg-[#F1F5F9] transition-colors">
+            className="hover:bg-purple-50 transition-colors">
             <svg style={{ width: 14, height: 14, color: '#94A3B8' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
             Copy Text
           </button>
@@ -1199,8 +1190,8 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
               <div style={{ height: '1px', background: '#F1F5F9', margin: '4px 0' }} />
               <button onClick={() => { setEditingReplyId(contextMenu.reply.replyId); setEditReplyText(contextMenu.reply.replyText); setContextMenu(null); }}
                 style={{ width: '100%', padding: '8px 14px', textAlign: 'left', fontSize: 13, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-                className="hover:bg-[#F1F5F9] transition-colors">
-                <svg style={{ width: 14, height: 14, color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                className="hover:bg-purple-50 transition-colors">
+                <svg style={{ width: 14, height: 14, color: '#7C3AED' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                 Edit
               </button>
               <button onClick={() => { setReplyToDelete(contextMenu.reply.replyId); setContextMenu(null); }}
@@ -1217,28 +1208,28 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
       {/* Reply input */}
       <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 12 }}>
         {replyTarget && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, background: '#EEF2FF', border: '1px solid #C7D2FE', borderLeft: '3px solid #6366F1', borderRadius: 10, padding: '6px 12px' }} className="animate-fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, background: '#FAF5FF', border: '1px solid #DDD6FE', borderLeft: '3px solid #7C3AED', borderRadius: 10, padding: '6px 12px' }} className="animate-fade-in">
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2 }}>{replyTarget.name}</p>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2 }}>{replyTarget.name}</p>
               <p style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }} className="truncate">"{replyTarget.text}"</p>
             </div>
             <button onClick={() => { setReplyingToId(null); setReplyTarget(null); }}
-              style={{ width: 18, height: 18, borderRadius: '50%', background: '#E2E8F0', color: '#64748B', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              style={{ width: 18, height: 18, borderRadius: '50%', background: '#EDE9FE', color: '#7C3AED', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg style={{ width: 10, height: 10 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
         )}
         <form onSubmit={handleReply} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div className="office-avatar-circle" style={{ background: '#6366F1', color: '#FFFFFF', width: 28, height: 28, fontSize: 11 }}>
+          <div className="office-avatar-circle" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', color: '#FFFFFF', width: 28, height: 28, fontSize: 11 }}>
             {user?.staffName?.charAt(0) || '?'}
           </div>
-          <div style={{ flex: 1, display: 'flex', gap: 6, background: '#F1F5F9', borderRadius: 24, padding: '3px 6px 3px 14px', alignItems: 'center', border: '1px solid #E2E8F0' }}>
+          <div style={{ flex: 1, display: 'flex', gap: 6, background: '#FAFAFD', borderRadius: 24, padding: '3px 6px 3px 14px', alignItems: 'center', border: '1px solid #E2E8F0' }}>
             <input ref={mainInputRef} style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, height: 32, padding: 0 }}
               placeholder={replyTarget ? `Replying to ${replyTarget.name}…` : 'Add to the conversation…'}
               maxLength={2000}
               value={newReply} onChange={(e) => setNewReply(e.target.value)} />
             <button type="submit" disabled={isReplying || !newReply.trim()}
-              style={{ background: '#6366F1', color: '#FFFFFF', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isReplying || !newReply.trim() ? 'not-allowed' : 'pointer', opacity: isReplying || !newReply.trim() ? 0.5 : 1, transition: 'all 0.2s', flexShrink: 0 }}>
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)', color: '#FFFFFF', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isReplying || !newReply.trim() ? 'not-allowed' : 'pointer', opacity: isReplying || !newReply.trim() ? 0.5 : 1, transition: 'all 0.2s', flexShrink: 0 }}>
               <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
             </button>
           </div>

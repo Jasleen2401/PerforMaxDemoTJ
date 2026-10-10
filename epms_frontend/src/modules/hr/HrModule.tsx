@@ -35,7 +35,7 @@ export const HrModule = () => {
 
         <Link to="/analytics" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-emerald-300 shadow-xs hover:shadow-md transition-all group">
           <BarChart3 className="text-emerald-600 mb-3" size={24} />
-          <h3 className="font-semibold text-slate-900 group-hover:text-emerald-600">Strategic Analytics</h3>
+          <h3 className="font-semibold text-slate-900 group-hover:text-emerald-600">Performance Analytics</h3>
           <p className="text-xs text-slate-500 mt-1">Real-time organizational performance charts, heatmaps, and ranking leaderboards.</p>
         </Link>
       </div>

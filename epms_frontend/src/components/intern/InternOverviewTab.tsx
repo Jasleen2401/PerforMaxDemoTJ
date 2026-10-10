@@ -189,7 +189,7 @@ export const InternOverviewTab: React.FC<InternOverviewTabProps> = ({
               onClick={() => onNavigateToTab('journey')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors shadow-2xs shrink-0 cursor-pointer"
             >
-              <span>View Full Journey</span>
+              <span>Explore Journey</span>
               <ArrowRight size={14} />
             </button>
           </div>

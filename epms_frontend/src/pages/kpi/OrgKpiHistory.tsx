@@ -136,10 +136,10 @@ const OrgKpiHistory: React.FC = () => {
         </button>
         <div>
           <h1 style={{ fontSize: 18, fontWeight: 500, color: '#111827' }}>
-            {isHrOrAdmin ? 'Organization KPI History & Audit Trail' : 'Team KPI History & Audit Trail'}
+            {isHrOrAdmin ? 'Performance History & Audit Trail' : 'Team Performance History & Audit Trail'}
           </h1>
           <p style={{ fontSize: 12, color: '#9EA3B0', marginTop: 1 }}>
-            Track and audit all changes, additions, and status transitions for KPI goal sets.
+            Track and audit performance milestones, goal set revisions, and lifecycle transitions.
           </p>
         </div>
       </div>

@@ -51,6 +51,8 @@ urlpatterns = [
     path('manager/', include('apps.manager.urls')),
     path('api/intern/', include('apps.intern.urls')),
     path('intern/', include('apps.intern.urls')),
+    path('api/interns/', include('apps.intern.urls')),
+    path('interns/', include('apps.intern.urls')),
 
     # Frontend Compatibility Endpoints (Dashboards, Departments, Employees, Appraisals)
     path('api/', include('apps.frontend_compat.urls')),

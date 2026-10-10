@@ -15,6 +15,7 @@ import RoleLevelPermissionManager from "../pages/admin/org/RoleLevelPermissionMa
 import FinancialYearManagement from "../pages/appraisal/FinancialYearManagement";
 import PerformanceCategoryManagement from "../pages/appraisal/PerformanceCategoryManagement";
 import AnalyticsDashboard from "../pages/admin/AnalyticsDashboard";
+import AuditLogPage from "../pages/admin/AuditLogPage";
 import RolePermissionManagementPage from "../pages/superadmin/RolePermissionManagementPage";
 import SuperadminNotificationPage from "../pages/superadmin/SuperadminNotificationPage";
 
@@ -39,5 +40,6 @@ export const adminRoutes = [
   { path: "/superadmin/notifications", element: <SuperadminNotificationPage /> },
   { path: "/financial-years", element: <FinancialYearManagement /> },
   { path: "/performance-categories", element: <PerformanceCategoryManagement /> },
-  { path: "/analytics", element: <AnalyticsDashboard /> }
+  { path: "/analytics", element: <AnalyticsDashboard /> },
+  { path: "/audit-logs", element: <AuditLogPage /> }
 ];

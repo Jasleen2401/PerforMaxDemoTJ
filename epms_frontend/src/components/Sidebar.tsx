@@ -12,11 +12,9 @@ import {
   LogOut,
   Building2,
   ShieldCheck,
-  Briefcase,
   Zap,
   Target,
   History,
-  Calendar,
   Layers,
   X,
   Database,
@@ -25,6 +23,7 @@ import {
   ClipboardList,
   Award,
   User,
+  Milestone,
 } from "lucide-react";
 
 interface NavItem {
@@ -43,21 +42,21 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Executive Dashboard", to: "/dashboard", icon: LayoutDashboard },
   { label: "Announcement Hub", to: "/superadmin/notifications", icon: Bell, adminOnly: true },
   { label: "Assigned Mentees", to: "/manager/mentees", icon: Users, hideForAdmin: true },
-  { label: "Performance Appraisals", to: "/appraisal", icon: ClipboardCheck, end: true, hideForAdmin: true },
+  { label: "Performance Appraisals", to: "/appraisal", icon: ClipboardCheck, end: true },
   { label: "Performance Pulse", to: "/performance-history/admin", icon: History },
   { label: "Team Pulse", to: "/performance-history/manager", icon: History, privilegedOnly: true, hideForAdmin: true },
   { label: "Continuous Feedback", to: "/continuous-feedback", icon: MessageSquare },
-  { label: "Strategic Analytics", to: "/analytics", icon: BarChart3 },
+  { label: "Performance Analytics", to: "/analytics", icon: BarChart3 },
+  { label: "My Goals & KRAs", to: "/kpi/my", icon: Target },
+  { label: "My KPI Journey", to: "/kpi/my-journey", icon: Milestone },
 ];
 
 const HR_ORG_ITEMS: NavItem[] = [
   { label: "Employees Directory", to: "/employees", icon: Users },
   { label: "Departments", to: "/departments", icon: Building2 },
-  { label: "Job Levels & Bands", to: "/job-levels", icon: Zap },
-  { label: "Positions & Tracks", to: "/positions", icon: Briefcase },
   { label: "Organizational Teams", to: "/teams", icon: Users },
-  { label: "Financial Cycles", to: "/financial-years", icon: Calendar },
   { label: "Evaluation Criteria", to: "/performance-categories", icon: Layers },
+  { label: "System Audit Logs", to: "/audit-logs", icon: ShieldCheck },
 ];
 
 const SUPERADMIN_ORG_ITEMS: NavItem[] = [
@@ -69,11 +68,9 @@ const SUPERADMIN_ORG_ITEMS: NavItem[] = [
   { label: "Record Management", to: "/admin/records", icon: Database },
   { label: "Employees Directory", to: "/employees", icon: Users },
   { label: "Departments", to: "/departments", icon: Building2 },
-  { label: "Job Levels & Bands", to: "/job-levels", icon: Zap },
-  { label: "Positions & Tracks", to: "/positions", icon: Briefcase },
   { label: "Organizational Teams", to: "/teams", icon: Users },
-  { label: "Financial Cycles", to: "/financial-years", icon: Calendar },
   { label: "Evaluation Criteria", to: "/performance-categories", icon: Layers },
+  { label: "System Audit Logs", to: "/audit-logs", icon: ShieldCheck },
 ];
 
 interface SidebarProps {
@@ -95,11 +92,13 @@ const Sidebar = ({ onClose }: SidebarProps) => {
     switch (item.label) {
       case "Announcement Hub":    return isAdmin;
       case "Assigned Mentees":    return isManager || isHR;
-      case "Performance Appraisals": return isManager || isHR;
+      case "Performance Appraisals": return isAdmin || isManager || isHR;
       case "Performance Pulse":   return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
       case "Team Pulse":          return hasPermission("APPRAISAL_VIEW_TEAM") && !isAdmin && !isHR;
       case "Continuous Feedback": return true;
-      case "Strategic Analytics": return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
+      case "Performance Analytics": return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
+      case "My Goals & KRAs":     return !isAdmin && !isHR && hasPermission("KPI_VIEW_OWN");
+      case "My KPI Journey":      return !isAdmin && !isHR && hasPermission("KPI_VIEW_OWN") && !!user?.id;
       default:                    return true;
     }
   });
@@ -117,40 +116,26 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
   const filteredNav = isInternUser
     ? internNav
-    : baseNav.map((item: NavItem): NavItem => {
-        if (item.to === "/dashboard") {
-          return {
-            ...item,
-            label: item.label,
-          };
+    : baseNav.flatMap((item: NavItem): NavItem[] => {
+        if (item.label === "My KPI Journey" && user?.id) {
+          return [{ ...item, to: `/kpi/history/${user.id}` }];
         }
-        return item;
+        return [item];
       });
 
   const perfSubItems: Array<{ to: string; label: string; end?: boolean }> = [
     { to: "/kpi", label: "KPI Intelligence Hub", end: true },
-    ...((hasPermission("KPI_VIEW_OWN") || isHR) && !isAdmin ? [{ to: "/kpi/my", label: "My Goals & KRAs" }] : []),
-    ...((hasPermission("KPI_VIEW_OWN") || isHR) && !isAdmin && user ? [{ to: `/kpi/history/${user.id}`, label: "My KPI Journey" }] : []),
-    ...(hasPermission("KPI_VIEW_TEAM") || isHR || isAdmin ? [{ to: "/kpi/team", label: "Team Performance" }] : []),
-    ...(isManager
-      ? [
-          { to: "/manager/tasks", label: "Team Tasks & Goals" },
-          { to: "/manager/technical-capabilities", label: "Technical Capabilities" },
-          { to: "/manager/evidence", label: "Evidence Reviews" },
-        ]
-      : []),
-    ...(isHR || isAdmin
-      ? [{ to: "/kpi/org-history", label: "Org KPI History" }]
-      : []),
-    ...(isManager && !isHR && !isAdmin
-      ? [{ to: "/kpi/org-history", label: "Team KPI History" }]
+    ...(hasPermission("KPI_LIBRARY_MANAGE") || isHR || isAdmin || isManager
+      ? [{ to: "/kpi/manage", label: "Goal Management" }]
       : []),
     ...(hasPermission("KPI_LIBRARY_MANAGE") || isHR || isAdmin
-      ? [
-          { to: "/kpi/manage", label: "Goal Management" },
-          { to: "/kpi/library", label: "KRA Library" },
-          { to: "/kpi/categories", label: "KPI Categories" },
-        ]
+      ? [{ to: "/kpi/library", label: "KPI Library" }]
+      : []),
+    ...(hasPermission("KPI_VIEW_TEAM") || isHR || isAdmin || isManager
+      ? [{ to: "/kpi/team", label: "Team Performance" }]
+      : []),
+    ...(isHR || isAdmin || isManager
+      ? [{ to: "/kpi/org-history", label: "Performance History" }]
       : []),
   ];
 
@@ -216,8 +201,8 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
         </div>
 
-        {/* Traditional Review Accordion */}
-        {(isAdmin || isHR || isManager) && (
+        {/* Appraisal Configuration Accordion */}
+        {(isAdmin || isHR) && (
           <div>
             <button
               onClick={() => setTradReviewOpen(!tradReviewOpen)}
@@ -225,7 +210,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
             >
               <span className="flex items-center gap-2.5 font-normal">
                 <ClipboardCheck size={16} className="text-purple-200 group-hover:text-white" />
-                Traditional Review
+                Appraisal Configuration
               </span>
               <ChevronDown
                 size={14}
@@ -238,7 +223,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
             {tradReviewOpen && (
               <div className="ml-5 pl-2.5 mt-1 border-l border-white/20 space-y-0.5">
                 <NavLink
-                  to="/appraisal"
+                  to="/appraisal/design-form"
                   className={({ isActive }) =>
                     `block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
                       isActive
@@ -247,59 +232,41 @@ const Sidebar = ({ onClose }: SidebarProps) => {
                     }`
                   }
                   onClick={handleNavClick}
-                  end
                 >
-                  Appraisal Dashboard
+                  Dynamic Form Builder
                 </NavLink>
-                {(isHR || isAdmin) && (
-                  <>
-                    <NavLink
-                      to="/appraisal/design-form"
-                      className={({ isActive }) =>
-                        `block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
-                          isActive
-                            ? "text-white font-semibold bg-white/20 shadow-xs"
-                            : "text-purple-200 hover:text-white hover:bg-white/10"
-                        }`
-                      }
-                      onClick={handleNavClick}
-                    >
-                      Dynamic Form Builder
-                    </NavLink>
-                    <NavLink
-                      to="/performance-categories"
-                      className={({ isActive }) =>
-                        `block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
-                          isActive
-                            ? "text-white font-semibold bg-white/20 shadow-xs"
-                            : "text-purple-200 hover:text-white hover:bg-white/10"
-                        }`
-                      }
-                      onClick={handleNavClick}
-                    >
-                      Evaluation Criteria
-                    </NavLink>
-                    <NavLink
-                      to="/appraisal/create-cycle"
-                      className={({ isActive }) =>
-                        `block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
-                          isActive
-                            ? "text-white font-semibold bg-white/20 shadow-xs"
-                            : "text-purple-200 hover:text-white hover:bg-white/10"
-                        }`
-                      }
-                      onClick={handleNavClick}
-                    >
-                      Release Appraisal Form
-                    </NavLink>
-                  </>
-                )}
+                <NavLink
+                  to="/performance-categories"
+                  className={({ isActive }) =>
+                    `block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
+                      isActive
+                        ? "text-white font-semibold bg-white/20 shadow-xs"
+                        : "text-purple-200 hover:text-white hover:bg-white/10"
+                    }`
+                  }
+                  onClick={handleNavClick}
+                >
+                  Evaluation Criteria
+                </NavLink>
+                <NavLink
+                  to="/appraisal/create-cycle"
+                  className={({ isActive }) =>
+                    `block px-2.5 py-1.5 rounded-lg text-[12.5px] transition-colors ${
+                      isActive
+                        ? "text-white font-semibold bg-white/20 shadow-xs"
+                        : "text-purple-200 hover:text-white hover:bg-white/10"
+                    }`
+                  }
+                  onClick={handleNavClick}
+                >
+                  Release Appraisal Form
+                </NavLink>
               </div>
             )}
           </div>
         )}
-        {/* Performance & KRAs Accordion */}
-        {!isInternUser && (
+        {/* Goals & KPI Management Accordion */}
+        {!isInternUser && perfSubItems.length > 0 && (
           <div>
             <button
               onClick={() => setPerfOpen(!perfOpen)}
@@ -307,7 +274,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
             >
               <span className="flex items-center gap-2.5 font-normal">
                 <Target size={16} className="text-purple-200 group-hover:text-white" />
-                KRAs & Objectives
+                Goals & KPI Management
               </span>
               <ChevronDown
                 size={14}
@@ -343,7 +310,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
         )}
 
-        {/* Governance & Administration */}
+        {/* Organization Hub */}
         {(isAdmin || isHR) && (
           <div>
             <button
@@ -352,7 +319,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
             >
               <span className="flex items-center gap-2.5 font-normal">
                 <Building2 size={16} className="text-purple-200 group-hover:text-white" />
-                Org Governance
+                Organization Hub
               </span>
               <ChevronDown
                 size={14}
@@ -390,7 +357,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
       </nav>
 
       {/* Tanvi Frosted Glass User Profile Card */}
-      <div className="p-3">
+      <div className="p-3 shrink-0 mt-auto">
         <div className="sidebar-profile rounded-2xl p-3 border">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5 min-w-0">

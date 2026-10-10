@@ -205,6 +205,31 @@ class ManagerMentorModuleTestCase(TestCase):
         }), content_type='application/json', **self.manager_headers)
         self.assertEqual(res.status_code, 201)
 
+    def test_m07_give_feedback_unassigned_forbidden(self):
+        """M-07: Manager cannot give feedback to unassigned employee (403 Forbidden)."""
+        other_user = User.objects.create_user(
+            username="other_intern",
+            email="other@company.com",
+            password="OtherPassword123!",
+            role=UserRole.INTERN
+        )
+        other_profile = EmployeeProfile.objects.create(
+            user=other_user,
+            employee_code="INT-999",
+            first_name="Other",
+            last_name="Intern",
+            manager=None,
+            designation="Frontend Intern",
+            employment_status="ACTIVE"
+        )
+        res = self.client.post('/api/manager/feedback/', data=json.dumps({
+            'employee_id': str(other_profile.id),
+            'feedback_type': 'PRAISE',
+            'message': 'Attempting feedback on unassigned intern.',
+            'visibility': 'PUBLIC'
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 403)
+
     def test_m08_review_employee_feedback(self):
         """M-08: Review feedback provided by intern and add comments."""
         fb = Feedback.objects.create(

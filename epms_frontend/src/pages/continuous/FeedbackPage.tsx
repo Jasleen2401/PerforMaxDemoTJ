@@ -20,6 +20,7 @@ import {
   useGetFeedbacksByManagerQuery,
 } from "../../features/continuous/continuousApi";
 import { useGetEmployeesQuery } from "../../features/employee/employeeapi";
+import { useGetAssignedMenteesQuery } from "../../features/manager/managerApi";
 import { FeedbackType, ContinuousStatus } from "../../features/continuous/continuousTypes";
 import { format } from "date-fns";
 import { formatRelativeTime } from "../../utils/timeUtils";
@@ -463,15 +464,47 @@ const FeedbackPage = () => {
     ? Math.min(...allDeptRanks)
     : 9999;
 
+  const isManagerRole = isManager || user?.role === 'MANAGER';
+  const { data: assignedMentees = [] } = useGetAssignedMenteesQuery(undefined, { skip: !isManagerRole });
+
+  const assignedIds = new Set([
+    ...assignedMentees.map(m => String(m.id)),
+    ...assignedMentees.map(m => String(m.userId)),
+    ...assignedMentees.map(m => String(m.employeeCode || '').toLowerCase()),
+  ]);
+
   const filteredEmployees = (isAdmin || isHR)
     ? employees
-    : employees?.filter(emp =>
-        emp.currentDepartmentName && user?.currentDepartmentName &&
-        emp.currentDepartmentName === user?.currentDepartmentName &&
-        emp.id !== user?.id &&
-        (emp.levelRank === undefined || emp.levelRank === null || emp.levelRank !== minRankInDept) &&
-        (emp.levelRank === undefined || emp.levelRank === null || user?.levelRank === undefined || user?.levelRank === null || emp.levelRank >= user.levelRank)
-      );
+    : isManagerRole
+      ? employees?.filter(emp => {
+          if (String(emp.id) === String(user?.id)) return false;
+          const matchesDirectMgr = (
+            (emp.directManagerId && String(emp.directManagerId) === String(user?.id)) ||
+            (emp.directManagerName && String(emp.directManagerName).toLowerCase() === String(user?.username || '').toLowerCase()) ||
+            (emp.directManagerName && String(emp.directManagerName).toLowerCase() === String(user?.staffName || '').toLowerCase())
+          );
+          const matchesMentee = assignedIds.has(String(emp.id)) ||
+            assignedIds.has(String((emp as any).userId)) ||
+            (emp.employeeCode && assignedIds.has(String(emp.employeeCode).toLowerCase()));
+          return Boolean(matchesDirectMgr || matchesMentee);
+        })
+      : employees?.filter(emp =>
+          emp.currentDepartmentName && user?.currentDepartmentName &&
+          emp.currentDepartmentName === user?.currentDepartmentName &&
+          emp.id !== user?.id &&
+          (emp.levelRank === undefined || emp.levelRank === null || emp.levelRank !== minRankInDept) &&
+          (emp.levelRank === undefined || emp.levelRank === null || user?.levelRank === undefined || user?.levelRank === null || emp.levelRank >= user.levelRank)
+        );
+
+  const availableEmployees = (isManagerRole && (!filteredEmployees || filteredEmployees.length === 0) && assignedMentees.length > 0)
+    ? assignedMentees.map(m => ({
+        id: m.userId || m.id,
+        staffName: m.fullName || `${m.firstName} ${m.lastName}`.trim(),
+        employeeCode: m.employeeCode,
+        currentDepartmentName: m.department,
+        positionName: m.designation,
+      }))
+    : (filteredEmployees || []);
 
   const blankFeedback = { employeeId: "" as number | string, tagId: "" as number | "", feedbackType: FeedbackType.PRAISE, description: "" };
   const [showModal, setShowModal] = useState(false);
@@ -495,6 +528,14 @@ const FeedbackPage = () => {
     if (!user || !newFeedback.employeeId || !newFeedback.tagId) {
       toast.warning("Please select an employee and a category.");
       return;
+    }
+
+    if (isManagerRole) {
+      const isValidRecipient = availableEmployees.some(e => String(e.id) === String(newFeedback.employeeId) || String(e.employeeCode) === String(newFeedback.employeeId));
+      if (!isValidRecipient) {
+        toast.error("You can only provide feedback to employees assigned to you by HR or Super Admin.");
+        return;
+      }
     }
     try {
       const resolvedStatus = status || (editingId ? undefined : submitStatus);
@@ -905,9 +946,14 @@ const FeedbackPage = () => {
                     ) : (
                       <select required className="office-input" value={newFeedback.employeeId}
                         onChange={e => setNewFeedback({ ...newFeedback, employeeId: e.target.value })}>
-                        <option value="">Choose Staff</option>
-                        {filteredEmployees?.map(emp => <option key={emp.id} value={emp.id}>{emp.staffName}</option>)}
+                        <option value="">{isManagerRole ? "Choose Assigned Employee" : "Choose Staff"}</option>
+                        {availableEmployees?.map(emp => <option key={emp.id} value={emp.id}>{emp.staffName}</option>)}
                       </select>
+                    )}
+                    {isManagerRole && (
+                      <p style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, marginTop: 4 }}>
+                        Showing only employees assigned to you by HR or Super Admin.
+                      </p>
                     )}
                   </div>
                   <div>

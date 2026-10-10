@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { X, ThumbsUp, ThumbsDown, Star, Award, Eye, MessageSquare, ChevronDown } from "lucide-react";
+import { X, ThumbsUp, ThumbsDown, Star, Award, Eye, MessageSquare, ChevronDown, ShieldAlert } from "lucide-react";
 import { toast } from "react-toastify";
+import { useAuth } from "../../hooks/useAuth";
+import { useGetAssignedMenteesQuery } from "../../features/manager/managerApi";
 
 interface EmployeeOption {
   id: string | number;
@@ -97,10 +99,39 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Fallback demo employee list if none passed
+  const { user } = useAuth();
+  const isManager = user?.role === 'MANAGER' || (user as any)?.isManager;
+  const { data: assignedMentees = [] } = useGetAssignedMenteesQuery(undefined, { skip: !isManager });
+
+  const assignedIds = new Set([
+    ...assignedMentees.map((m) => String(m.id)),
+    ...assignedMentees.map((m) => String(m.userId)),
+    ...assignedMentees.map((m) => String(m.employeeCode).toLowerCase()),
+  ]);
+
+  // For manager, strictly restrict candidate employees to assigned mentees
+  let candidateList: EmployeeOption[] = employees;
+  if (isManager && candidateList.length > 0) {
+    candidateList = candidateList.filter(
+      (e) => assignedIds.has(String(e.id)) || assignedIds.has(String(e.employeeCode).toLowerCase())
+    );
+  }
+
+  if (isManager && candidateList.length === 0 && assignedMentees.length > 0) {
+    candidateList = assignedMentees.map((m) => ({
+      id: m.userId || m.id,
+      employeeCode: m.employeeCode,
+      staffName: m.fullName || `${m.firstName} ${m.lastName}`.trim(),
+      designation: m.designation,
+    }));
+  }
+
+  // Fallback demo employee list if none passed (only for admin/HR)
   const employeeList: EmployeeOption[] =
-    employees.length > 0
-      ? employees
+    candidateList.length > 0
+      ? candidateList
+      : isManager
+      ? []
       : [
           { id: "ZY192", employeeCode: "ZY192", staffName: "Robert Johnson", designation: "Software Developer" },
           { id: "INT-2025-001", employeeCode: "INT-2025-001", staffName: "Alex Chen", designation: "Backend Software Intern" },
@@ -108,9 +139,9 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
         ];
 
   useEffect(() => {
-    if (defaultEmployeeId) {
+    if (defaultEmployeeId && employeeList.some((e) => String(e.id) === String(defaultEmployeeId))) {
       setSelectedEmpId(defaultEmployeeId);
-    } else if (employeeList.length > 0 && !selectedEmpId) {
+    } else if (employeeList.length > 0 && (!selectedEmpId || !employeeList.some((e) => String(e.id) === String(selectedEmpId)))) {
       setSelectedEmpId(employeeList[0].id);
     }
   }, [defaultEmployeeId, employeeList, selectedEmpId]);
@@ -122,6 +153,10 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
     employeeList[0];
 
   const handlePost = async () => {
+    if (isManager && employeeList.length === 0) {
+      toast.error("You can only provide feedback to employees assigned to you by HR or Super Admin.");
+      return;
+    }
     if (!feedbackText.trim()) {
       toast.error("Please enter feedback text.");
       return;
@@ -183,10 +218,26 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-          {/* Select Employee Card */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Select Employee</label>
-            <div className="relative">
+          {/* Select Employee Card or Restricted Notice */}
+          {isManager && employeeList.length === 0 ? (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-800 text-xs">
+              <ShieldAlert size={20} className="shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <div className="font-bold text-amber-900 text-sm mb-0.5">Feedback Restricted</div>
+                As a Tech Manager, you can only provide feedback to employees assigned to you by HR or Super Admin. This employee is not currently assigned to you.
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-slate-700">Select Employee</label>
+                {isManager && (
+                  <span className="text-[11px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    Assigned Direct Reports Only
+                  </span>
+                )}
+              </div>
+              <div className="relative">
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -240,6 +291,7 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
               )}
             </div>
           </div>
+          )}
 
           {/* Feedback Card with Textarea and Category Pills */}
           <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-xl space-y-4">
@@ -317,7 +369,7 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
               <button
                 type="button"
                 onClick={handlePost}
-                disabled={isSubmitting}
+                disabled={isSubmitting || (isManager && employeeList.length === 0)}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50"
                 style={{ backgroundColor: "#4338CA" }}
               >

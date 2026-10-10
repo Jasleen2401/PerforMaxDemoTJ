@@ -41,6 +41,7 @@ import { useGetGoalSetByEmployeeQuery } from "../../services/kpiApi";
 import type { GoalItemResponse } from "../../features/kpi/kpiTypes";
 import ProvideFeedbackModal from "../../components/feedback/ProvideFeedbackModal";
 import ChooseKraWeightageModal from "../../components/kpi/ChooseKraWeightageModal";
+import { useAuth } from "../../hooks/useAuth";
 
 type ProfileGoalItem = GoalItemResponse & {
   kpiName?: string;
@@ -148,6 +149,15 @@ const EmployeeProfileView = () => {
 
   const { data: employee, isLoading: isEmployeeLoading, error: employeeError, refetch: refetchEmployee } =
     useGetEmployeeByIdQuery(employeeId, { skip: !employeeId });
+  const { user: currentUser } = useAuth();
+  const isManager = currentUser?.role === 'MANAGER' || (currentUser as any)?.isManager;
+  const isAssignedReport = !isManager || (
+    Boolean(employee) && (
+      (employee?.directManagerId && String(employee.directManagerId) === String(currentUser?.id)) ||
+      (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.username || '').toLowerCase()) ||
+      (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.staffName || '').toLowerCase())
+    )
+  );
   const { data: activeCycle } = useGetActiveCycleQuery();
   const { data: allCycles = [] } = useGetCyclesQuery();
 
@@ -551,15 +561,24 @@ const EmployeeProfileView = () => {
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsFeedbackModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all"
-                style={{ backgroundColor: "#4338CA" }}
-              >
-                <Plus size={14} strokeWidth={2.5} />
-                Provide Feedback
-              </button>
+              {isManager && !isAssignedReport ? (
+                <div
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-400 text-xs font-semibold rounded-xl cursor-not-allowed border border-slate-200"
+                  title="Feedback is restricted to your assigned mentees/direct reports."
+                >
+                  Feedback Restricted
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsFeedbackModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all"
+                  style={{ backgroundColor: "#4338CA" }}
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  Provide Feedback
+                </button>
+              )}
 
               <button
                 type="button"

@@ -4617,6 +4617,16 @@ class FeedbacksCompatView(APIView):
         description = request.data.get("description", "")
         status_val = request.data.get("status", "PUBLISHED").upper()
 
+        # Enforce: Tech Manager can only provide feedback to employees assigned by HR or Super Admin
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            from apps.employees.models import EmployeeProfile
+            is_assigned = EmployeeProfile.objects.filter(
+                Q(id__iexact=str(emp_id)) | Q(user__id__iexact=str(emp_id)) | Q(employee_code__iexact=str(emp_id)),
+                manager=request.user
+            ).exists()
+            if not is_assigned:
+                return error_response("You can only provide feedback to employees assigned to you by HR or Super Admin.", status_code=403)
+
         # Find employee name from EmployeeProfile if available
         emp_name = "Team Member"
         try:

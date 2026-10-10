@@ -19,6 +19,10 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  Paperclip,
+  Image as ImageIcon,
+  Maximize2,
 } from 'lucide-react';
 import {
   useGetAssignedMenteesQuery,
@@ -37,6 +41,20 @@ import {
   useGetHistoricalReviewsQuery,
 } from '../../features/manager/managerApi';
 import type { MenteeItem } from '../../features/manager/managerApi';
+
+const isImageFile = (fileNameOrUrl?: string | null): boolean => {
+  if (!fileNameOrUrl) return false;
+  const clean = fileNameOrUrl.split('?')[0].split('#')[0].toLowerCase();
+  return /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(clean);
+};
+
+const getMediaUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  return url.startsWith('/') ? url : `/${url}`;
+};
 
 export const ManagerHubPage: React.FC = () => {
   const navigate = useNavigate();
@@ -83,6 +101,7 @@ export const ManagerHubPage: React.FC = () => {
   const [isAddParamOpen, setIsAddParamOpen] = useState(false);
   const [isReviewEvidenceOpen, setIsReviewEvidenceOpen] = useState(false);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
 
   // Assign Task Form State
   const [taskForm, setTaskForm] = useState({
@@ -1228,17 +1247,66 @@ export const ManagerHubPage: React.FC = () => {
                       Goal/Task: <span className="font-semibold text-slate-700">{item.goalTitle}</span>
                     </div>
 
-                    {item.externalUrl && (
-                      <a
-                        href={item.externalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-indigo-600 hover:bg-slate-100 transition-colors"
-                      >
-                        <ExternalLink size={13} />
-                        View Attached Artifact / PR
-                      </a>
-                    )}
+                    {/* Evidence Image Preview on Card */}
+                    {(() => {
+                      const isImg = isImageFile(item.fileAttachment) || isImageFile(item.externalUrl);
+                      const imgUrl = isImg ? (getMediaUrl(item.fileAttachment) || item.externalUrl) : null;
+                      if (!imgUrl) return null;
+
+                      return (
+                        <div className="relative group/cardimg overflow-hidden rounded-xl border border-slate-200 bg-slate-900/5 aspect-video max-h-40 flex items-center justify-center">
+                          <img
+                            src={imgUrl}
+                            alt={item.title}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover/cardimg:scale-105"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                          <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/cardimg:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setLightboxImage({ url: imgUrl, title: item.title })}
+                              className="px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-800 shadow-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Eye size={13} /> Inspect Preview
+                            </button>
+                            <a
+                              href={imgUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-800 shadow-md text-xs font-bold transition-all"
+                              title="Open original"
+                            >
+                              <ExternalLink size={13} />
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {item.externalUrl && (
+                        <a
+                          href={item.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-indigo-600 hover:bg-slate-100 transition-colors"
+                        >
+                          <ExternalLink size={13} />
+                          View Attached Artifact / PR
+                        </a>
+                      )}
+                      {item.fileAttachment && !isImageFile(item.fileAttachment) && (
+                        <a
+                          href={getMediaUrl(item.fileAttachment)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          <Paperclip size={13} />
+                          Download Attachment
+                        </a>
+                      )}
+                    </div>
 
                     {item.reviewNotes && (
                       <div className="bg-slate-50 rounded-xl p-2.5 text-xs text-slate-700 border border-slate-100">
@@ -1735,6 +1803,89 @@ export const ManagerHubPage: React.FC = () => {
             </div>
 
             <div className="space-y-3.5">
+              {/* Evidence Artifact / Image Inspection in Modal */}
+              {(() => {
+                const selectedEvidence = evidenceList.find((e) => e.id === selectedEvidenceId);
+                if (!selectedEvidence) return null;
+
+                const isImg = isImageFile(selectedEvidence.fileAttachment) || isImageFile(selectedEvidence.externalUrl);
+                const imgUrl = isImg ? (getMediaUrl(selectedEvidence.fileAttachment) || selectedEvidence.externalUrl) : null;
+
+                return (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="font-bold text-xs text-slate-900">{selectedEvidence.title}</h4>
+                        <p className="text-[11px] text-slate-500">
+                          Submitted by <strong className="text-slate-700">{selectedEvidence.employeeName}</strong>
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 shrink-0">
+                        {selectedEvidence.goalTitle}
+                      </span>
+                    </div>
+
+                    {selectedEvidence.description && (
+                      <p className="text-[11px] text-slate-600 line-clamp-2">{selectedEvidence.description}</p>
+                    )}
+
+                    {/* Image Preview in Review Modal */}
+                    {imgUrl && (
+                      <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-white max-h-44 flex items-center justify-center">
+                        <img
+                          src={imgUrl}
+                          alt={selectedEvidence.title}
+                          className="max-h-44 w-full object-contain"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLightboxImage({ url: imgUrl, title: selectedEvidence.title })}
+                            className="px-2.5 py-1 rounded-lg bg-white/95 text-slate-900 text-[11px] font-bold shadow-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye size={12} /> Inspect Full Size
+                          </button>
+                          <a
+                            href={imgUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 rounded-lg bg-white/95 text-slate-900 text-[11px] font-bold shadow-xs"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Non-image attachment or link */}
+                    <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                      {selectedEvidence.fileAttachment && !isImageFile(selectedEvidence.fileAttachment) && (
+                        <a
+                          href={getMediaUrl(selectedEvidence.fileAttachment)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-semibold"
+                        >
+                          <Paperclip size={12} /> Download Attachment
+                        </a>
+                      )}
+                      {selectedEvidence.externalUrl && !isImageFile(selectedEvidence.externalUrl) && (
+                        <a
+                          href={selectedEvidence.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-semibold"
+                        >
+                          <ExternalLink size={12} /> Open Artifact URL
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Decision</label>
                 <select
@@ -1781,6 +1932,52 @@ export const ManagerHubPage: React.FC = () => {
                   {isReviewingEvidence ? 'Saving...' : 'Submit Decision'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox / Full-size Image Inspection Modal */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div
+            className="relative bg-white rounded-2xl max-w-4xl max-h-[90vh] w-full overflow-hidden shadow-2xl flex flex-col border border-slate-800/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2 truncate">
+                <ImageIcon size={18} className="text-indigo-400 shrink-0" />
+                <span className="font-bold text-sm truncate">{lightboxImage.title}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={lightboxImage.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Open full size in new tab"
+                >
+                  <ExternalLink size={16} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setLightboxImage(null)}
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Close preview"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center overflow-auto max-h-[calc(90vh-60px)]">
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.title}
+                className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-lg"
+              />
             </div>
           </div>
         </div>

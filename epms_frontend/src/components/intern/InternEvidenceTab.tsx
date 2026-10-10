@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText, UploadCloud, Link as LinkIcon, ExternalLink, CheckCircle2,
-  AlertCircle, Clock, Plus, X, RefreshCw, Paperclip, ShieldCheck
+  AlertCircle, Clock, Plus, X, RefreshCw, Paperclip, ShieldCheck,
+  Eye, Image as ImageIcon, Trash2, Maximize2, Download
 } from 'lucide-react';
 import type { InternEvidenceItem, InternGoalItem } from '../../features/dashboard/dashboardTypes';
 import { toast } from 'react-toastify';
@@ -17,9 +18,23 @@ interface InternEvidenceTabProps {
   onCloseDirectModal?: () => void;
 }
 
-const ALLOWED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'zip', 'docx', 'txt'];
+const ALLOWED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'zip', 'docx', 'txt', 'webp', 'gif'];
 const DISALLOWED_EXTENSIONS = ['exe', 'sh', 'bat', 'cmd', 'py', 'js', 'vbs', 'msi'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+export const isImageFile = (fileNameOrUrl?: string | null): boolean => {
+  if (!fileNameOrUrl) return false;
+  const clean = fileNameOrUrl.split('?')[0].split('#')[0].toLowerCase();
+  return /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(clean);
+};
+
+export const getMediaUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  return url.startsWith('/') ? url : `/${url}`;
+};
 
 export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
   evidenceList = [],
@@ -32,25 +47,64 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
   onCloseDirectModal,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(isOpenModalDirectly);
-  const [selectedGoalId, setSelectedGoalId] = useState(preselectedGoalId);
+  const [selectedGoalId, setSelectedGoalId] = useState<string>(preselectedGoalId ? String(preselectedGoalId) : '');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [externalUrl, setExternalUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sync if preselectedGoalId changes externally
-  React.useEffect(() => {
+  useEffect(() => {
     if (preselectedGoalId) {
-      setSelectedGoalId(preselectedGoalId);
+      setSelectedGoalId(String(preselectedGoalId));
       setIsModalOpen(true);
     }
   }, [preselectedGoalId]);
 
+  // Keep selectedGoalId synchronized with available goals
+  useEffect(() => {
+    if (goals && goals.length > 0) {
+      const match = goals.find((g) => String(g.id) === String(selectedGoalId));
+      if (!selectedGoalId || !match) {
+        const fallbackId = preselectedGoalId && goals.some((g) => String(g.id) === String(preselectedGoalId))
+          ? String(preselectedGoalId)
+          : String(goals[0].id);
+        setSelectedGoalId(fallbackId);
+      }
+    }
+  }, [goals, preselectedGoalId, selectedGoalId]);
+
+  // Revoke object URL on unmount or when imagePreviewUrl changes
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
+
   const handleOpenModal = (goalId?: string) => {
-    if (goalId) setSelectedGoalId(goalId);
-    else if (goals.length > 0 && !selectedGoalId) setSelectedGoalId(goals[0].id);
+    if (goalId) {
+      setSelectedGoalId(String(goalId));
+    } else if (goals.length > 0 && (!selectedGoalId || !goals.some((g) => String(g.id) === String(selectedGoalId)))) {
+      setSelectedGoalId(String(goals[0].id));
+    }
     setIsModalOpen(true);
+  };
+
+  const handleClearSelectedFile = () => {
+    if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setImagePreviewUrl(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleCloseModal = () => {
@@ -59,12 +113,12 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
     setTitle('');
     setDescription('');
     setExternalUrl('');
-    setSelectedFile(null);
+    handleClearSelectedFile();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) {
-      setSelectedFile(null);
+      handleClearSelectedFile();
       return;
     }
     const file = e.target.files[0];
@@ -73,25 +127,38 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
     if (DISALLOWED_EXTENSIONS.includes(ext)) {
       toast.error(`Executable or script file type (.${ext}) is strictly prohibited for security.`);
       e.target.value = '';
-      setSelectedFile(null);
+      handleClearSelectedFile();
       return;
     }
 
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       toast.error(`File extension .${ext} is not allowed. Supported formats: ${ALLOWED_EXTENSIONS.join(', ')}`);
       e.target.value = '';
-      setSelectedFile(null);
+      handleClearSelectedFile();
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
       toast.error(`File size exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB).`);
       e.target.value = '';
-      setSelectedFile(null);
+      handleClearSelectedFile();
       return;
     }
 
     setSelectedFile(file);
+
+    // If it's an image, create a live preview URL
+    if (file.type.startsWith('image/') || isImageFile(file.name)) {
+      if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+      setImagePreviewUrl(URL.createObjectURL(file));
+    } else {
+      if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+      setImagePreviewUrl(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -240,6 +307,46 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
                   </div>
                 )}
 
+                {/* Evidence Image Preview (if image file or image URL) */}
+                {(() => {
+                  const hasImageFile = isImageFile(item.fileAttachment) || isImageFile(item.fileName);
+                  const isExternalImage = isImageFile(item.externalUrl);
+                  const imageUrl = hasImageFile ? getMediaUrl(item.fileAttachment) : (isExternalImage ? item.externalUrl : null);
+
+                  if (!imageUrl) return null;
+
+                  return (
+                    <div className="relative group/img overflow-hidden rounded-xl border border-slate-200 bg-slate-900/5 aspect-video max-h-40 flex items-center justify-center">
+                      <img
+                        src={imageUrl}
+                        alt={item.title}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover/img:scale-105"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setLightboxImage({ url: imageUrl, title: item.title })}
+                          className="px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-800 shadow-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Eye size={13} /> View Preview
+                        </button>
+                        <a
+                          href={imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-800 shadow-md text-xs font-bold transition-all"
+                          title="Open original"
+                        >
+                          <ExternalLink size={13} />
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Links & Footer */}
                 <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-3">
@@ -256,7 +363,7 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
                     )}
                     {item.fileAttachment && (
                       <a
-                        href={item.fileAttachment}
+                        href={getMediaUrl(item.fileAttachment)}
                         target="_blank"
                         rel="noreferrer"
                         className="text-slate-700 hover:text-indigo-600 font-medium flex items-center gap-1"
@@ -284,8 +391,9 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
                 <p className="text-xs text-slate-500">Attach proof of work against an assigned goal</p>
               </div>
               <button
+                type="button"
                 onClick={handleCloseModal}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -293,20 +401,34 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Associated Goal *</label>
-                <select
-                  required
-                  value={selectedGoalId}
-                  onChange={(e) => setSelectedGoalId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500 focus:bg-white"
-                >
-                  <option value="" disabled>Select an assigned goal...</option>
-                  {goals.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.title} {g.weightage ? `(${g.weightage}%)` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">Associated Goal *</label>
+                  {goals.length > 0 && (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {goals.length} {goals.length === 1 ? 'goal' : 'goals'} available
+                    </span>
+                  )}
+                </div>
+                {goals.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                    <AlertCircle size={15} className="shrink-0 text-amber-600" />
+                    <span>No goals currently assigned. Goals must be provisioned before evidence can be attached.</span>
+                  </div>
+                ) : (
+                  <select
+                    required
+                    value={selectedGoalId ? String(selectedGoalId) : ''}
+                    onChange={(e) => setSelectedGoalId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-indigo-500 focus:bg-white transition-colors"
+                  >
+                    <option value="" disabled>Select an assigned goal...</option>
+                    {goals.map((g) => (
+                      <option key={String(g.id)} value={String(g.id)}>
+                        {g.title} {g.weightage ? `(${g.weightage}%)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -332,16 +454,89 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">
-                  File Attachment (PDF, Images, ZIP, DOCX — Max 10MB)
-                </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">
+                    File Attachment (Images, PDF, ZIP, DOCX — Max 10MB)
+                  </label>
+                  {selectedFile && (
+                    <span className="text-[10px] text-indigo-600 font-semibold">
+                      {(selectedFile.size / 1024).toFixed(1)} KB
+                    </span>
+                  )}
+                </div>
+
                 <input
+                  ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.zip,.docx,.txt"
+                  accept=".pdf,.png,.jpg,.jpeg,.zip,.docx,.txt,.webp,.gif"
                   onChange={handleFileChange}
                   className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
                 />
+
+                {/* Live Image Preview when an image is selected */}
+                {imagePreviewUrl && (
+                  <div className="mt-2 p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-2 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                        <ImageIcon size={14} className="text-indigo-600" />
+                        Live Image Preview
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setLightboxImage({ url: imagePreviewUrl, title: selectedFile?.name || 'Evidence Image Preview' })}
+                          className="text-xs text-indigo-700 hover:text-indigo-900 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                        >
+                          <Maximize2 size={12} /> Enlarge
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearSelectedFile}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setLightboxImage({ url: imagePreviewUrl, title: selectedFile?.name || 'Evidence Image Preview' })}
+                      className="relative group/preview rounded-lg overflow-hidden border border-indigo-200 bg-white max-h-48 flex items-center justify-center cursor-zoom-in"
+                    >
+                      <img
+                        src={imagePreviewUrl}
+                        alt="Selected evidence preview"
+                        className="max-h-48 w-full object-contain"
+                      />
+                      <div className="absolute inset-0 bg-indigo-950/20 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="px-3 py-1.5 rounded-lg bg-white/95 text-indigo-900 font-bold text-xs shadow-xs flex items-center gap-1">
+                          <Eye size={13} /> Click to Inspect Full Size
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {selectedFile?.name}
+                    </p>
+                  </div>
+                )}
+
+                {/* Non-image selected file display */}
+                {selectedFile && !imagePreviewUrl && (
+                  <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 truncate">
+                      <Paperclip size={14} className="text-slate-500 shrink-0" />
+                      <span className="font-medium text-slate-800 truncate">{selectedFile.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearSelectedFile}
+                      className="text-xs text-rose-600 hover:text-rose-800 font-bold ml-2 shrink-0 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 size={12} /> Remove
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -359,14 +554,14 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                  disabled={isSubmitting || goals.length === 0}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-2xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <RefreshCw size={13} className="animate-spin" />
@@ -377,6 +572,52 @@ export const InternEvidenceTab: React.FC<InternEvidenceTabProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox / Full-size Image Inspection Modal */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div
+            className="relative bg-white rounded-2xl max-w-4xl max-h-[90vh] w-full overflow-hidden shadow-2xl flex flex-col border border-slate-800/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2 truncate">
+                <ImageIcon size={18} className="text-indigo-400 shrink-0" />
+                <span className="font-bold text-sm truncate">{lightboxImage.title}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={lightboxImage.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Open full size in new tab"
+                >
+                  <ExternalLink size={16} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setLightboxImage(null)}
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Close preview"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center overflow-auto max-h-[calc(90vh-60px)]">
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.title}
+                className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-lg"
+              />
+            </div>
           </div>
         </div>
       )}

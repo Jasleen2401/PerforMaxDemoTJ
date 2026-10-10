@@ -10,7 +10,7 @@ import { scoreToColor, progressToColor} from '../constants/dashboardColors';
 import EmployeeDashboard from './EmployeeDashboard';
 
 const ManagerDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'team' | 'personal'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'personal'>('personal');
   const [performanceFilter, setPerformanceFilter] = useState<'active' | 'top10' | 'all'>('active');
   const { data, isLoading, error } = useGetManagerDashboardQuery();
 
@@ -35,17 +35,6 @@ const ManagerDashboard: React.FC = () => {
       {/* Premium Tab Selector */}
       <div className="bg-white border border-gray-200/80 rounded-2xl p-1.5 flex gap-2 w-fit shadow-sm">
         <button
-          onClick={() => setActiveTab('team')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 ${
-            activeTab === 'team'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-          }`}
-        >
-          <Layers size={14} />
-          Team Overview
-        </button>
-        <button
           onClick={() => setActiveTab('personal')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 ${
             activeTab === 'personal'
@@ -55,6 +44,17 @@ const ManagerDashboard: React.FC = () => {
         >
           <Briefcase size={14} />
           My Performance
+        </button>
+        <button
+          onClick={() => setActiveTab('team')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 ${
+            activeTab === 'team'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <Layers size={14} />
+          Team Overview
         </button>
       </div>
 

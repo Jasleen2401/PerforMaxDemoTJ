@@ -11,7 +11,21 @@ import EmployeeDashboard from './EmployeeDashboard';
 
 const ManagerDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'team' | 'personal'>('team');
+  const [performanceFilter, setPerformanceFilter] = useState<'active' | 'top10' | 'all'>('active');
   const { data, isLoading, error } = useGetManagerDashboardQuery();
+
+  const rawPerformance = data?.teamPerformance || [];
+  const displayPerformance = React.useMemo(() => {
+    if (!rawPerformance.length) return [];
+    if (performanceFilter === 'active') {
+      const active = rawPerformance.filter(m => m.score > 0);
+      return active.length > 0 ? active : rawPerformance.slice(0, 10);
+    }
+    if (performanceFilter === 'top10') {
+      return [...rawPerformance].sort((a, b) => b.score - a.score).slice(0, 10);
+    }
+    return rawPerformance;
+  }, [rawPerformance, performanceFilter]);
 
   if (isLoading) return <div className="py-16 text-center" style={{ color: "#9EA3B0", fontSize: 13 }}>Loading dashboard...</div>;
   if (error) return <div className="py-16 text-center" style={{ color: "#791F1F", fontSize: 13 }}>Error loading manager dashboard.</div>;
@@ -111,20 +125,97 @@ const ManagerDashboard: React.FC = () => {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <ChartCard title="Team performance overview">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data?.teamPerformance}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F0F2F6" />
-                <XAxis dataKey="name" stroke="#9EA3B0" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="#9EA3B0" fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: "#F5F6F8" }} contentStyle={{ borderRadius: 8, border: "0.5px solid #E4E6EC", boxShadow: "none", fontSize: 12 }} />
-                <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                  {data?.teamPerformance.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={scoreToColor(entry.score)} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <ChartCard
+            title="Team performance overview"
+            action={
+              <div className="flex items-center gap-1 bg-gray-100/90 p-1 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setPerformanceFilter('active')}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    performanceFilter === 'active'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  Evaluated ({rawPerformance.filter((m) => m.score > 0).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPerformanceFilter('top10')}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    performanceFilter === 'top10'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  Top 10
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPerformanceFilter('all')}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    performanceFilter === 'all'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  All ({rawPerformance.length})
+                </button>
+              </div>
+            }
+          >
+            <div className="w-full h-full overflow-x-auto pb-1">
+              <div style={{ minWidth: performanceFilter === 'all' ? Math.max(700, displayPerformance.length * 36) : '100%', height: '100%' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={displayPerformance}
+                    margin={{ top: 15, right: 10, left: -10, bottom: performanceFilter === 'all' || displayPerformance.length > 8 ? 25 : 5 }}
+                    barCategoryGap={performanceFilter === 'all' ? "15%" : "25%"}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F0F2F6" />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#6B7280"
+                      fontSize={11}
+                      fontWeight={500}
+                      tickLine={false}
+                      axisLine={{ stroke: '#E5E7EB' }}
+                      interval={0}
+                      angle={performanceFilter === 'all' || displayPerformance.length > 8 ? -25 : 0}
+                      textAnchor={performanceFilter === 'all' || displayPerformance.length > 8 ? 'end' : 'middle'}
+                      height={performanceFilter === 'all' || displayPerformance.length > 8 ? 40 : 25}
+                    />
+                    <YAxis
+                      stroke="#9EA3B0"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "#F5F6F8" }}
+                      contentStyle={{
+                        borderRadius: 10,
+                        border: "1px solid #E4E6EC",
+                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    />
+                    <Bar
+                      dataKey="score"
+                      radius={[6, 6, 0, 0]}
+                      barSize={performanceFilter === 'all' ? 22 : 36}
+                    >
+                      {displayPerformance.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={scoreToColor(entry.score)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </ChartCard>
         </div>
 

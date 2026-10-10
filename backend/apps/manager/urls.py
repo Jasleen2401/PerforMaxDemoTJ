@@ -37,6 +37,7 @@ urlpatterns = [
 
     # M-09, M-10, M-11: Conduct, Save, and Submit Performance Review
     path('appraisals/', views.ManagerAppraisalSubmissionsView.as_view(), name='appraisals'),
+    path('appraisals/submissions/', views.ManagerAppraisalSubmissionsView.as_view(), name='appraisals_submissions'),
     path('appraisals/<str:pk>/save-draft/', views.ManagerSaveAppraisalDraftView.as_view(), name='appraisal_save_draft'),
     path('appraisals/<str:pk>/submit/', views.ManagerSubmitAppraisalView.as_view(), name='appraisal_submit'),
 

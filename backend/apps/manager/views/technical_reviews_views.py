@@ -6,6 +6,7 @@ from rest_framework import status
 from apps.evidence.models import EvidenceSubmission
 from apps.performance.models import PerformanceCycle, TechnicalCapabilityParameter, TechnicalCapabilityReview
 from apps.employees.models import EmployeeProfile
+from apps.accounts.models import UserRole
 from .base import IsManagerUser
 
 
@@ -33,6 +34,13 @@ class ManagerTechnicalReviewsView(APIView):
 
         if not profile:
             return Response({'code': 404, 'message': 'Intern/Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if profile.manager != request.user:
+                return Response({
+                    'code': 403,
+                    'message': 'You can only review technical capabilities for employees assigned to you by HR or Super Admin.'
+                }, status=status.HTTP_403_FORBIDDEN)
 
         params = TechnicalCapabilityParameter.objects.filter(is_active=True).order_by('category', 'name')
         existing_reviews = {
@@ -103,6 +111,13 @@ class ManagerTechnicalReviewsView(APIView):
 
         if not profile:
             return Response({'code': 404, 'message': 'Intern/Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if profile.manager != request.user:
+                return Response({
+                    'code': 403,
+                    'message': 'You can only review technical capabilities for employees assigned to you by HR or Super Admin.'
+                }, status=status.HTTP_403_FORBIDDEN)
 
         active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
 

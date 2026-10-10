@@ -8,7 +8,7 @@ import {
   useSubmitManagerEvaluationMutation,
 } from '../../features/appraisal/appraisalApi';
 import { useDownloadReportMutation } from '../../features/report/reportApi';
-import { UserCheck, ChevronLeft, Target, CheckCircle2, Download } from 'lucide-react';
+import { UserCheck, ChevronLeft, Target, CheckCircle2, Download, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const RATING_SCALE = [
@@ -118,9 +118,34 @@ const ManagerEvaluation = () => {
     <div style={{ padding: '48px 24px', textAlign: 'center', fontSize: 13, color: '#9EA3B0' }}>Evaluation form could not be loaded.</div>
   );
 
-  const isManager = formData.managerId != null
-    ? Number(user?.id) === Number(formData.managerId)
+  const isManagerRole = user?.role === 'MANAGER' || (user as any)?.isManager;
+  const isAssignedManager = formData.managerId != null
+    ? (String(user?.id).toLowerCase() === String(formData.managerId).toLowerCase() ||
+       String(user?.username || '').toLowerCase() === String(formData.managerName || '').toLowerCase())
     : !(isHR || isAdmin);
+
+  if (isManagerRole && !isHR && !isAdmin && !isAssignedManager) {
+    return (
+      <div className="p-8 max-w-xl mx-auto my-12 bg-white rounded-2xl border border-amber-200 shadow-sm text-center space-y-4">
+        <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto">
+          <ShieldAlert size={24} />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Review Access Restricted</h2>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          As a Tech Manager, you can only review employees and interns who have been assigned to you by HR or Super Admin.
+          <strong> {formData.employeeName || 'This employee'}</strong> is not currently assigned to you.
+        </p>
+        <button
+          onClick={() => navigate('/manager')}
+          className="px-4 py-2 bg-indigo-600 text-white font-semibold text-xs rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer"
+        >
+          Return to Manager Hub
+        </button>
+      </div>
+    );
+  }
+
+  const isManager = isAssignedManager;
   const isReadOnly = !isManager || formData.appraisalStatus === 'HR_APPROVED' || formData.appraisalStatus === 'FINALIZED';
   const isDisabled = isSubmitting || isReadOnly;
 

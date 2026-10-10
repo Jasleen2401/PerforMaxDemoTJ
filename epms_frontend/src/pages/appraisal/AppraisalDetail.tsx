@@ -62,8 +62,9 @@ const AppraisalDetail: React.FC = () => {
     </div>
   );
 
-  const isEmployee = Number(user?.id) === Number(appraisal.employeeId);
-  const isManager = Number(user?.id) === Number(appraisal.managerId);
+  const isEmployee = String(user?.id).toLowerCase() === String(appraisal.employeeId).toLowerCase();
+  const isManager = String(user?.id).toLowerCase() === String(appraisal.managerId).toLowerCase() ||
+    (user?.username && appraisal.managerName && String(user.username).toLowerCase() === String(appraisal.managerName).toLowerCase());
   const isPrivileged = isAdmin || isHR;
   const canViewSelfAssessment = isEmployee || isManager || isPrivileged;
   const canViewManagerEvaluation = isManager || isPrivileged || (isEmployee && !!appraisal.managerSubmittedAt);

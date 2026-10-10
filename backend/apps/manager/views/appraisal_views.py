@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.performance.models import Appraisal, AppraisalRating, AppraisalStatus, EvaluationCriterion, PerformanceCycle
 from apps.employees.models import EmployeeProfile
+from apps.accounts.models import UserRole
 from .base import IsManagerUser, get_manager_reports_qs
 
 
@@ -62,6 +63,13 @@ class ManagerAppraisalSubmissionsView(APIView):
         if not profile:
             return Response({'code': 404, 'message': 'Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if profile.manager != request.user:
+                return Response({
+                    'code': 403,
+                    'message': 'You can only conduct performance reviews for employees assigned to you by HR or Super Admin.'
+                }, status=status.HTTP_403_FORBIDDEN)
+
         cycle = None
         if cycle_id:
             cycle = PerformanceCycle.objects.filter(id=str(cycle_id)).first()
@@ -115,6 +123,13 @@ class ManagerSaveAppraisalDraftView(APIView):
         if not appraisal:
             return Response({'code': 404, 'message': 'Appraisal not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if appraisal.employee.manager != request.user:
+                return Response({
+                    'code': 403,
+                    'message': 'You can only save review drafts for employees assigned to you by HR or Super Admin.'
+                }, status=status.HTTP_403_FORBIDDEN)
+
         ratings_data = request.data.get('ratings', [])
         comments = request.data.get('reviewer_comments') or request.data.get('finalComment', '')
 
@@ -160,6 +175,13 @@ class ManagerSubmitAppraisalView(APIView):
         appraisal = Appraisal.objects.filter(id=pk).first()
         if not appraisal:
             return Response({'code': 404, 'message': 'Appraisal not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if appraisal.employee.manager != request.user:
+                return Response({
+                    'code': 403,
+                    'message': 'You can only submit reviews for employees assigned to you by HR or Super Admin.'
+                }, status=status.HTTP_403_FORBIDDEN)
 
         comments = request.data.get('reviewer_comments') or request.data.get('finalComment', '')
         if comments:

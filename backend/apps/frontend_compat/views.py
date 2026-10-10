@@ -1971,19 +1971,16 @@ class AppraisalsTeamEvaluationsView(APIView):
 
     def get(self, request):
         user = request.user
-        if user.role == UserRole.MANAGER or getattr(user, 'profile', None):
-            prof = getattr(user, 'profile', None)
+        if user.role == UserRole.MANAGER and not (user.is_hr or user.is_super_admin or user.is_staff):
+            from apps.manager.views.base import get_manager_reports_qs
+            reports = get_manager_reports_qs(user)
             appraisals = Appraisal.objects.filter(
-                Q(reviewer=user) | Q(employee__manager=user)
+                Q(reviewer=user) | Q(employee__in=reports)
             ).distinct()
-            if not appraisals.exists():
-                from apps.manager.views.base import get_manager_reports_qs
-                reports = get_manager_reports_qs(user)
-                appraisals = Appraisal.objects.filter(employee__in=reports).distinct()
-            if not appraisals.exists() and user.role in [UserRole.MANAGER, UserRole.SUPER_ADMIN, UserRole.HR]:
-                appraisals = Appraisal.objects.all()
-        else:
+        elif user.role in [UserRole.SUPER_ADMIN, UserRole.HR] or user.is_staff:
             appraisals = Appraisal.objects.all()
+        else:
+            appraisals = Appraisal.objects.filter(employee__user=user)
 
         return ok_response([map_appraisal(a) for a in appraisals])
 
@@ -2104,6 +2101,10 @@ class AppraisalsCompatView(APIView):
 
     def get(self, request):
         appraisals = Appraisal.objects.select_related('employee', 'cycle', 'reviewer').all()
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            from apps.manager.views.base import get_manager_reports_qs
+            reports = get_manager_reports_qs(request.user)
+            appraisals = appraisals.filter(Q(reviewer=request.user) | Q(employee__in=reports) | Q(employee__user=request.user))
         employee_id = request.query_params.get('employeeId')
         cycle_id = request.query_params.get('cycleId')
         if employee_id:
@@ -2159,6 +2160,11 @@ class AppraisalsCompatView(APIView):
             return Response({"detail": "Employee profile not found."}, status=status.HTTP_400_BAD_REQUEST)
         if not cycle:
             return Response({"detail": "Performance cycle not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Enforce that Manager can only conduct reviews for assigned employees
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if emp.manager != request.user:
+                return error_response("You can only conduct performance reviews for employees assigned to you by HR or Super Admin.", status_code=403)
 
         app, _ = Appraisal.objects.get_or_create(
             employee=emp,
@@ -2304,9 +2310,11 @@ class ManagerEvaluationFormCompatView(APIView):
     def get(self, request, pk):
         app = Appraisal.objects.filter(id=pk).first()
         if not app:
-            app = Appraisal.objects.first()
-        if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if app.employee and app.employee.manager != request.user:
+                return error_response("You can only review employees assigned to you by HR or Super Admin.", status_code=403)
 
         mgr_id = None
         mgr_name = None
@@ -2383,6 +2391,10 @@ class ManagerEvaluationAnswersCompatView(APIView):
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if app.employee and app.employee.manager != request.user:
+                return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
+
         answers = request.data if isinstance(request.data, list) else request.data.get("answers", [])
         criteria = list(EvaluationCriterion.objects.filter(Q(cycle=app.cycle) | Q(cycle__isnull=True)))
         if not criteria:
@@ -2424,6 +2436,10 @@ class ManagerEvaluationDraftCompatView(APIView):
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if app.employee and app.employee.manager != request.user:
+                return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
+
         final_comment = request.query_params.get("finalComment") or request.data.get("finalComment") or request.data.get("reviewer_comments") or ""
         if final_comment:
             app.reviewer_comments = final_comment
@@ -2441,6 +2457,10 @@ class ManagerEvaluationSubmitCompatView(APIView):
         app = Appraisal.objects.filter(id=pk).first()
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+            if app.employee and app.employee.manager != request.user:
+                return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
 
         final_comment = request.query_params.get("finalComment") or request.data.get("finalComment") or request.data.get("reviewer_comments")
         if final_comment:

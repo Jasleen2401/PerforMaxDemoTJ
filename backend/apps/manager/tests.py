@@ -230,6 +230,122 @@ class ManagerMentorModuleTestCase(TestCase):
         }), content_type='application/json', **self.manager_headers)
         self.assertEqual(res.status_code, 403)
 
+    def test_m05_technical_review_unassigned_forbidden(self):
+        """M-05: Technical reviews cannot be conducted for unassigned employees (403 Forbidden)."""
+        other_user = User.objects.create_user(
+            username="unassigned_intern_tr",
+            email="unassigned.tr@company.com",
+            password="OtherPassword123!",
+            role=UserRole.INTERN
+        )
+        other_profile = EmployeeProfile.objects.create(
+            user=other_user,
+            employee_code="INT-888",
+            first_name="Unassigned",
+            last_name="Reviewee",
+            manager=None,
+            designation="Mobile Intern",
+            employment_status="ACTIVE"
+        )
+        param = TechnicalCapabilityParameter.objects.create(
+            name='Mobile Architecture',
+            category='Frontend',
+            benchmark_score=Decimal('4.0'),
+            weight=Decimal('20.0'),
+            created_by=self.manager
+        )
+        res = self.client.post('/api/manager/technical-reviews/', data=json.dumps({
+            'employee_id': str(other_profile.id),
+            'status': 'SUBMITTED',
+            'reviews': [{
+                'parameter_id': str(param.id),
+                'score': 4.0,
+                'mentor_assessment': 'Forbidden attempt'
+            }]
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 403)
+
+    def test_m09_conduct_review_unassigned_forbidden(self):
+        """M-09: Manager cannot create appraisal submission for unassigned employee (403 Forbidden)."""
+        other_user = User.objects.create_user(
+            username="unassigned_appraisal_user",
+            email="unassigned.appraisal@company.com",
+            password="OtherPassword123!",
+            role=UserRole.INTERN
+        )
+        other_profile = EmployeeProfile.objects.create(
+            user=other_user,
+            employee_code="INT-777",
+            first_name="Unassigned",
+            last_name="Appraisee",
+            manager=None,
+            designation="DevOps Intern",
+            employment_status="ACTIVE"
+        )
+        res = self.client.post('/api/manager/appraisals/submissions/', data=json.dumps({
+            'employee_id': str(other_profile.id),
+            'cycle_id': str(self.cycle.id),
+            'reviewer_comments': 'Forbidden submission'
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 403)
+
+    def test_m10_save_draft_unassigned_forbidden(self):
+        """M-10: Manager cannot save appraisal draft for unassigned employee (403 Forbidden)."""
+        other_user = User.objects.create_user(
+            username="unassigned_draft_user",
+            email="unassigned.draft@company.com",
+            password="OtherPassword123!",
+            role=UserRole.INTERN
+        )
+        other_profile = EmployeeProfile.objects.create(
+            user=other_user,
+            employee_code="INT-666",
+            first_name="Unassigned",
+            last_name="DraftTarget",
+            manager=None,
+            designation="Security Intern",
+            employment_status="ACTIVE"
+        )
+        unassigned_appraisal = Appraisal.objects.create(
+            employee=other_profile,
+            cycle=self.cycle,
+            status=AppraisalStatus.DRAFT,
+            reviewer=self.manager
+        )
+        res = self.client.post(f'/api/manager/appraisals/{unassigned_appraisal.id}/save-draft/', data=json.dumps({
+            'reviewer_comments': 'Forbidden draft save',
+            'ratings': []
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 403)
+
+    def test_m11_submit_appraisal_unassigned_forbidden(self):
+        """M-11: Manager cannot submit appraisal for unassigned employee (403 Forbidden)."""
+        other_user = User.objects.create_user(
+            username="unassigned_submit_user",
+            email="unassigned.submit@company.com",
+            password="OtherPassword123!",
+            role=UserRole.INTERN
+        )
+        other_profile = EmployeeProfile.objects.create(
+            user=other_user,
+            employee_code="INT-555",
+            first_name="Unassigned",
+            last_name="SubmitTarget",
+            manager=None,
+            designation="QA Intern",
+            employment_status="ACTIVE"
+        )
+        unassigned_appraisal = Appraisal.objects.create(
+            employee=other_profile,
+            cycle=self.cycle,
+            status=AppraisalStatus.DRAFT,
+            reviewer=self.manager
+        )
+        res = self.client.post(f'/api/manager/appraisals/{unassigned_appraisal.id}/submit/', data=json.dumps({
+            'reviewer_comments': 'Forbidden final submission'
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 403)
+
     def test_m08_review_employee_feedback(self):
         """M-08: Review feedback provided by intern and add comments."""
         fb = Feedback.objects.create(

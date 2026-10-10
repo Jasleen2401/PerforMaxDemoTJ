@@ -26,6 +26,8 @@ from apps.performance.serializers import (
 )
 from apps.performance.services.scoring import ScoringService
 from apps.accounts.permissions import IsHR, IsManager
+from apps.accounts.models import UserRole
+from rest_framework.exceptions import PermissionDenied
 
 class PerformanceCycleViewSet(viewsets.ModelViewSet):
     queryset = PerformanceCycle.objects.select_related('created_by').prefetch_related('goals').all()
@@ -139,6 +141,11 @@ class AppraisalViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        user = self.request.user
+        if user.role == UserRole.MANAGER and not (user.is_hr or user.is_super_admin or user.is_staff):
+            emp = serializer.validated_data.get('employee')
+            if emp and emp.manager != user:
+                raise PermissionDenied('You can only give reviews to employees assigned to you by HR or Super Admin.')
         serializer.save(reviewer=self.request.user)
 
     @action(detail=True, methods=['post'], url_path='submit')

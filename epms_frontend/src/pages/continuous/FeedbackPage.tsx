@@ -382,7 +382,6 @@ const FeedbackPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [goToPage, setGoToPage] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined);
   const [filterFeedbackType, setFilterFeedbackType] = useState<string | undefined>(undefined);
   const [filterTagId, setFilterTagId] = useState<number | undefined>(undefined);
   const [filterCreatedAfter, setFilterCreatedAfter] = useState<string>('');
@@ -398,7 +397,7 @@ const FeedbackPage = () => {
   };
 
   const { data: allResponse, isLoading: isLoadingAll } = useGetAllFeedbacksQuery(
-    { ...queryParams, status: filterStatus },
+    queryParams,
     { skip: !user || perspective !== 'all' }
   );
 
@@ -408,7 +407,7 @@ const FeedbackPage = () => {
   );
 
   const { data: managerResponse, isLoading: isLoadingMgr } = useGetFeedbacksByManagerQuery(
-    { managerId: user?.id || 0, status: filterStatus, ...queryParams },
+    { managerId: user?.id || 0, ...queryParams },
     { skip: !user || perspective !== 'given' }
   );
 
@@ -629,7 +628,7 @@ const FeedbackPage = () => {
         <div className="bg-slate-100 border border-slate-200 rounded-2xl p-1.5 flex gap-2 w-fit shadow-inner">
           <button
             type="button"
-            onClick={() => { setPerspective('all'); setFilterStatus(undefined); setCurrentPage(1); }}
+            onClick={() => { setPerspective('all'); setCurrentPage(1); }}
             className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
               perspective === 'all'
                 ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
@@ -640,7 +639,7 @@ const FeedbackPage = () => {
           </button>
           <button
             type="button"
-            onClick={() => { setPerspective('received'); setFilterStatus(undefined); setCurrentPage(1); }}
+            onClick={() => { setPerspective('received'); setCurrentPage(1); }}
             className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
               perspective === 'received'
                 ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
@@ -651,7 +650,7 @@ const FeedbackPage = () => {
           </button>
           <button
             type="button"
-            onClick={() => { setPerspective('given'); setFilterStatus(undefined); setCurrentPage(1); }}
+            onClick={() => { setPerspective('given'); setCurrentPage(1); }}
             className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
               perspective === 'given'
                 ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
@@ -661,20 +660,6 @@ const FeedbackPage = () => {
             Feedback Given
           </button>
         </div>
-
-        {/* Draft/Published filter */}
-        {perspective !== 'received' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {([{ label: 'All Statuses', value: undefined }, { label: 'Published Only', value: ContinuousStatus.PUBLISHED }, { label: 'Drafts Only', value: ContinuousStatus.DRAFT }] as const).map(({ label, value }) => (
-              <button key={label} type="button"
-                onClick={() => { setFilterStatus(value as string | undefined); setCurrentPage(1); }}
-                className="office-pill-filter"
-                style={{ background: filterStatus === value ? '#4F46E5' : '#F1F5F9', color: filterStatus === value ? '#FFFFFF' : '#475569', border: filterStatus === value ? '1px solid #4F46E5' : '1px solid #E2E8F0' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Filter Toolbar */}
@@ -853,10 +838,9 @@ const FeedbackPage = () => {
             </div>
           </div>
           {(isManager || isAdmin || isHR) && perspective !== 'received' && (
-            <button type="button"
-              onClick={() => { setFilterStatus(ContinuousStatus.DRAFT); setCurrentPage(1); }}
-              className="office-panel hover:border-[#FDE68A] transition-colors"
-              style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', cursor: 'pointer' }}
+            <div
+              className="office-panel"
+              style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left' }}
             >
               <div style={{ width: 42, height: 42, borderRadius: 10, background: '#FFFBEB', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #FDE68A' }}>
                 <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -865,7 +849,7 @@ const FeedbackPage = () => {
                 <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Total Drafts</p>
                 <p style={{ fontSize: 22, fontWeight: 800, color: '#B45309' }}>{feedbackStats?.totalDraft || 0}</p>
               </div>
-            </button>
+            </div>
           )}
           <FeedbackSnapshot stats={stats} />
         </div>

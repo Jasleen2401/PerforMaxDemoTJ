@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useGetCurrentUserQuery, useUpdateProfileMutation, useChangePasswordMutation, useUploadProfileImageMutation } from "../features/employee/employeeapi";
+import { useAuth } from "../hooks/useAuth";
 import { toast } from "react-toastify";
 import { validatePassword } from "../utils/validation";
 import type { UpdateProfileRequest, MaritalStatus } from "../features/employee/employeeTypes";
@@ -28,6 +29,9 @@ const panelStyle: React.CSSProperties = {
 };
 
 const EditProfilePage = () => {
+  const { isAdmin, isHR, isManager, isIntern, user: authUser } = useAuth();
+  const isInternUser = isIntern || authUser?.role === 'INTERN' || (!isAdmin && !isHR && !isManager);
+
   const { data: profile, isLoading } = useGetCurrentUserQuery();
   const [updateProfile] = useUpdateProfileMutation();
   const [changePassword] = useChangePasswordMutation();
@@ -193,16 +197,32 @@ const EditProfilePage = () => {
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label style={labelStyle}>Full name</label>
-                  <input style={inputStyle} type="text" value={formData.staffName} onChange={(e) => setFormData({ ...formData, staffName: e.target.value })} />
+                  <label style={labelStyle}>
+                    Full name {isInternUser && <span style={{ color: "#9EA3B0", fontSize: 10 }}>(HR Managed)</span>}
+                  </label>
+                  <input
+                    style={isInternUser ? { ...inputStyle, background: "#EAEDF1", cursor: "not-allowed", color: "#64748B" } : inputStyle}
+                    type="text"
+                    value={formData.staffName}
+                    readOnly={isInternUser}
+                    onChange={(e) => !isInternUser && setFormData({ ...formData, staffName: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Other name</label>
                   <input style={inputStyle} type="text" value={formData.otherName || ""} onChange={(e) => setFormData({ ...formData, otherName: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Email</label>
-                  <input style={inputStyle} type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                  <label style={labelStyle}>
+                    Email {isInternUser && <span style={{ color: "#9EA3B0", fontSize: 10 }}>(HR Managed)</span>}
+                  </label>
+                  <input
+                    style={isInternUser ? { ...inputStyle, background: "#EAEDF1", cursor: "not-allowed", color: "#64748B" } : inputStyle}
+                    type="email"
+                    value={formData.email}
+                    readOnly={isInternUser}
+                    onChange={(e) => !isInternUser && setFormData({ ...formData, email: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Phone</label>

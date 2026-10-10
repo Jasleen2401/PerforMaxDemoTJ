@@ -151,6 +151,7 @@ export interface EmployeeResponse {
   currency?: string;
 
   dateOfAppointment?: string;
+  joiningDate?: string;
   dateOfConfirmation?: string;
   dateOfPromotion?: string;
 

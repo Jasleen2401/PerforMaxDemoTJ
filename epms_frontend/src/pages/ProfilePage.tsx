@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGetCurrentUserQuery } from "../features/employee/employeeapi";
 import { useGetGoalSetByEmployeeQuery, useGetActiveCycleQuery } from "../services/kpiApi";
+import { useAuth } from "../hooks/useAuth";
+import SimplifiedInternProfile from "../components/intern/SimplifiedInternProfile";
 import {
   Settings,
   ThumbsUp,
@@ -76,7 +78,7 @@ const getAvatarUrl = (img?: string | null) => {
   return img.startsWith("/") ? img : `/${img}`;
 };
 
-const ProfilePage = () => {
+const StandardProfilePage = () => {
   const navigate = useNavigate();
   const { data: profile, isLoading: isProfileLoading } = useGetCurrentUserQuery();
   const { data: activeCycleResp } = useGetActiveCycleQuery();
@@ -663,6 +665,20 @@ const ProfilePage = () => {
       />
     </div>
   );
+};
+
+const ProfilePage = () => {
+  const { user: authUser, isAdmin, isHR, isManager } = useAuth();
+  const isInternUser =
+    authUser?.role === "INTERN" ||
+    authUser?.roles?.some((r) => r.includes("INTERN")) ||
+    (!isAdmin && !isHR && !isManager);
+
+  if (isInternUser) {
+    return <SimplifiedInternProfile />;
+  }
+
+  return <StandardProfilePage />;
 };
 
 export default ProfilePage;

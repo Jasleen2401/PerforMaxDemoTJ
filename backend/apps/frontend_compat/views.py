@@ -107,6 +107,7 @@ def map_employee(profile: EmployeeProfile) -> dict:
         "roles": roles,
         "permissions": [f"ROLE_{r}" for r in roles] + ["ALL"],
         "dateOfAppointment": str(profile.date_of_appointment or profile.joining_date or ""),
+        "joiningDate": str(profile.joining_date or profile.date_of_appointment or ""),
         "dateOfConfirmation": str(profile.date_of_confirmation) if profile.date_of_confirmation else "",
         "dateOfPromotion": str(profile.date_of_promotion) if profile.date_of_promotion else "",
         "dateOfBirth": str(profile.date_of_birth) if profile.date_of_birth else "",
@@ -1738,6 +1739,11 @@ class CurrentUserProfileCompatView(APIView):
                 profile = qs.filter(Q(employee_code__iexact=str(pk)) | Q(user__username__iexact=str(pk))).first()
             if not profile:
                 return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            if profile.user != request.user and request.user.role not in [UserRole.SUPER_ADMIN, UserRole.HR] and not request.user.is_superuser:
+                return Response(
+                    {"detail": "Permission denied. You can only update your own profile."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         else:
             profile = self.get_profile(request.user)
 
@@ -1783,6 +1789,11 @@ class CurrentUserProfileCompatView(APIView):
                 profile = qs.filter(Q(employee_code__iexact=str(pk)) | Q(user__username__iexact=str(pk))).first()
             if not profile:
                 return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            if profile.user != request.user and request.user.role not in [UserRole.SUPER_ADMIN, UserRole.HR] and not request.user.is_superuser:
+                return Response(
+                    {"detail": "Permission denied. You can only update your own profile."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         else:
             profile = self.get_profile(request.user)
 

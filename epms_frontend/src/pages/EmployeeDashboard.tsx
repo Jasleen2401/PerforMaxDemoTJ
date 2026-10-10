@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Award, Bell, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Award, ArrowLeft } from 'lucide-react';
 import {
   useGetInternOverviewQuery,
   useGetInternGoalsQuery,
@@ -135,7 +135,7 @@ export const EmployeeDashboard: React.FC = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Top Header / Welcome Area */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
+      <div className="pb-2 border-b border-slate-200/80">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Award className="text-purple-600" size={26} />
@@ -144,35 +144,6 @@ export const EmployeeDashboard: React.FC = () => {
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             <span className="font-medium text-slate-700">{designation}</span> • {department} • {overviewData?.cycle?.name || 'Active Performance Evaluation'}
           </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          {/* Notification Button */}
-          <button
-            onClick={() => setIsNotifModalOpen(true)}
-            className="relative p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-purple-700 hover:bg-purple-50 transition-colors shadow-2xs cursor-pointer"
-            title="Notifications"
-          >
-            <Bell size={18} />
-            {unreadNotifs && unreadNotifs.unread_count > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white font-bold text-[10px] rounded-full flex items-center justify-center animate-pulse">
-                {unreadNotifs.unread_count}
-              </span>
-            )}
-          </button>
-
-          {/* Refresh Data Button */}
-          <button
-            onClick={handleRefreshAll}
-            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-purple-700 hover:bg-purple-50 transition-colors shadow-2xs cursor-pointer"
-            title="Refresh dashboard data"
-          >
-            <RefreshCw size={18} />
-          </button>
-
-          <span className="bg-purple-50 text-purple-700 font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-xl border border-purple-200 shadow-2xs">
-            Intern Workspace
-          </span>
         </div>
       </div>
 

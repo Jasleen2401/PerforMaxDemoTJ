@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { History, Eye } from 'lucide-react';
 
 import type { KpiProgressHistory } from '../../features/kpi/kpiTypes';
@@ -6,9 +6,21 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 
 interface KpiUpdateHistoryCardProps {
   history: KpiProgressHistory[];
+  onViewFullLog?: () => void;
 }
 
-const KpiUpdateHistoryCard: React.FC<KpiUpdateHistoryCardProps> = ({ history }) => {
+const KpiUpdateHistoryCard: React.FC<KpiUpdateHistoryCardProps> = ({ history, onViewFullLog }) => {
+  const [showAll, setShowAll] = useState(false);
+  const displayedHistory = showAll ? history : history.slice(0, 5);
+
+  const handleToggle = () => {
+    if (onViewFullLog) {
+      onViewFullLog();
+    } else {
+      setShowAll(prev => !prev);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
       <div className="flex items-center justify-between mb-6">
@@ -22,8 +34,8 @@ const KpiUpdateHistoryCard: React.FC<KpiUpdateHistoryCardProps> = ({ history }) 
       </div>
 
       <div className="space-y-3 mb-6">
-        {history.length > 0 ? (
-          history.map((item) => (
+        {displayedHistory.length > 0 ? (
+          displayedHistory.map((item) => (
             <div key={item.id} className="grid grid-cols-12 gap-4 items-center bg-gray-50/50 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors group cursor-pointer" title={item.evidenceNote}>
               <div className="col-span-8 overflow-hidden">
                 <p className="text-sm font-bold text-gray-900">{formatRelativeTime(item.updatedAt)}</p>
@@ -41,9 +53,15 @@ const KpiUpdateHistoryCard: React.FC<KpiUpdateHistoryCardProps> = ({ history }) 
         )}
       </div>
 
-      <button className="w-full py-2 bg-gray-50 text-gray-600 text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-gray-100 transition-colors border border-gray-200">
-        View Full Log
-      </button>
+      {history.length > 5 && (
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="w-full py-2 bg-gray-50 text-gray-600 text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 cursor-pointer"
+        >
+          {showAll ? 'Show Fewer Updates' : `View Full Log (${history.length})`}
+        </button>
+      )}
     </div>
   );
 };

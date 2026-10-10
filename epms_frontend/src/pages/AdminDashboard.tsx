@@ -315,7 +315,8 @@ const AdminDashboard: React.FC = () => {
             value={data?.failedLoginsLast24h ?? 0}
             icon={<Activity size={15} />}
             color="red"
-            subtitle="Perimeter security status"
+            subtitle="Review security access →"
+            onClick={() => navigate('/superadmin/roles-permissions')}
           />
           <DashboardStatCard
             title="Accounts created (this month)"

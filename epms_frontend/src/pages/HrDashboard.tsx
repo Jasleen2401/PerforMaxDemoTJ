@@ -18,12 +18,12 @@ const HrDashboard: React.FC = () => {
   if (error) return <div className="py-16 text-center" style={{ color: "#791F1F", fontSize: 13 }}>Error loading dashboard data.</div>;
 
   const quickActions: Action[] = [
-    { id: '1', label: 'Launch cycle', icon: <TrendingDown size={16} />, onClick: () => navigate('/hr/cycles/new'), color: 'bg-blue-100 text-blue-600' },
-    { id: '2', label: 'Add employee', icon: <UserPlus size={16} />, onClick: () => navigate('/hr/employees/new'), color: 'bg-green-100 text-green-600' },
-    { id: '3', label: 'Generate report', icon: <FileText size={16} />, onClick: () => navigate('/hr/reports'), color: 'bg-purple-100 text-purple-600' },
-    { id: '4', label: 'Review PIPs', icon: <AlertTriangle size={16} />, onClick: () => navigate('/hr/pips'), color: 'bg-red-100 text-red-600' },
-    { id: '5', label: 'Send reminder', icon: <Bell size={16} />, onClick: () => navigate('/hr/reminders'), color: 'bg-orange-100 text-orange-600' },
-    { id: '6', label: 'Manage roles', icon: <Building2 size={16} />, onClick: () => navigate('/hr/roles'), color: 'bg-indigo-100 text-indigo-600' },
+    { id: '1', label: 'Launch cycle', icon: <TrendingDown size={16} />, onClick: () => navigate('/appraisal/create-cycle'), color: 'bg-blue-100 text-blue-600' },
+    { id: '2', label: 'Add employee', icon: <UserPlus size={16} />, onClick: () => navigate('/employees/new'), color: 'bg-green-100 text-green-600' },
+    { id: '3', label: 'Generate report', icon: <FileText size={16} />, onClick: () => navigate('/analytics'), color: 'bg-purple-100 text-purple-600' },
+    { id: '4', label: 'Review PIPs', icon: <AlertTriangle size={16} />, onClick: () => navigate('/pip'), color: 'bg-red-100 text-red-600' },
+    { id: '5', label: 'Send reminder', icon: <Bell size={16} />, onClick: () => navigate('/notifications'), color: 'bg-orange-100 text-orange-600' },
+    { id: '6', label: 'Manage roles', icon: <Building2 size={16} />, onClick: () => navigate('/roles'), color: 'bg-indigo-100 text-indigo-600' },
   ];
 
   return (
@@ -35,10 +35,38 @@ const HrDashboard: React.FC = () => {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashboardStatCard title="Under review" value={data?.totalEmployeesUnderReview ?? 0} icon={<Users size={15} />} color="blue" />
-        <DashboardStatCard title="Pending self-assessments" value={data?.pendingSelfAssessments ?? 0} icon={<ClipboardList size={15} />} color="orange" />
-        <DashboardStatCard title="Manager reviews pending" value={data?.pendingManagerReviews ?? 0} icon={<CheckSquare size={15} />} color="purple" />
-        <DashboardStatCard title="Open PIPs" value={data?.openPips ?? 0} icon={<AlertTriangle size={15} />} color="red" />
+        <DashboardStatCard
+          title="Under review"
+          value={data?.totalEmployeesUnderReview ?? 0}
+          icon={<Users size={15} />}
+          color="blue"
+          subtitle="View appraisals →"
+          onClick={() => navigate('/appraisal')}
+        />
+        <DashboardStatCard
+          title="Pending self-assessments"
+          value={data?.pendingSelfAssessments ?? 0}
+          icon={<ClipboardList size={15} />}
+          color="orange"
+          subtitle="Track submissions →"
+          onClick={() => navigate('/appraisal')}
+        />
+        <DashboardStatCard
+          title="Manager reviews pending"
+          value={data?.pendingManagerReviews ?? 0}
+          icon={<CheckSquare size={15} />}
+          color="purple"
+          subtitle="Manager hub →"
+          onClick={() => navigate('/manager/mentees')}
+        />
+        <DashboardStatCard
+          title="Open PIPs"
+          value={data?.openPips ?? 0}
+          icon={<AlertTriangle size={15} />}
+          color="red"
+          subtitle="Manage PIPs →"
+          onClick={() => navigate('/pip')}
+        />
       </div>
 
       {/* Charts & Progress */}
@@ -167,7 +195,7 @@ const HrDashboard: React.FC = () => {
       )}
 
       {/* Quick actions */}
-      {/* <QuickActionPanel actions={quickActions} /> */}
+      <QuickActionPanel actions={quickActions} />
 
       {/* Tasks & Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -53,8 +53,9 @@ const TeamKpiDashboard: React.FC = () => {
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'progress-high' | 'progress-low'>('name');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'assigned' | 'pending'>('all');
 
-  const teamMembers = useMemo(() => {
+  const allEligibleMembers = useMemo(() => {
     if (!user || !employees) return [];
     let members = employees.map(emp => {
       const goals = teamGoals.find(g => String(g.employeeId) === String(emp.id));
@@ -72,29 +73,38 @@ const TeamKpiDashboard: React.FC = () => {
       }
       return { ...emp, goalSet: goals, progress };
     });
-    members = members.filter(isKpiEligible);
+    return members.filter(isKpiEligible);
+  }, [employees, user, teamGoals]);
+
+  const stats = useMemo(() => {
+    const withGoals = allEligibleMembers.filter(m => m.goalSet).length;
+    return {
+      coverage: allEligibleMembers.length > 0 ? Math.round((withGoals / allEligibleMembers.length) * 100) : 0,
+      assigned: withGoals,
+      pending: allEligibleMembers.length - withGoals,
+    };
+  }, [allEligibleMembers]);
+
+  const teamMembers = useMemo(() => {
+    let members = [...allEligibleMembers];
+    if (statusFilter === 'assigned') {
+      members = members.filter(m => Boolean(m.goalSet));
+    } else if (statusFilter === 'pending') {
+      members = members.filter(m => !m.goalSet);
+    }
     if (searchTerm) {
       members = members.filter(m =>
         m.staffName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         m.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-    return [...members].sort((a, b) => {
+    return members.sort((a, b) => {
       if (sortBy === 'name') return a.staffName.localeCompare(b.staffName);
       if (sortBy === 'progress-high') return b.progress - a.progress;
       if (sortBy === 'progress-low') return a.progress - b.progress;
       return 0;
     });
-  }, [employees, user, teamGoals, searchTerm, sortBy]);
-
-  const stats = useMemo(() => {
-    const withGoals = teamMembers.filter(m => m.goalSet).length;
-    return {
-      coverage: teamMembers.length > 0 ? Math.round((withGoals / teamMembers.length) * 100) : 0,
-      assigned: withGoals,
-      pending: teamMembers.length - withGoals,
-    };
-  }, [teamMembers]);
+  }, [allEligibleMembers, statusFilter, searchTerm, sortBy]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedIds(e.target.checked ? teamMembers.map(m => m.id) : []);
@@ -135,7 +145,15 @@ const TeamKpiDashboard: React.FC = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setStatusFilter('all')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStatusFilter('all'); } }}
+          style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}
+          className={`cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all ${statusFilter === 'all' ? 'border-indigo-400 ring-2 ring-indigo-100' : ''}`}
+          title="Show all team members"
+        >
           <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
             <p style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Goal Assignment</p>
             <div className="flex items-center gap-1" style={{ color: '#1A56DB' }}>
@@ -149,11 +167,19 @@ const TeamKpiDashboard: React.FC = () => {
           </div>
           <div className="flex justify-between">
             <span style={{ fontSize: 10, color: '#9EA3B0' }}>Phase: Goal Setting</span>
-            <span style={{ fontSize: 10, color: '#9EA3B0' }}>{stats.assigned} of {teamMembers.length}</span>
+            <span style={{ fontSize: 10, color: '#9EA3B0' }}>{stats.assigned} of {allEligibleMembers.length}</span>
           </div>
         </div>
 
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setStatusFilter(prev => prev === 'assigned' ? 'all' : 'assigned')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStatusFilter(prev => prev === 'assigned' ? 'all' : 'assigned'); } }}
+          style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}
+          className={`cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all ${statusFilter === 'assigned' ? 'border-emerald-400 ring-2 ring-emerald-100' : ''}`}
+          title="Filter to assigned members"
+        >
           <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <CheckCircle2 size={15} style={{ color: '#27500A' }} />
@@ -161,10 +187,20 @@ const TeamKpiDashboard: React.FC = () => {
             <p style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>Assigned</p>
           </div>
           <p style={{ fontSize: 28, fontWeight: 500, color: '#111827', marginBottom: 2 }}>{stats.assigned}</p>
-          <p style={{ fontSize: 10, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Goal Sets</p>
+          <p style={{ fontSize: 10, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {statusFilter === 'assigned' ? 'Showing Assigned (Click to reset)' : 'Active Goal Sets'}
+          </p>
         </div>
 
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending'); } }}
+          style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}
+          className={`cursor-pointer hover:border-rose-300 hover:shadow-md transition-all ${statusFilter === 'pending' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
+          title="Filter to pending members"
+        >
           <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FCEBEB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <AlertCircle size={15} style={{ color: '#791F1F' }} />
@@ -172,7 +208,9 @@ const TeamKpiDashboard: React.FC = () => {
             <p style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>Pending</p>
           </div>
           <p style={{ fontSize: 28, fontWeight: 500, color: '#791F1F', marginBottom: 2 }}>{stats.pending}</p>
-          <p style={{ fontSize: 10, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Requires Assignment</p>
+          <p style={{ fontSize: 10, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {statusFilter === 'pending' ? 'Showing Pending (Click to reset)' : 'Requires Assignment'}
+          </p>
         </div>
       </div>
 
@@ -264,11 +302,10 @@ const TeamKpiDashboard: React.FC = () => {
                       style={{
                         borderBottom: idx < teamMembers.length - 1 ? '0.5px solid #F0F2F6' : 'none',
                         background: selectedIds.includes(emp.id) ? '#EEF3FD' : '#FFFFFF',
-                        cursor: status ? 'pointer' : 'default',
+                        cursor: 'pointer',
                       }}
-                      className={status ? 'hover:bg-[#FAFBFF] transition-colors' : 'transition-colors'}
+                      className="hover:bg-[#FAFBFF] transition-colors cursor-pointer"
                       onClick={() => {
-                        if (!status) return;
                         const base = (status === 'APPROVED' || status === 'LOCKED') ? `/kpi/goals/${emp.id}` : `/kpi/assign/${emp.id}`;
                         navigate(`${base}?cycleId=${effectiveCycleId}`);
                       }}>

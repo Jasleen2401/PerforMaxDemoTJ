@@ -10,6 +10,7 @@ interface StatCardProps {
   };
   color?: string;
   subtitle?: string;
+  onClick?: () => void;
 }
 
 const COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = {
@@ -28,11 +29,32 @@ const DashboardStatCard: React.FC<StatCardProps> = ({
   trend,
   color = "indigo",
   subtitle,
+  onClick,
 }) => {
   const colors = COLOR_MAP[color] ?? COLOR_MAP.indigo;
+  const isClickable = Boolean(onClick);
 
   return (
-    <div className="dailoqa-card p-5 select-none relative overflow-hidden group">
+    <div
+      onClick={onClick}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={
+        isClickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      className={`dailoqa-card p-5 select-none relative overflow-hidden group transition-all duration-200 ${
+        isClickable
+          ? "cursor-pointer hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 focus:outline-hidden focus:ring-2 focus:ring-indigo-400"
+          : ""
+      }`}
+    >
       {/* Top Row: Icon container + Trend Badge */}
       <div className="flex items-start justify-between">
         <div
@@ -61,15 +83,15 @@ const DashboardStatCard: React.FC<StatCardProps> = ({
 
       {/* Value */}
       <div className="mt-4">
-        <span className="text-2xl font-extrabold tracking-tight text-slate-900 block leading-none">
+        <span className="text-2xl font-extrabold tracking-tight text-slate-900 block leading-none group-hover:text-indigo-950 transition-colors">
           {value}
         </span>
       </div>
 
       {/* Label */}
       <div className="mt-1.5 flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500 truncate">{title}</span>
-        {subtitle && <span className="text-[10.5px] text-slate-400 truncate">{subtitle}</span>}
+        <span className="text-xs font-medium text-slate-500 truncate group-hover:text-slate-800 transition-colors">{title}</span>
+        {subtitle && <span className="text-[10.5px] text-slate-400 truncate group-hover:text-indigo-600 transition-colors">{subtitle}</span>}
       </div>
     </div>
   );

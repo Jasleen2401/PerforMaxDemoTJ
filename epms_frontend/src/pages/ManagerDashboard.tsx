@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Users, CheckCircle2, AlertCircle, HelpCircle, TrendingUp, Layers, Briefcase, AlertTriangle } from 'lucide-react';
 import { useGetManagerDashboardQuery } from '../features/dashboard/dashboardApi';
@@ -10,6 +10,7 @@ import { scoreToColor, progressToColor} from '../constants/dashboardColors';
 import EmployeeDashboard from './EmployeeDashboard';
 
 const ManagerDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'team' | 'personal'>('personal');
   const [performanceFilter, setPerformanceFilter] = useState<'active' | 'top10' | 'all'>('active');
   const { data, isLoading, error } = useGetManagerDashboardQuery();
@@ -116,10 +117,38 @@ const ManagerDashboard: React.FC = () => {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashboardStatCard title="Team size" value={data?.teamSize ?? 0} icon={<Users size={15} />} color="blue" />
-        <DashboardStatCard title="Reviews completed" value={`${data?.reviewsCompleted ?? 0}/${data?.totalReviews ?? 0}`} icon={<CheckCircle2 size={15} />} color="green" />
-        <DashboardStatCard title="Pending reviews" value={data?.pendingReviews ?? 0} icon={<AlertCircle size={15} />} color="orange" />
-        <DashboardStatCard title="Feedback requests" value={data?.feedbackRequests ?? 0} icon={<HelpCircle size={15} />} color="purple" />
+        <DashboardStatCard
+          title="Team size"
+          value={data?.teamSize ?? 0}
+          subtitle="View team directory"
+          icon={<Users size={15} />}
+          color="blue"
+          onClick={() => navigate('/manager/mentees')}
+        />
+        <DashboardStatCard
+          title="Reviews completed"
+          value={`${data?.reviewsCompleted ?? 0}/${data?.totalReviews ?? 0}`}
+          subtitle="Track appraisal cycle"
+          icon={<CheckCircle2 size={15} />}
+          color="green"
+          onClick={() => navigate('/appraisal')}
+        />
+        <DashboardStatCard
+          title="Pending reviews"
+          value={data?.pendingReviews ?? 0}
+          subtitle="Action required"
+          icon={<AlertCircle size={15} />}
+          color="orange"
+          onClick={() => navigate('/manager/mentees')}
+        />
+        <DashboardStatCard
+          title="Feedback requests"
+          value={data?.feedbackRequests ?? 0}
+          subtitle="Continuous feedback"
+          icon={<HelpCircle size={15} />}
+          color="purple"
+          onClick={() => navigate('/continuous-feedback')}
+        />
       </div>
 
       {/* Charts */}
@@ -256,14 +285,18 @@ const ManagerDashboard: React.FC = () => {
           <DashboardStatCard
             title="Team average score"
             value={data?.teamAvgScore?.toFixed(1) ?? 'N/A'}
+            subtitle="View analytics"
             icon={<TrendingUp size={15} />}
             color="blue"
+            onClick={() => navigate('/analytics')}
           />
           <DashboardStatCard
             title="Company average score"
             value={data?.companyAvgScore?.toFixed(1) ?? 'N/A'}
+            subtitle="Organization benchmark"
             icon={<TrendingUp size={15} />}
             color="green"
+            onClick={() => navigate('/analytics')}
           />
         </div>
       )}
@@ -277,7 +310,16 @@ const ManagerDashboard: React.FC = () => {
           </div>
           <div className="space-y-2">
             {data.atRiskEmployees.map((emp, idx) => (
-              <div key={idx} className="flex items-center justify-between p-2 rounded" style={{ background: "#FCEBEB" }}>
+              <div
+                key={idx}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/pip')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/pip'); } }}
+                className="flex items-center justify-between p-2 rounded cursor-pointer hover:opacity-90 transition-opacity"
+                style={{ background: "#FCEBEB" }}
+                title="View Performance Improvement Plans"
+              >
                 <span style={{ fontSize: 12, color: "#111827", fontWeight: 500 }}>{emp.name}</span>
                 <span style={{ fontSize: 11, color: "#E24B4A", fontWeight: 600 }}>↓ {Math.abs(emp.delta || 0).toFixed(1)} pts</span>
               </div>
@@ -292,7 +334,17 @@ const ManagerDashboard: React.FC = () => {
           <p style={{ fontSize: 14, fontWeight: 500, color: "#111827", marginBottom: 12 }}>Awaiting self-assessments ({data.pendingSelfAssessmentNames.length})</p>
           <div className="space-y-1">
             {data.pendingSelfAssessmentNames.map((name, idx) => (
-              <div key={idx} style={{ fontSize: 12, color: "#5A6070", paddingLeft: 8 }}>• {name}</div>
+              <div
+                key={idx}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/appraisal')}
+                style={{ fontSize: 12, color: "#5A6070", paddingLeft: 8, cursor: 'pointer' }}
+                className="hover:text-blue-600 transition-colors"
+                title="View Appraisal Cycles"
+              >
+                • {name}
+              </div>
             ))}
           </div>
         </div>
@@ -301,6 +353,8 @@ const ManagerDashboard: React.FC = () => {
       {/* Tasks */}
       <TaskPanel
         title="Urgent team reviews"
+        viewAllLink="/manager/mentees"
+        onTaskClick={() => navigate('/manager/mentees')}
         tasks={data?.urgentReviews.map(t => ({
           id: t.id,
           title: t.title,

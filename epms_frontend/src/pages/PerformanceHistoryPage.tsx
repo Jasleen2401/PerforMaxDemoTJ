@@ -238,8 +238,33 @@ export const PerformanceHistoryPage = () => {
               {isGovernanceMode ? 'Audit Log / Transparent History' : 'Performance Timeline'}
             </p>
             {isGovernanceMode && (
-              <button style={{ background: '#F5F6F8', color: '#5A6070', border: '0.5px solid #E0E2E8', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}
-                className="hover:bg-[#E0E2E8] transition-colors">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!filteredHistory || filteredHistory.length === 0) {
+                    alert('No performance history records available to export.');
+                    return;
+                  }
+                  const headers = ['Timestamp', 'Participants', 'Type', 'Content', 'Status'];
+                  const rows = filteredHistory.map(r => [
+                    `"${(r.timestamp || '').replace(/"/g, '""')}"`,
+                    `"${(r.participants || '').replace(/"/g, '""')}"`,
+                    `"${(r.tag || r.type || '').replace(/"/g, '""')}"`,
+                    `"${(r.content || '').replace(/"/g, '""')}"`,
+                    `"${(r.status || '').replace(/"/g, '""')}"`
+                  ]);
+                  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+                  const encodedUri = encodeURI(csvContent);
+                  const link = document.createElement('a');
+                  link.setAttribute('href', encodedUri);
+                  link.setAttribute('download', `performance_history_${new Date().toISOString().split('T')[0]}.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                style={{ background: '#F5F6F8', color: '#5A6070', border: '0.5px solid #E0E2E8', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                className="hover:bg-[#E0E2E8] transition-colors cursor-pointer"
+              >
                 <svg style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 Export CSV
               </button>

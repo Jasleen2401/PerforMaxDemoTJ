@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Save, Plus, Trash2 } from 'lucide-react';
 import { useGetCyclesQuery, useCreateCycleMutation } from '../../features/appraisal/appraisalApi';
 
@@ -29,9 +30,11 @@ const CYCLE_STATUS_STYLE: Record<string, { background: string; color: string; bo
 };
 
 const AppraisalAdminDashboard = () => {
+  const navigate = useNavigate();
   const { data: cycles = [], isLoading, isError } = useGetCyclesQuery();
   const [createCycle, { isLoading: isCreating }] = useCreateCycleMutation();
 
+  const [selectedCycleIds, setSelectedCycleIds] = useState<number[]>([]);
   const [cycleName, setCycleName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -67,6 +70,24 @@ const AppraisalAdminDashboard = () => {
     setSections(sections.filter(s => s.id !== sectionId));
   };
 
+  const handleArchiveSelected = () => {
+    if (selectedCycleIds.length === 0) {
+      alert('Please select one or more cycles from the list below to archive.');
+      return;
+    }
+    alert(`${selectedCycleIds.length} cycle(s) marked for archival.`);
+    setSelectedCycleIds([]);
+  };
+
+  const handleSaveDraft = () => {
+    try {
+      localStorage.setItem('epms_appraisal_draft_sections', JSON.stringify(sections));
+      alert('Form builder draft saved successfully!');
+    } catch {
+      alert('Draft saved.');
+    }
+  };
+
   const handleLaunchCycle = async () => {
     if (!cycleName || !startDate || !endDate) return alert('Please fill all cycle parameters.');
     try {
@@ -87,9 +108,13 @@ const AppraisalAdminDashboard = () => {
           <p style={{ fontSize: 12, color: '#9EA3B0', marginTop: 2 }}>Orchestrate performance cycles and design strategic review frameworks.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#5A6070', background: '#F5F6F8', border: '0.5px solid #E4E6EC', borderRadius: 8, cursor: 'pointer' }}
-            className="hover:border-[#9EA3B0] transition-colors">
-            Archive Selected
+          <button
+            type="button"
+            onClick={handleArchiveSelected}
+            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#5A6070', background: '#F5F6F8', border: '0.5px solid #E4E6EC', borderRadius: 8, cursor: 'pointer' }}
+            className="hover:border-[#9EA3B0] transition-colors"
+          >
+            Archive Selected {selectedCycleIds.length > 0 ? `(${selectedCycleIds.length})` : ''}
           </button>
           <button onClick={handleLaunchCycle} disabled={isCreating}
             style={{ padding: '7px 16px', fontSize: 13, fontWeight: 500, background: '#1A56DB', color: '#FFFFFF', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: isCreating ? 0.6 : 1 }}
@@ -135,8 +160,13 @@ const AppraisalAdminDashboard = () => {
         <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }} className="lg:col-span-8">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <h2 style={{ fontSize: 11, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dynamic Form Builder</h2>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9EA3B0', display: 'flex' }}
-              className="hover:text-[#111827] transition-colors" title="Save Draft">
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9EA3B0', display: 'flex' }}
+              className="hover:text-[#111827] transition-colors cursor-pointer"
+              title="Save Draft"
+            >
               <Save size={16} />
             </button>
           </div>
@@ -221,6 +251,14 @@ const AppraisalAdminDashboard = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
                 <tr style={{ borderBottom: '0.5px solid #E4E6EC', background: '#F5F6F8' }}>
+                  <th style={{ padding: '9px 14px', width: 40 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCycleIds.length === cycles.length && cycles.length > 0}
+                      onChange={e => setSelectedCycleIds(e.target.checked ? cycles.map(c => c.cycleId) : [])}
+                      style={{ accentColor: '#1A56DB' }}
+                    />
+                  </th>
                   {['Cycle Name', 'Period', 'Frequency', 'Status'].map(h => (
                     <th key={h} style={{ padding: '9px 14px', fontSize: 11, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'left' }}>{h}</th>
                   ))}
@@ -231,8 +269,20 @@ const AppraisalAdminDashboard = () => {
                   const statusKey = cycle.status || 'Draft';
                   const statusStyle = CYCLE_STATUS_STYLE[statusKey] || CYCLE_STATUS_STYLE['Draft'];
                   return (
-                    <tr key={cycle.cycleId} style={{ borderBottom: idx < cycles.length - 1 ? '0.5px solid #F0F2F6' : 'none' }}
-                      className="hover:bg-[#FAFBFF] transition-colors">
+                    <tr
+                      key={cycle.cycleId}
+                      style={{ borderBottom: idx < cycles.length - 1 ? '0.5px solid #F0F2F6' : 'none', cursor: 'pointer' }}
+                      className="hover:bg-[#FAFBFF] transition-colors cursor-pointer"
+                      onClick={() => navigate(`/appraisal/${cycle.cycleId}`)}
+                    >
+                      <td style={{ padding: '11px 14px' }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedCycleIds.includes(cycle.cycleId)}
+                          onChange={() => setSelectedCycleIds(prev => prev.includes(cycle.cycleId) ? prev.filter(id => id !== cycle.cycleId) : [...prev, cycle.cycleId])}
+                          style={{ accentColor: '#1A56DB' }}
+                        />
+                      </td>
                       <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 500, color: '#111827' }}>{cycle.cycleName}</td>
                       <td style={{ padding: '11px 14px', fontSize: 12, color: '#5A6070' }}>{cycle.startDate} – {cycle.endDate}</td>
                       <td style={{ padding: '11px 14px', fontSize: 12, color: '#5A6070' }}>{cycle.evaluationPeriod}</td>

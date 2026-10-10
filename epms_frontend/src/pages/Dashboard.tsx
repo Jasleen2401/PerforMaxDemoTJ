@@ -34,24 +34,24 @@ const Dashboard = () => {
 
   const getMetrics = () => {
     if (isAdmin) return [
-      { label: "Total Workforce", value: "428", icon: <Users size={15} />, color: "blue" as const },
-      { label: "Active departments", value: "8", icon: <Building2 size={15} />, color: "green" as const },
-      { label: "System health", value: "100%", icon: <BarChart3 size={15} />, color: "green" as const },
+      { label: "Total Workforce", value: "428", icon: <Users size={15} />, color: "blue" as const, to: "/employees" },
+      { label: "Active departments", value: "8", icon: <Building2 size={15} />, color: "green" as const, to: "/departments" },
+      { label: "System health", value: "100%", icon: <BarChart3 size={15} />, color: "green" as const, to: "/analytics" },
     ];
     if (isHR) return [
-      { label: "Active PIPs", value: "12", icon: <Target size={15} />, color: "blue" as const },
-      { label: "Completion rate", value: "88%", icon: <BarChart3 size={15} />, color: "green" as const },
-      { label: "Training needs", value: "5", icon: <ClipboardCheck size={15} />, color: "orange" as const },
+      { label: "Active PIPs", value: "12", icon: <Target size={15} />, color: "blue" as const, to: "/pip" },
+      { label: "Completion rate", value: "88%", icon: <BarChart3 size={15} />, color: "green" as const, to: "/analytics" },
+      { label: "Training needs", value: "5", icon: <ClipboardCheck size={15} />, color: "orange" as const, to: "/appraisal" },
     ];
     if (isManager) return [
-      { label: "Direct reports", value: "14", icon: <Users size={15} />, color: "blue" as const },
-      { label: "Team avg score", value: "3.8", icon: <BarChart3 size={15} />, color: "orange" as const },
-      { label: "Pending reviews", value: "3", icon: <ClipboardCheck size={15} />, color: "blue" as const },
+      { label: "Direct reports", value: "14", icon: <Users size={15} />, color: "blue" as const, to: "/manager/mentees" },
+      { label: "Team avg score", value: "3.8", icon: <BarChart3 size={15} />, color: "orange" as const, to: "/analytics" },
+      { label: "Pending reviews", value: "3", icon: <ClipboardCheck size={15} />, color: "blue" as const, to: "/manager/mentees" },
     ];
     return [
-      { label: "My last rating", value: "4.2", icon: <BarChart3 size={15} />, color: "green" as const },
-      { label: "KPI progress", value: "75%", icon: <Target size={15} />, color: "blue" as const },
-      { label: "Days to review", value: "18", icon: <Calendar size={15} />, color: "orange" as const },
+      { label: "My last rating", value: "4.2", icon: <BarChart3 size={15} />, color: "green" as const, to: "/appraisal" },
+      { label: "KPI progress", value: "75%", icon: <Target size={15} />, color: "blue" as const, to: "/kpi/my" },
+      { label: "Days to review", value: "18", icon: <Calendar size={15} />, color: "orange" as const, to: "/appraisal" },
     ];
   };
 
@@ -64,7 +64,7 @@ const Dashboard = () => {
   const metrics = getMetrics();
 
   const actionCards = [
-    ...(isAdmin ? [{ title: "System config", desc: "Manage global parameters and system logs.", label: "Admin console", to: "/admin/settings", fill: "#EEF3FD", textColor: "#0C447C" }] : []),
+    ...(isAdmin ? [{ title: "System config", desc: "Manage global parameters and system governance.", label: "Admin console", to: "/superadmin", fill: "#EEF3FD", textColor: "#0C447C" }] : []),
     ...(isHR ? [{ title: "Talent management", desc: "Oversee hiring, reviews and department structures.", label: "HR panel", to: "/employees", fill: "#EAF3DE", textColor: "#27500A" }] : []),
     ...(isManager ? [{ title: "Team tracking", desc: "Monitor direct reports and KPI progress.", label: "Review team", to: "/kpi/team", fill: "#EAF3DE", textColor: "#27500A" }] : []),
     ...(isEmployee ? [{ title: "My growth", desc: "Submit self-assessments and track your goals.", label: "Self review", to: "/appraisal", fill: "#FAEEDA", textColor: "#633806" }] : []),
@@ -83,7 +83,7 @@ const Dashboard = () => {
         {(isAdmin || isHR || isManager) && (
           <button
             onClick={() => navigate("/pip/new")}
-            className="flex items-center gap-[9px] text-white text-[13px] font-medium transition-colors self-start sm:self-auto"
+            className="flex items-center gap-[9px] text-white text-[13px] font-medium transition-colors self-start sm:self-auto cursor-pointer"
             style={{ background: "#1A56DB", borderRadius: 8, padding: "8px 14px", border: "none" }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "#1648C0"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "#1A56DB"; }}
@@ -101,12 +101,17 @@ const Dashboard = () => {
           return (
             <div
               key={m.label}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(m.to)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(m.to); } }}
               style={{
                 background: "#FFFFFF",
                 border: "0.5px solid #E4E6EC",
                 borderRadius: 12,
                 padding: "14px 16px",
               }}
+              className="cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all hover:-translate-y-0.5 active:translate-y-0"
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, background: colors.bg, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -131,7 +136,7 @@ const Dashboard = () => {
                 <button
                   key={card.to}
                   onClick={() => navigate(card.to)}
-                  className="text-left w-full transition-colors"
+                  className="text-left w-full transition-colors cursor-pointer hover:shadow-md"
                   style={{ background: card.fill, border: "0.5px solid #E4E6EC", borderRadius: 12, padding: "16px 18px" }}
                 >
                   <h2 style={{ fontSize: 14, fontWeight: 500, color: card.textColor }}>{card.title}</h2>
@@ -150,10 +155,26 @@ const Dashboard = () => {
               <p style={{ fontSize: 14, fontWeight: 500, color: "#111827" }}>
                 {isEmployee ? "My action items" : isManager ? "Team tasks" : "System alerts"}
               </p>
-              <button style={{ fontSize: 12, color: "#1A56DB" }}>View all</button>
+              <button
+                type="button"
+                onClick={() => navigate(isEmployee ? "/appraisal" : isManager ? "/manager/tasks" : "/superadmin/notifications")}
+                style={{ fontSize: 12, color: "#1A56DB", background: "none", border: "none", cursor: "pointer" }}
+                className="hover:underline font-medium"
+              >
+                View all
+              </button>
             </div>
             <div
-              className="flex items-center justify-between"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(isEmployee ? "/appraisal" : isManager ? "/pip" : "/superadmin/notifications")}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(isEmployee ? "/appraisal" : isManager ? "/pip" : "/superadmin/notifications");
+                }
+              }}
+              className="flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:bg-white transition-all"
               style={{ background: "#F5F6F8", border: "0.5px solid #E4E6EC", borderRadius: 10, padding: "10px 12px" }}
             >
               <div className="flex items-center gap-3">

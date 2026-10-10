@@ -107,6 +107,7 @@ export const InternOverviewTab: React.FC<InternOverviewTabProps> = ({
           subtitle={`${scorecard?.completedGoals ?? 0} of ${scorecard?.totalGoals ?? 0} goals completed`}
           color="indigo"
           icon={<Target size={20} />}
+          onClick={() => onNavigateToTab('goals')}
         />
 
         <DashboardStatCard
@@ -115,6 +116,7 @@ export const InternOverviewTab: React.FC<InternOverviewTabProps> = ({
           subtitle="Action items under development"
           color="orange"
           icon={<ClipboardList size={20} />}
+          onClick={() => onNavigateToTab('tasks')}
         />
 
         <DashboardStatCard
@@ -123,6 +125,7 @@ export const InternOverviewTab: React.FC<InternOverviewTabProps> = ({
           subtitle={`${deadlines.filter(d => d.daysLeft < 0).length} overdue items`}
           color={deadlines.some(d => d.daysLeft < 0) ? 'red' : 'green'}
           icon={<Clock size={20} />}
+          onClick={() => onNavigateToTab('tasks')}
         />
 
         <DashboardStatCard
@@ -131,6 +134,7 @@ export const InternOverviewTab: React.FC<InternOverviewTabProps> = ({
           subtitle={classificationDisplay}
           color="purple"
           icon={<Trophy size={20} />}
+          onClick={() => onNavigateToTab('results')}
         />
       </div>
 

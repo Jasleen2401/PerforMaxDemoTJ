@@ -68,7 +68,7 @@ const AppraisalList: React.FC = () => {
   const isPrivileged = isAdmin || isHR;
 
   const [activeTab, setActiveTab] = React.useState<'appraisals' | 'team' | 'cycles' | 'forms'>(
-    location.state?.activeTab || (isPrivileged ? 'cycles' : 'appraisals')
+    location.state?.activeTab || (isPrivileged ? 'cycles' : (isManager ? 'team' : 'appraisals'))
   );
   const [selectedCycleId, setSelectedCycleId] = React.useState<number | null>(null);
   const [expandedCycle, setExpandedCycle] = React.useState<string | null>(location.state?.expandedCycle || null);
@@ -157,14 +157,23 @@ const AppraisalList: React.FC = () => {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                  navigate(`/appraisal/${appraisal.appraisalId}/manager-evaluation`);
                 }}
                 style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                className="hover:underline flex items-center gap-1 font-semibold"
+              >
+                <ClipboardList size={12} /> Evaluate Form
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                }}
+                style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                 className="hover:underline flex items-center gap-1 font-medium"
               >
                 <Calculator size={12} /> Preview Score
               </button>
-              <ChevronRight size={14} style={{ color: '#9EA3B0' }} />
             </div>
           </div>
         );
@@ -194,14 +203,23 @@ const AppraisalList: React.FC = () => {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                  navigate(`/appraisal/${appraisal.appraisalId}/manager-evaluation`);
                 }}
                 style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                className="hover:underline flex items-center gap-1 font-semibold"
+              >
+                <ClipboardList size={12} /> Evaluate Form
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                }}
+                style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                 className="hover:underline flex items-center gap-1 font-medium"
               >
                 <Calculator size={12} /> Preview Score
               </button>
-              <ChevronRight size={14} style={{ color: '#9EA3B0' }} />
             </div>
           </div>
         );

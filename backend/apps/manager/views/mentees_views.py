@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from apps.goals.models import Goal, GoalStatus
 from apps.evidence.models import EvidenceSubmission, EvidenceReviewStatus
-from apps.performance.models import Appraisal, PerformanceCycle, TechnicalCapabilityReview
+from apps.performance.models import Appraisal, PerformanceCycle, TechnicalCapabilityReview, AppraisalStatus, AppraisalType
 from apps.feedback.models import Feedback
 from .base import IsManagerUser, get_manager_reports_qs
 
@@ -65,6 +65,16 @@ class ManagerMenteesView(APIView):
                 appraisal = Appraisal.objects.filter(employee=emp, cycle=active_cycle).first()
             if not appraisal:
                 appraisal = Appraisal.objects.filter(employee=emp).order_by('-created_at').first()
+            if not appraisal and active_cycle:
+                appraisal, _ = Appraisal.objects.get_or_create(
+                    employee=emp,
+                    cycle=active_cycle,
+                    defaults={
+                        'reviewer': emp.manager or request.user,
+                        'status': AppraisalStatus.DRAFT,
+                        'appraisal_type': AppraisalType.MANAGER
+                    }
+                )
 
             # Technical Capability Review summary
             tech_reviews = TechnicalCapabilityReview.objects.filter(employee=emp)

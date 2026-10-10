@@ -719,13 +719,10 @@ export const ManagerHubPage: React.FC = () => {
                     </button>
                     <button
                       onClick={() => {
-                        if (mentee.activeAppraisal?.id) {
-                          navigate(`/appraisal/${mentee.activeAppraisal.id}/manager-evaluation`);
-                        } else {
-                          navigate('/appraisal');
-                        }
+                        const targetId = mentee.activeAppraisal?.id || mentee.id;
+                        navigate(`/appraisal/${targetId}/manager-evaluation`);
                       }}
-                      className="px-2 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all text-center shadow-2xs"
+                      className="px-2 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all text-center shadow-2xs cursor-pointer"
                     >
                       Appraisal
                     </button>

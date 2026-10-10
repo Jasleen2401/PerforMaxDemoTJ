@@ -1985,9 +1985,20 @@ class AppraisalsTeamEvaluationsView(APIView):
 
     def get(self, request):
         user = request.user
+        active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
         if user.role == UserRole.MANAGER and not (user.is_hr or user.is_super_admin or user.is_staff):
             from apps.manager.views.base import get_manager_reports_qs
             reports = get_manager_reports_qs(user)
+            if active_cycle:
+                for r in reports:
+                    if not Appraisal.objects.filter(employee=r, cycle=active_cycle).exists():
+                        Appraisal.objects.create(
+                            employee=r,
+                            cycle=active_cycle,
+                            reviewer=user,
+                            status=AppraisalStatus.DRAFT,
+                            appraisal_type=AppraisalType.MANAGER
+                        )
             appraisals = Appraisal.objects.filter(
                 Q(reviewer=user) | Q(employee__in=reports)
             ).distinct()
@@ -2037,7 +2048,32 @@ class AppraisalsDetailCompatView(APIView):
                     "finalGrade": "Exceeds Expectations",
                     "ratings": []
                 })
-            app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').get(id=pk)
+            app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').filter(id=pk).first()
+            if not app:
+                app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').filter(
+                    Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+                ).order_by('-created_at').first()
+            if not app:
+                emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
+                if emp:
+                    cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+                    if cycle:
+                        app, _ = Appraisal.objects.get_or_create(
+                            employee=emp,
+                            cycle=cycle,
+                            defaults={
+                                'reviewer': emp.manager or request.user,
+                                'status': AppraisalStatus.DRAFT,
+                                'appraisal_type': AppraisalType.MANAGER
+                            }
+                        )
+            if not app:
+                if request.user.is_authenticated:
+                    app = Appraisal.objects.filter(Q(reviewer=request.user) | Q(employee__manager=request.user)).order_by('-created_at').first()
+                if not app:
+                    app = Appraisal.objects.order_by('-created_at').first()
+            if not app:
+                return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
             ratings = [
                 {
                     "criterionId": str(r.criterion.id),
@@ -2340,6 +2376,29 @@ class ManagerEvaluationFormCompatView(APIView):
     def get(self, request, pk):
         app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').filter(id=pk).first()
         if not app:
+            app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').filter(
+                Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+            ).order_by('-created_at').first()
+        if not app:
+            emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
+            if emp:
+                cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+                if cycle:
+                    app, _ = Appraisal.objects.get_or_create(
+                        employee=emp,
+                        cycle=cycle,
+                        defaults={
+                            'reviewer': emp.manager or request.user,
+                            'status': AppraisalStatus.DRAFT,
+                            'appraisal_type': AppraisalType.MANAGER
+                        }
+                    )
+        if not app:
+            if request.user.is_authenticated:
+                app = Appraisal.objects.filter(Q(reviewer=request.user) | Q(employee__manager=request.user)).order_by('-created_at').first()
+            if not app:
+                app = Appraisal.objects.order_by('-created_at').first()
+        if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
         is_admin_or_hr = (
@@ -2449,6 +2508,24 @@ class ManagerEvaluationAnswersCompatView(APIView):
     def post(self, request, pk):
         app = Appraisal.objects.filter(id=pk).first()
         if not app:
+            app = Appraisal.objects.filter(
+                Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+            ).order_by('-created_at').first()
+        if not app:
+            emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
+            if emp:
+                cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+                if cycle:
+                    app, _ = Appraisal.objects.get_or_create(
+                        employee=emp,
+                        cycle=cycle,
+                        defaults={
+                            'reviewer': emp.manager or request.user,
+                            'status': AppraisalStatus.DRAFT,
+                            'appraisal_type': AppraisalType.MANAGER
+                        }
+                    )
+        if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
         is_admin_or_hr = (
@@ -2509,6 +2586,24 @@ class ManagerEvaluationDraftCompatView(APIView):
     def post(self, request, pk):
         app = Appraisal.objects.filter(id=pk).first()
         if not app:
+            app = Appraisal.objects.filter(
+                Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+            ).order_by('-created_at').first()
+        if not app:
+            emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
+            if emp:
+                cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+                if cycle:
+                    app, _ = Appraisal.objects.get_or_create(
+                        employee=emp,
+                        cycle=cycle,
+                        defaults={
+                            'reviewer': emp.manager or request.user,
+                            'status': AppraisalStatus.DRAFT,
+                            'appraisal_type': AppraisalType.MANAGER
+                        }
+                    )
+        if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
         is_admin_or_hr = (
@@ -2546,6 +2641,24 @@ class ManagerEvaluationSubmitCompatView(APIView):
 
     def post(self, request, pk):
         app = Appraisal.objects.filter(id=pk).first()
+        if not app:
+            app = Appraisal.objects.filter(
+                Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+            ).order_by('-created_at').first()
+        if not app:
+            emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
+            if emp:
+                cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+                if cycle:
+                    app, _ = Appraisal.objects.get_or_create(
+                        employee=emp,
+                        cycle=cycle,
+                        defaults={
+                            'reviewer': emp.manager or request.user,
+                            'status': AppraisalStatus.DRAFT,
+                            'appraisal_type': AppraisalType.MANAGER
+                        }
+                    )
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 

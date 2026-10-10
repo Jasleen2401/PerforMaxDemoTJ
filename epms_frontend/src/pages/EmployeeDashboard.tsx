@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Award, Target, ClipboardList, FileText, UserCheck,
-  Trophy, User, Bell, RefreshCw, Compass
+  Trophy, User, Bell, RefreshCw, Compass, ShieldCheck,
+  ChevronDown, ExternalLink, X, Users, CheckCircle2
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import {
   useGetInternOverviewQuery,
   useGetInternGoalsQuery,
@@ -32,10 +35,23 @@ import InternNotificationsModal from '../components/intern/InternNotificationsMo
 
 type DashboardTab = 'overview' | 'journey' | 'goals' | 'tasks' | 'evidence' | 'evaluation' | 'forms' | 'results' | 'profile';
 
-export const EmployeeDashboard: React.FC = () => {
-  const { user } = useAuth();
+export interface EmployeeDashboardProps {
+  onScopeSwitch?: () => void;
+  scopeLabel?: string;
+  onRefreshParent?: () => Promise<any> | void;
+}
+
+export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
+  onScopeSwitch,
+  scopeLabel,
+  onRefreshParent,
+}) => {
+  const { user, isAdmin, isHR, isManager, isIntern } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
+  const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [evidencePreselectedGoalId, setEvidencePreselectedGoalId] = useState<string>('');
 
   // Primary Queries
@@ -93,17 +109,45 @@ export const EmployeeDashboard: React.FC = () => {
     setActiveTab('evidence');
   };
 
-  const handleRefreshAll = () => {
-    refetchOverview();
-    refetchGoals();
-    refetchTasks();
-    refetchEvidence();
-    refetchSelfAppraisal();
-    refetchFeedback();
-    refetchUnreadNotifs();
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.allSettled([
+        refetchOverview(),
+        refetchGoals(),
+        refetchTasks(),
+        refetchEvidence(),
+        refetchSelfAppraisal(),
+        refetchFeedback(),
+        refetchUnreadNotifs(),
+        onRefreshParent ? onRefreshParent() : Promise.resolve(),
+      ]);
+      toast.success("Dashboard data refreshed successfully!");
+    } catch {
+      toast.error("Failed to refresh some dashboard items.");
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
   };
 
-  const internName = user?.staffName || (user as any)?.username || (user as any)?.profile?.full_name || 'Intern';
+  const displayName =
+    user?.staffName ||
+    (user as any)?.first_name ||
+    (user as any)?.name ||
+    (user as any)?.username ||
+    (isManager ? 'Tech Manager' : isIntern ? 'Intern' : 'Team Member');
+
+  const computedScopeLabel =
+    scopeLabel ||
+    (isAdmin
+      ? 'Super Admin Scope'
+      : isHR
+      ? 'HR Partner Scope'
+      : isManager
+      ? 'Tech Manager Scope'
+      : isIntern
+      ? 'Cohort Member Scope'
+      : 'Employee Scope');
 
   const tabs: Array<{ id: DashboardTab; label: string; icon: React.ReactNode; badge?: number }> = [
     { id: 'overview', label: 'Overview', icon: <Award size={16} /> },
@@ -124,10 +168,10 @@ export const EmployeeDashboard: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Award className="text-amber-500" size={26} />
-            Welcome back, {internName}
+            Welcome back, {displayName}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            {overviewData?.cycle?.name || 'Active Performance Evaluation'} • {overviewData?.cycle?.currentPhase || 'Active Milestone Sprint'}
+            {overviewData?.cycle?.name || 'Active Performance Evaluation'} • {overviewData?.cycle?.currentPhase || (isManager ? 'Managerial Review & Operations' : 'Active Milestone Sprint')}
           </p>
         </div>
 
@@ -135,7 +179,7 @@ export const EmployeeDashboard: React.FC = () => {
           {/* View My Journey Quick Action */}
           <button
             onClick={() => setActiveTab('journey')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
               activeTab === 'journey'
                 ? 'bg-emerald-700 text-white'
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
@@ -149,7 +193,7 @@ export const EmployeeDashboard: React.FC = () => {
           {/* Notification Button */}
           <button
             onClick={() => setIsNotifModalOpen(true)}
-            className="relative p-2 rounded-xl bg-white border border-[#e4ddf5] text-[#625d78] hover:text-[#6d3fea] hover:bg-[#f3eeff] transition-colors shadow-2xs"
+            className="relative p-2 rounded-xl bg-white border border-[#e4ddf5] text-[#625d78] hover:text-[#6d3fea] hover:bg-[#f3eeff] transition-colors shadow-2xs cursor-pointer"
             title="Notifications"
           >
             <Bell size={18} />
@@ -163,15 +207,27 @@ export const EmployeeDashboard: React.FC = () => {
           {/* Refresh Data Button */}
           <button
             onClick={handleRefreshAll}
-            className="p-2 rounded-xl bg-white border border-[#e4ddf5] text-[#625d78] hover:text-[#6d3fea] hover:bg-[#f3eeff] transition-colors shadow-2xs"
+            disabled={isRefreshing}
+            className={`p-2 rounded-xl bg-white border border-[#e4ddf5] text-[#625d78] hover:text-[#6d3fea] hover:bg-[#f3eeff] transition-all shadow-2xs cursor-pointer ${
+              isRefreshing ? 'opacity-70 cursor-wait' : ''
+            }`}
             title="Refresh dashboard data"
+            aria-label="Refresh dashboard data"
           >
-            <RefreshCw size={18} />
+            <RefreshCw size={18} className={`transition-transform ${isRefreshing ? "animate-spin text-[#6d3fea]" : ""}`} />
           </button>
 
-          <span className="bg-[#f3eeff] text-[#5526d9] font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-xl border border-[#c7b5f5] shadow-2xs">
-            Cohort Member Scope
-          </span>
+          {/* Dynamic Interactive Scope Button */}
+          <button
+            type="button"
+            onClick={() => setIsScopeModalOpen(true)}
+            className="flex items-center gap-1.5 bg-[#f3eeff] hover:bg-[#ebdfff] text-[#5526d9] font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-xl border border-[#c7b5f5] hover:border-[#a88ff0] shadow-2xs transition-all cursor-pointer group"
+            title="Click to view workspace scope details & switch context"
+          >
+            <ShieldCheck size={13} className="text-[#6d3fea] group-hover:scale-110 transition-transform" />
+            <span>{computedScopeLabel}</span>
+            <ChevronDown size={12} className="opacity-60 group-hover:opacity-100 transition-opacity" />
+          </button>
         </div>
       </div>
 
@@ -306,6 +362,125 @@ export const EmployeeDashboard: React.FC = () => {
         notifications={[]}
         onRefetch={refetchUnreadNotifs}
       />
+
+      {/* Scope Details & Context Switcher Modal */}
+      {isScopeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Workspace Scope & Role</h3>
+                  <p className="text-xs text-slate-500">Security permissions & operational context</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsScopeModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500">Current User:</span>
+                <span className="font-semibold text-slate-800">{displayName}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500">Active Scope:</span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold text-[10px] uppercase">
+                  {computedScopeLabel}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500">Performance Cycle:</span>
+                <span className="font-medium text-slate-700">{overviewData?.cycle?.name || 'Active Performance Cycle'}</span>
+              </div>
+            </div>
+
+            {/* Scope Quick Actions */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Available Scope Actions</p>
+              
+              {onScopeSwitch && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsScopeModalOpen(false);
+                    onScopeSwitch();
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 text-indigo-900 border border-indigo-200 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <Users size={16} className="text-indigo-600" />
+                    <span>Switch to Team Management Scope</span>
+                  </div>
+                  <ChevronDown size={14} className="-rotate-90 text-indigo-500" />
+                </button>
+              )}
+
+              {isManager && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsScopeModalOpen(false);
+                      navigate('/manager/mentees');
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users size={16} className="text-blue-600" />
+                      <span>Assigned Mentees (Direct Reports)</span>
+                    </div>
+                    <ExternalLink size={14} className="text-slate-400" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsScopeModalOpen(false);
+                      navigate('/appraisal');
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ClipboardList size={16} className="text-emerald-600" />
+                      <span>Conduct Team Performance Appraisals</span>
+                    </div>
+                    <ExternalLink size={14} className="text-slate-400" />
+                  </button>
+                </>
+              )}
+
+              {!isManager && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle2 size={14} className="text-emerald-600" />
+                    <span>Cohort Member Scope Active</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700/90">
+                    You are in the individual contributor workspace for milestone deliverables, task completion, and self-appraisals.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setIsScopeModalOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

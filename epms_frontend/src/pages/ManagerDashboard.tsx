@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Users, CheckCircle2, AlertCircle, HelpCircle, TrendingUp, Layers, Briefcase, AlertTriangle } from 'lucide-react';
+import { Users, CheckCircle2, AlertCircle, HelpCircle, TrendingUp, Layers, Briefcase, AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { useGetManagerDashboardQuery } from '../features/dashboard/dashboardApi';
 import DashboardStatCard from '../components/dashboard/DashboardStatCard';
 import ChartCard from '../components/dashboard/ChartCard';
@@ -11,9 +12,22 @@ import EmployeeDashboard from './EmployeeDashboard';
 
 const ManagerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'team' | 'personal'>('personal');
+  const [activeTab, setActiveTab] = useState<'team' | 'personal'>('team');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [performanceFilter, setPerformanceFilter] = useState<'active' | 'top10' | 'all'>('active');
-  const { data, isLoading, error } = useGetManagerDashboardQuery();
+  const { data, isLoading, error, refetch } = useGetManagerDashboardQuery();
+
+  const handleRefreshTeam = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+      toast.success("Team dashboard refreshed successfully!");
+    } catch {
+      toast.error("Failed to refresh team dashboard.");
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
 
   const rawPerformance = data?.teamPerformance || [];
   const displayPerformance = React.useMemo(() => {
@@ -36,19 +50,8 @@ const ManagerDashboard: React.FC = () => {
       {/* Premium Tab Selector */}
       <div className="bg-white border border-gray-200/80 rounded-2xl p-1.5 flex gap-2 w-fit shadow-sm">
         <button
-          onClick={() => setActiveTab('personal')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 ${
-            activeTab === 'personal'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-          }`}
-        >
-          <Briefcase size={14} />
-          My Performance
-        </button>
-        <button
           onClick={() => setActiveTab('team')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 cursor-pointer ${
             activeTab === 'team'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
               : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
@@ -57,16 +60,58 @@ const ManagerDashboard: React.FC = () => {
           <Layers size={14} />
           Team Overview
         </button>
+        <button
+          onClick={() => setActiveTab('personal')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 cursor-pointer ${
+            activeTab === 'personal'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <Briefcase size={14} />
+          My Performance
+        </button>
       </div>
 
       {activeTab === 'personal' ? (
-        <EmployeeDashboard />
+        <EmployeeDashboard
+          onScopeSwitch={() => setActiveTab('team')}
+          scopeLabel="Tech Manager Scope"
+          onRefreshParent={handleRefreshTeam}
+        />
       ) : (
         <div className="space-y-4 animate-in fade-in duration-300">
-      <div>
-        <h1 style={{ fontSize: 18, fontWeight: 500, color: "#111827" }}>Team management</h1>
-        <p style={{ fontSize: 13, color: "#9EA3B0", marginTop: 2 }}>Manage your direct reports and their performance cycles.</p>
-      </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
+          <div>
+            <h1 style={{ fontSize: 18, fontWeight: 500, color: "#111827" }}>Team management</h1>
+            <p style={{ fontSize: 13, color: "#9EA3B0", marginTop: 2 }}>Manage your direct reports and their performance cycles.</p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            {/* Refresh Data Button */}
+            <button
+              onClick={handleRefreshTeam}
+              disabled={isRefreshing}
+              className={`p-2 rounded-xl bg-white border border-[#e4ddf5] text-[#625d78] hover:text-[#6d3fea] hover:bg-[#f3eeff] transition-all shadow-2xs cursor-pointer ${
+                isRefreshing ? 'opacity-70 cursor-wait' : ''
+              }`}
+              title="Refresh team dashboard data"
+              aria-label="Refresh team dashboard data"
+            >
+              <RefreshCw size={18} className={`transition-transform ${isRefreshing ? "animate-spin text-[#6d3fea]" : ""}`} />
+            </button>
+
+            {/* Scope Badge */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('personal')}
+              className="flex items-center gap-1.5 bg-[#f3eeff] hover:bg-[#ebdfff] text-[#5526d9] font-bold text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-xl border border-[#c7b5f5] hover:border-[#a88ff0] shadow-2xs transition-all cursor-pointer group"
+              title="Click to switch to personal contributor scope"
+            >
+              <ShieldCheck size={13} className="text-[#6d3fea] group-hover:scale-110 transition-transform" />
+              <span>Tech Manager Scope</span>
+            </button>
+          </div>
+        </div>
 
       {/* Mentor & Manager Operations Hub Banner (M-01 to M-12) */}
       <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-slate-50 border border-indigo-100/90 rounded-2xl p-4.5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">

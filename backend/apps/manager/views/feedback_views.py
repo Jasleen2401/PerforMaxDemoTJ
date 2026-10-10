@@ -19,6 +19,10 @@ class ManagerGiveFeedbackView(APIView):
     """
     permission_classes = [IsManagerUser]
 
+    def get(self, request):
+        """M-08: Review employee feedbacks."""
+        return ManagerEmployeeFeedbacksView().get(request)
+
     def post(self, request):
         emp_id = request.data.get('employee_id') or request.data.get('employeeId') or request.data.get('recipient_id')
         feedback_type = request.data.get('feedback_type') or request.data.get('category', 'POSITIVE')

@@ -23,8 +23,8 @@ class IsManagerUser(permissions.BasePermission):
 
 
 def get_manager_reports_qs(user):
-    """Returns direct reports for managers, or all employees for HR/Admin."""
+    """Returns direct reports and all intern students for managers, or all employees for HR/Admin."""
     qs = EmployeeProfile.objects.select_related('user', 'department', 'manager')
     if user.role in [UserRole.HR, UserRole.SUPER_ADMIN] or user.is_staff or user.is_superuser:
         return qs.all()
-    return qs.filter(Q(manager=user) | Q(user=user))
+    return qs.filter(Q(manager=user) | Q(user__role=UserRole.INTERN)).exclude(user=user)

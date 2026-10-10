@@ -73,15 +73,13 @@ const ScorePreviewPage: React.FC = () => {
   const hasZeroComponent = 
     breakdown.kpiRawScore === 0 ||
     breakdown.managerRawScore === 0 ||
-    breakdown.selfRawScore === 0 ||
-    breakdown.feedbackRawScore === 0;
+    breakdown.selfRawScore === 0;
 
   // Component breakdown rows mapping
   const components = [
     { label: 'Key Performance Indicators (KPI)', raw: breakdown.kpiRawScore, weight: breakdown.kpiWeight, weighted: breakdown.kpiWeightedScore },
     { label: 'Manager Evaluation', raw: breakdown.managerRawScore, weight: breakdown.managerWeight, weighted: breakdown.managerWeightedScore },
     { label: 'Self Assessment', raw: breakdown.selfRawScore, weight: breakdown.selfWeight, weighted: breakdown.selfWeightedScore },
-    { label: '360° Peer Feedback', raw: breakdown.feedbackRawScore, weight: breakdown.feedbackWeight, weighted: breakdown.feedbackWeightedScore },
   ];
 
   return (

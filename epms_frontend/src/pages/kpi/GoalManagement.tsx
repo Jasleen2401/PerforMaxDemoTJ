@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { useGetEmployeesQuery } from '../../features/employee/employeeapi';
+import { useGetAllEmployeesQuery } from '../../features/employee/employeeapi';
 import { useGetDepartmentsQuery } from '../../features/org/departmentApi';
 import { useGetPositionsQuery } from '../../features/org/positionApi';
 import { useGetCyclesQuery } from '../../features/appraisal/appraisalApi';
@@ -25,13 +25,12 @@ const GoalManagement: React.FC = () => {
   const [size] = useState(10);
   const isAdminOrHr = isAdmin || isHR;
 
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<any[]>([]);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isMidcycleOpen, setIsMidcycleOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; staffName: string } | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<{ id: any; staffName: string } | null>(null);
 
-  const { data: pagedData, isLoading: loadingEmployees } = useGetEmployeesQuery({ page, size });
-  const employees = pagedData?.content || [];
+  const { data: allEmployees = [], isLoading: loadingEmployees } = useGetAllEmployeesQuery();
   const { data: departments = [] } = useGetDepartmentsQuery();
   const { data: positions = [] } = useGetPositionsQuery();
   const { data: cyclesResponse } = useGetCyclesQuery();
@@ -64,23 +63,34 @@ const GoalManagement: React.FC = () => {
     { skip: !effectiveCycleId || isAdminOrHr || !user?.id }
   );
   const goalSets = isAdminOrHr ? (deptGoalSetsResponse?.data || []) : (teamGoalSetsResponse?.data || []);
-  const goalStatusMap = new Map<number, string>(goalSets.map(gs => [gs.employeeId, gs.status]));
+  const goalStatusMap = new Map<string, string>(goalSets.map(gs => [String(gs.employeeId), gs.status]));
 
-  const filteredEmployees = employees.filter(emp => {
-    if (!isAdmin && emp.id === user?.id) return false;
-    if (!isKpiEligible(emp)) return false;
-    const matchesSearch = emp.staffName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase());
+  React.useEffect(() => {
+    setPage(0);
+  }, [searchTerm, selectedDepartment, selectedPosition]);
+
+  const eligibleEmployees = allEmployees.filter(emp => {
+    if (!isAdmin && String(emp.id) === String(user?.id)) return false;
+    return isKpiEligible(emp);
+  });
+
+  const filteredEmployees = eligibleEmployees.filter(emp => {
+    const term = searchTerm.trim().toLowerCase();
+    const matchesSearch = !term ||
+      emp.staffName?.toLowerCase().includes(term) ||
+      emp.employeeCode?.toLowerCase().includes(term) ||
+      emp.email?.toLowerCase().includes(term);
     const matchesDept = selectedDepartment === 'All' || emp.currentDepartmentName === selectedDepartment || emp.parentDepartmentName === selectedDepartment;
     const matchesPos = selectedPosition === 'All' || emp.positionName === selectedPosition;
     return matchesSearch && matchesDept && matchesPos;
   });
 
-  const totalElements = pagedData?.totalElements || 0;
-  const totalPages = pagedData?.totalPages || 0;
+  const totalElements = filteredEmployees.length;
+  const totalPages = Math.ceil(totalElements / size) || 1;
+  const pagedEmployees = filteredEmployees.slice(page * size, (page + 1) * size);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedIds(e.target.checked ? filteredEmployees.map(m => m.id) : []);
+    setSelectedIds(e.target.checked ? pagedEmployees.map(m => m.id) : []);
   };
 
   const selectStyle: React.CSSProperties = {
@@ -89,7 +99,7 @@ const GoalManagement: React.FC = () => {
   };
 
   // --- Coverage stats (derived from existing data, no new API calls) ---
-  const totalEmployees = pagedData?.totalElements || 0;
+  const totalEmployees = eligibleEmployees.length;
   const activeGoalSets = goalSets.filter(gs => gs.status !== 'ARCHIVED');
   const assignedCount = activeGoalSets.length;
   const awaitingApprovalCount = activeGoalSets.filter(gs => gs.status === 'DRAFT').length;
@@ -101,7 +111,7 @@ const GoalManagement: React.FC = () => {
   const notAssignedDisplay = loadingEmployees ? '—' : notAssignedCount;
   const coverageBarWidth = loadingEmployees ? 0 : coveragePercent;
 
-  const getActionIcon = (status: string | undefined, empId: number) => {
+  const getActionIcon = (status: string | undefined, empId: number | string) => {
     const base: React.CSSProperties = { cursor: 'pointer', padding: 6, borderRadius: 6 };
     
     if (isArchivedCycle) {
@@ -141,7 +151,7 @@ const GoalManagement: React.FC = () => {
           <button title="Midcycle Change" style={{ ...base, color: '#1E40AF', background: '#EFF6FF' }}
             onClick={e => { 
               e.stopPropagation(); 
-              setSelectedEmployee({ id: empId, staffName: filteredEmployees.find(emp => emp.id === empId)?.staffName || '' });
+              setSelectedEmployee({ id: empId, staffName: filteredEmployees.find(emp => String(emp.id) === String(empId))?.staffName || '' });
               setIsMidcycleOpen(true);
             }}>
             <Calendar size={14} />
@@ -279,7 +289,7 @@ const GoalManagement: React.FC = () => {
                 {!isHistorical && (
                   <th style={{ padding: '10px 16px', width: 40 }}>
                     <input type="checkbox" style={{ accentColor: '#1A56DB' }}
-                      checked={selectedIds.length === filteredEmployees.length && filteredEmployees.length > 0}
+                      checked={selectedIds.length === pagedEmployees.length && pagedEmployees.length > 0}
                       onChange={handleSelectAll} />
                   </th>
                 )}
@@ -292,11 +302,11 @@ const GoalManagement: React.FC = () => {
               {loadingEmployees && (
                 <tr><td colSpan={isHistorical ? 4 : 6} style={{ padding: '32px', textAlign: 'center', fontSize: 13, color: '#9EA3B0' }}>Loading employees…</td></tr>
               )}
-              {!loadingEmployees && filteredEmployees.map((emp, idx) => {
-                const status = goalStatusMap.get(emp.id);
+              {!loadingEmployees && pagedEmployees.map((emp, idx) => {
+                const status = goalStatusMap.get(String(emp.id));
                 return (
                   <tr key={emp.id}
-                    style={{ borderBottom: idx < filteredEmployees.length - 1 ? '0.5px solid #F0F2F6' : 'none', background: !isHistorical && selectedIds.includes(emp.id) ? '#EEF3FD' : '#FFFFFF', cursor: ((isArchivedCycle && status) || (isHistorical && status) || (!isHistorical && status !== 'ARCHIVED') || (!isHistorical && !status)) ? 'pointer' : 'default' }}
+                    style={{ borderBottom: idx < pagedEmployees.length - 1 ? '0.5px solid #F0F2F6' : 'none', background: !isHistorical && selectedIds.includes(emp.id) ? '#EEF3FD' : '#FFFFFF', cursor: ((isArchivedCycle && status) || (isHistorical && status) || (!isHistorical && status !== 'ARCHIVED') || (!isHistorical && !status)) ? 'pointer' : 'default' }}
                     className="hover:bg-[#FAFBFF] transition-colors"
                     onClick={() => {
                       if (isArchivedCycle) {

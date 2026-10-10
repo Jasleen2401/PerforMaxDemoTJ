@@ -9,7 +9,6 @@ import {
   useGetScoreBreakdownQuery,
   useCalculateScoreMutation
 } from '../../features/appraisal/appraisalApi';
-import { useGetFeedbackSummaryQuery } from '../../features/feedback360/feedback360Api';
 import { format } from 'date-fns';
 import {
   ChevronLeft, Award, User, CheckCircle2, ShieldCheck, MessageSquare,
@@ -30,10 +29,6 @@ const ResultPage: React.FC = () => {
 
   const { data: appraisal, isLoading } = useGetEmployeeAssessmentQuery(id || '', { skip: !id });
   const { data: breakdown } = useGetScoreBreakdownQuery(id || '', { skip: !id });
-  const { data: feedbackSummary } = useGetFeedbackSummaryQuery(
-    { targetUserId: appraisal?.employeeId ?? 0, cycleId: appraisal?.cycleId ?? 0 },
-    { skip: !appraisal?.employeeId || !appraisal?.cycleId }
-  );
   const [calculateScore, { isLoading: isCalculating }] = useCalculateScoreMutation();
   const [uploadEmployeeSignature, { isLoading: isSigningEmployee }] = useUploadEmployeeSignatureMutation();
   const [uploadManagerSignature, { isLoading: isSigningManager }] = useUploadManagerSignatureMutation();
@@ -209,7 +204,6 @@ const ResultPage: React.FC = () => {
                 { label: 'Key Performance Indicators', raw: breakdown?.kpiRawScore, weight: breakdown?.kpiWeight, weighted: breakdown?.kpiWeightedScore },
                 { label: 'Manager Evaluation', raw: breakdown?.managerRawScore, weight: breakdown?.managerWeight, weighted: breakdown?.managerWeightedScore },
                 { label: 'Self Assessment', raw: breakdown?.selfRawScore, weight: breakdown?.selfWeight, weighted: breakdown?.selfWeightedScore },
-                { label: '360° Peer Feedback', raw: breakdown?.feedbackRawScore, weight: breakdown?.feedbackWeight, weighted: breakdown?.feedbackWeightedScore, calibrated: feedbackSummary?.calibratedFinalScore != null },
               ].map((row, idx) => (
                 <tr key={idx} style={{ borderBottom: '0.5px solid #F0F2F6' }} className="hover:bg-[#FAFBFF] transition-colors">
                   <td style={{ padding: '10px 18px', fontSize: 13, color: '#111827' }}>

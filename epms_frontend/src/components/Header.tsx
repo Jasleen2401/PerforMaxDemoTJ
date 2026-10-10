@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { NotificationBell } from "./NotificationBell";
 import { Search, HelpCircle, Settings, ChevronRight, Menu, Zap } from "lucide-react";
@@ -35,7 +36,6 @@ const PAGE_MAP: Record<string, PageInfo> = {
   "/meetings":             { title: "1-on-1 Sync Sessions" },
   "/continuous-feedback":  { title: "Continuous Feedback Stream" },
   "/performance-history":  { title: "Performance Pulse" },
-  "/audit-logs":           { section: "Governance", title: "Enterprise Audit Logs" },
 };
 
 function resolvePageInfo(pathname: string): PageInfo {
@@ -55,6 +55,27 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const navigate = useNavigate();
   const { user, isAdmin, isHR, isManager } = useAuth();
   const pageInfo = resolvePageInfo(pathname);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/employees?search=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
 
   const roleLabel = isAdmin
     ? "Super Admin"
@@ -99,17 +120,23 @@ const Header = ({ onMenuClick }: HeaderProps) => {
       {/* Right Actions & Combined Intelligence Status */}
       <div className="flex items-center gap-3">
         {/* Global Search with ⌘K Badge */}
-        <div className="relative hidden lg:flex items-center">
+        <form onSubmit={handleSearchSubmit} className="relative hidden lg:flex items-center">
           <Search size={14} className="absolute left-3 text-purple-400 pointer-events-none" />
           <input
+            ref={searchInputRef}
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search employees, KRAs, metrics..."
             className="bg-white/80 hover:bg-white focus:bg-white text-xs text-slate-700 placeholder:text-slate-400 pl-9 pr-12 py-1.5 rounded-xl border border-purple-200/80 focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 transition-all outline-none w-64 shadow-xs"
           />
-          <kbd className="absolute right-2.5 text-[10px] font-semibold text-purple-500 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 pointer-events-none shadow-xs">
+          <kbd
+            onClick={() => searchInputRef.current?.focus()}
+            className="absolute right-2.5 text-[10px] font-semibold text-purple-500 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 cursor-pointer shadow-xs"
+          >
             ⌘K
           </kbd>
-        </div>
+        </form>
 
         {/* Active Persona Pill */}
         <div className="hidden sm:flex items-center gap-1.5 bg-purple-100/90 border border-purple-200 text-purple-800 px-3 py-1 rounded-full text-xs font-semibold shadow-xs">

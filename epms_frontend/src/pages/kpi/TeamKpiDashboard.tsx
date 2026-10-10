@@ -38,18 +38,18 @@ const TeamKpiDashboard: React.FC = () => {
   const effectiveCycleId = selectedCycle === 'All' ? activeCycleId : Number(selectedCycle);
 
   const { data: allEmployees = [], isLoading: loadingAll } = useGetAllEmployeesQuery(undefined, { skip: !isAdminOrHr });
-  const { data: directReports = [], isLoading: loadingReports } = useGetDirectReportsQuery(Number(user?.id), { skip: isAdminOrHr || !user?.id });
+  const { data: directReports = [], isLoading: loadingReports } = useGetDirectReportsQuery(user?.id || '', { skip: isAdminOrHr || !user?.id });
 
   const employees = isAdminOrHr ? allEmployees : directReports;
   const isLoading = isAdminOrHr ? loadingAll : loadingReports;
 
   const { data: teamGoalsResponse } = useGetTeamGoalSetsQuery(
-    { managerId: Number(user?.id), cycleId: Number(effectiveCycleId) },
+    { managerId: user?.id, cycleId: Number(effectiveCycleId) },
     { skip: !user?.id || !effectiveCycleId }
   );
   const teamGoals = teamGoalsResponse?.data || [];
 
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<(number | string)[]>([]);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'progress-high' | 'progress-low'>('name');

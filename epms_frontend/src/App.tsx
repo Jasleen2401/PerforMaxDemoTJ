@@ -10,8 +10,6 @@ import {
   publicRoutes,
   appraisalRoutes,
   adminRoutes,
-  pipRoutes,
-  idpRoutes,
   generalRoutes,
   kpiRoutes,
   continuousRoutes,
@@ -19,13 +17,8 @@ import {
 } from "./routes";
 import { ActiveCycleProvider } from "./context/ActiveCycleContext";
 import KpiCategoryManager from './pages/kpi/KpiCategoryManager';
-import AuditLogPage from './pages/admin/AuditLogPage';
-import SystemRecordsPage from './pages/admin/SystemRecordsPage';
-import SuperAdminModule from './modules/superadmin/SuperAdminModule';
-import SuperadminNotificationPage from './pages/superadmin/SuperadminNotificationPage';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import ChangePasswordPage from './pages/ChangePasswordPage';
 
 // Specialized Manager Component (Temporary here, can be moved later)
 const ApprovalPage = () => <div className="p-6"><h1 className="text-2xl font-bold">Manager Approval Page</h1></div>;
@@ -66,9 +59,6 @@ const App = () => {
 
         {/* Protected Routes Wrapper */}
         <Route element={<ProtectedRoute />}>
-          {/* Fullscreen Security / Credential Rotation */}
-          <Route path="/change-password" element={<ChangePasswordPage />} />
-
           <Route element={<ActiveCycleProvider><MainLayout /></ActiveCycleProvider>}>
             {/* General Routes (Dashboard, Profile, etc.) */}
             {generalRoutes.map((route) => (
@@ -85,31 +75,20 @@ const App = () => {
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
 
-            {/* PIP Routes */}
-            {pipRoutes.filter(r => !r.adminOnly).map((route) => (
-              <Route key={route.path} path={route.path} element={route.element} />
-            ))}
-
-            {/* IDP Routes */}
-            {idpRoutes.filter(r => r.path !== "/idp/new").map((route) => (
-              <Route key={route.path} path={route.path} element={route.element} />
-            ))}
-
             {/* KPI General Routes */}
             {kpiRoutes.filter(r => !['/kpi/library', '/kpi/manage', '/kpi/library/new', '/kpi/library/edit/:id', '/kpi/assign/:employeeId', '/kpi/team', '/kpi/org-history'].includes(r.path)).map((route) => (
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
 
-            {/* Manager & Admin/HR KPI Management Routes */}
+            {/* Manager & Admin/HR KPI & Mentor Hub Routes */}
             <Route element={<ProtectedRoute allowedRoles={["MANAGER", "ADMIN", "HR"]} />}>
+              {managerRoutes.map((route) => (
+                <Route key={route.path} path={route.path} element={route.element} />
+              ))}
               {kpiRoutes.filter(r => ['/kpi/team', '/kpi/manage', '/kpi/assign/:employeeId', '/kpi/org-history'].includes(r.path)).map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}
               {adminRoutes.filter(r => r.path === '/employees/:id/profile').map((route) => (
-                <Route key={route.path} path={route.path} element={route.element} />
-              ))}
-              {/* Manager & Mentor Operations Hub (M-01 to M-12) */}
-              {managerRoutes.map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}
             </Route>
@@ -117,26 +96,16 @@ const App = () => {
             {/* HR/Admin Management Routes */}
             <Route element={<ProtectedRoute allowedRoles={["ADMIN", "HR"]} />}>
               {/* Shared HR + Admin routes (employees, departments, org, etc.) */}
-              {adminRoutes.filter(r => !['/roles', '/permissions', '/permissions/matrix', '/permissions/assign', '/superadmin', '/superadmin/roles-permissions', '/superadmin/notifications', '/employees/:id/profile'].includes(r.path)).map((route) => (
+              {adminRoutes.filter(r => !['/roles', '/permissions', '/permissions/matrix', '/permissions/assign', '/employees/:id/profile'].includes(r.path)).map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}
 
               {/* ADMIN-only routes — Roles & Permissions management */}
               <Route element={<ProtectedRoute requiredPermissions={["PERMISSION_MANAGE"]} />}>
-                {adminRoutes.filter(r => ['/roles', '/permissions', '/permissions/matrix', '/permissions/assign', '/superadmin/roles-permissions'].includes(r.path)).map((route) => (
+                {adminRoutes.filter(r => ['/roles', '/permissions', '/permissions/matrix', '/permissions/assign'].includes(r.path)).map((route) => (
                   <Route key={route.path} path={route.path} element={route.element} />
                 ))}
               </Route>
-
-              {/* PIP Creation Route (Restricted) */}
-              {pipRoutes.filter(r => r.adminOnly).map((route) => (
-                <Route key={route.path} path={route.path} element={route.element} />
-              ))}
-
-              {/* IDP Creation Route (HR/Admin only) */}
-              {idpRoutes.filter(r => r.path === "/idp/new").map((route) => (
-                <Route key={route.path} path={route.path} element={route.element} />
-              ))}
 
               {/* KPI Administrative Routes (Library Management) */}
               {kpiRoutes.filter(r => ['/kpi/library', '/kpi/library/new', '/kpi/library/edit/:id'].includes(r.path)).map((route) => (
@@ -145,21 +114,9 @@ const App = () => {
               <Route path="/kpi/categories" element={<KpiCategoryManager />} />
             </Route>
 
-            {/* System Admin record inventory and Super Admin hub */}
-            <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
-              <Route path="/admin/records" element={<SystemRecordsPage />} />
-              <Route path="/superadmin" element={<SuperAdminModule />} />
-              <Route path="/superadmin/notifications" element={<SuperadminNotificationPage />} />
-            </Route>
-
             {/* Approvals — requires calibrate permission */}
             <Route element={<ProtectedRoute requiredPermissions={["APPRAISAL_CALIBRATE"]} />}>
               <Route path="/approvals" element={<ApprovalPage />} />
-            </Route>
-
-            {/* Audit Log Console */}
-            <Route element={<ProtectedRoute allowedRoles={["ADMIN", "AUDIT_VIEWER"]} />}>
-              <Route path="/audit-logs" element={<AuditLogPage />} />
             </Route>
           </Route>
         </Route>

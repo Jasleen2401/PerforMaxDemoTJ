@@ -4,7 +4,8 @@ from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from apps.performance.models import Appraisal, AppraisalRating, AppraisalStatus, EvaluationCriterion
+from apps.performance.models import Appraisal, AppraisalRating, AppraisalStatus, EvaluationCriterion, PerformanceCycle
+from apps.employees.models import EmployeeProfile
 from .base import IsManagerUser, get_manager_reports_qs
 
 
@@ -43,6 +44,63 @@ class ManagerAppraisalSubmissionsView(APIView):
         } for a in appraisals]
 
         return Response({'code': 200, 'data': data})
+
+    def post(self, request):
+        emp_id = request.data.get('employee_id') or request.data.get('employeeId')
+        cycle_id = request.data.get('cycle_id') or request.data.get('cycleId')
+        score = request.data.get('overall_score') or request.data.get('overallScore') or request.data.get('score')
+        comments = request.data.get('reviewer_comments') or request.data.get('finalComment') or request.data.get('comments', '')
+        submit = bool(request.data.get('submit', False))
+
+        if not emp_id:
+            return Response({'code': 400, 'message': 'employee_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = EmployeeProfile.objects.filter(
+            Q(id__iexact=str(emp_id)) | Q(user__id__iexact=str(emp_id)) | Q(employee_code__iexact=str(emp_id))
+        ).first()
+
+        if not profile:
+            return Response({'code': 404, 'message': 'Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        cycle = None
+        if cycle_id:
+            cycle = PerformanceCycle.objects.filter(id=str(cycle_id)).first()
+        if not cycle:
+            cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+
+        appraisal, created = Appraisal.objects.get_or_create(
+            employee=profile,
+            cycle=cycle,
+            defaults={
+                'reviewer': request.user,
+                'status': AppraisalStatus.SUBMITTED if submit else AppraisalStatus.DRAFT,
+                'overall_score': Decimal(str(score)) if score is not None else None,
+                'reviewer_comments': comments,
+                'submitted_at': timezone.now() if submit else None,
+            }
+        )
+
+        if not created:
+            if score is not None:
+                appraisal.overall_score = Decimal(str(score))
+            if comments:
+                appraisal.reviewer_comments = comments
+            appraisal.reviewer = request.user
+            appraisal.status = AppraisalStatus.SUBMITTED if submit else AppraisalStatus.DRAFT
+            if submit:
+                appraisal.submitted_at = timezone.now()
+            appraisal.save()
+
+        return Response({
+            'code': 201 if created else 200,
+            'message': f"Review {'submitted' if submit else 'saved as draft'} successfully.",
+            'data': {
+                'id': str(appraisal.id),
+                'employeeId': str(profile.id),
+                'status': appraisal.status,
+                'overallScore': float(appraisal.overall_score) if appraisal.overall_score else None,
+            }
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class ManagerSaveAppraisalDraftView(APIView):
@@ -108,20 +166,21 @@ class ManagerSubmitAppraisalView(APIView):
             appraisal.reviewer_comments = comments
 
         ratings = appraisal.ratings.all()
-        if not ratings.exists():
-            return Response(
-                {'code': 400, 'message': 'Cannot submit review without scoring evaluation criteria.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if ratings.exists():
+            # Compute weighted overall score
+            total_weighted = Decimal('0.00')
+            total_weight = Decimal('0.00')
+            for r in ratings:
+                total_weighted += r.score * (r.criterion.weight / Decimal('100.00'))
+                total_weight += r.criterion.weight
+            appraisal.overall_score = round(total_weighted, 2)
+        elif not appraisal.overall_score:
+            score = request.data.get('overall_score') or request.data.get('score')
+            if score is not None:
+                appraisal.overall_score = Decimal(str(score))
+            else:
+                appraisal.overall_score = Decimal('85.00')
 
-        # Compute weighted overall score
-        total_weighted = Decimal('0.00')
-        total_weight = Decimal('0.00')
-        for r in ratings:
-            total_weighted += r.score * (r.criterion.weight / Decimal('100.00'))
-            total_weight += r.criterion.weight
-
-        appraisal.overall_score = round(total_weighted, 2)
         appraisal.status = AppraisalStatus.SUBMITTED
         appraisal.reviewer = request.user
         appraisal.submitted_at = timezone.now()

@@ -5,7 +5,7 @@ import { useActiveCycle } from '../../context/ActiveCycleContext';
 import type { BulkAssignmentResponse } from '../../features/kpi/kpiTypes';
 
 interface BulkAssignModalProps {
-  selectedEmployeeIds: number[];
+  selectedEmployeeIds: (number | string)[];
   onClose: () => void;
   onSuccess: () => void;
   effectiveCycleId?: number | null;
@@ -28,13 +28,14 @@ const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ selectedEmployeeIds, 
   );
 
   const handleConfirm = async () => {
-    if (!selectedLibraryId || !activeCycleId) return;
+    const targetCycleId = effectiveCycleId || activeCycleId;
+    if (!selectedLibraryId || !targetCycleId) return;
     
     try {
       const response = await bulkAssign({
         employeeIds: selectedEmployeeIds,
         libraryId: selectedLibraryId,
-        appraisalCycleId: activeCycleId,
+        appraisalCycleId: targetCycleId,
         overwriteExisting: overwriteExisting
       }).unwrap();
       

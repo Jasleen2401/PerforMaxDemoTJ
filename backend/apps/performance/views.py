@@ -65,8 +65,6 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
         stage_summary = []
         if stages.get('self_appraisal', True):
             stage_summary.append("Self Appraisal")
-        if stages.get('multi_rater', False):
-            stage_summary.append("Multi-rater 360")
         if stages.get('manager_review', True):
             stage_summary.append("Manager Review")
 

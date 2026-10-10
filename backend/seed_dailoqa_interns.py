@@ -113,7 +113,7 @@ def import_dailoqa_interns():
 
 
     # Get or create manager user to assign as default reporting manager
-    manager_user = User.objects.filter(role=UserRole.MANAGER).first()
+    manager_user = User.objects.filter(username='manager_marcus').first() or User.objects.filter(role=UserRole.MANAGER).first()
     if not manager_user:
         manager_user = User.objects.filter(role=UserRole.SUPER_ADMIN).first()
 

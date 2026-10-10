@@ -94,7 +94,6 @@ const AppraisalFormDesign: React.FC = () => {
   const defaultFormName = () => {
     if (initialType === "MANAGER_EVALUATION")
       return "Manager Evaluation Template";
-    if (initialType === "FEEDBACK") return "360° Feedback Template";
     return "Self Assessment Template";
   };
 
@@ -382,16 +381,12 @@ const AppraisalFormDesign: React.FC = () => {
         }
       }
       toast.success(isEditMode ? "Form updated!" : "Form saved!");
-      if (isFeedback) {
-        navigate(`/360-feedback/admin?cycleId=${selectedCycleId}`);
-      } else {
-        const cycle = cycles.find(
-          (c) => Number(c.cycleId) === Number(selectedCycleId),
-        );
-        navigate("/appraisal", {
-          state: { activeTab: "forms", expandedCycle: cycle?.cycleName || "" },
-        });
-      }
+      const cycle = cycles.find(
+        (c) => Number(c.cycleId) === Number(selectedCycleId),
+      );
+      navigate("/appraisal", {
+        state: { activeTab: "forms", expandedCycle: cycle?.cycleName || "" },
+      });
     } catch (err: any) {
       toast.error(
         'Failed to save. Please try again.',
@@ -466,22 +461,16 @@ const AppraisalFormDesign: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              if (isFeedback) {
-                navigate(
-                  `/360-feedback/admin${selectedCycleId ? `?cycleId=${selectedCycleId}` : ""}`,
-                );
-              } else {
-                const cycle = cycles.find(
-                  (c) => Number(c.cycleId) === Number(selectedCycleId),
-                );
-                navigate("/appraisal", {
-                  state: {
-                    activeTab: "forms",
-                    expandedCycle: cycle?.cycleName,
-                    expandedSet: setName || "__unassigned__",
-                  },
-                });
-              }
+              const cycle = cycles.find(
+                (c) => Number(c.cycleId) === Number(selectedCycleId),
+              );
+              navigate("/appraisal", {
+                state: {
+                  activeTab: "forms",
+                  expandedCycle: cycle?.cycleName,
+                  expandedSet: setName || "__unassigned__",
+                },
+              });
             }}
             style={{
               width: 32,
@@ -630,7 +619,6 @@ const AppraisalFormDesign: React.FC = () => {
                 >
                   <option value="SELF_ASSESSMENT">Self Assessment</option>
                   <option value="MANAGER_EVALUATION">Manager Evaluation</option>
-                  <option value="FEEDBACK">360° Feedback</option>
                 </select>
               </div>
               <div>

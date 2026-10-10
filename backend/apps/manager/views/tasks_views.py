@@ -25,9 +25,11 @@ class ManagerTasksView(APIView):
         direct_reports = get_manager_reports_qs(request.user)
         report_ids = [p.id for p in direct_reports]
 
-        tasks = Goal.objects.filter(employee__id__in=report_ids).select_related(
+        tasks = Goal.objects.filter(
+            Q(employee__id__in=report_ids) | Q(assigned_by=request.user)
+        ).select_related(
             'employee__user', 'cycle', 'assigned_by'
-        ).prefetch_related('kpis', 'progress_updates')
+        ).prefetch_related('kpis', 'progress_updates').distinct()
 
         employee_param = request.query_params.get('employee_id') or request.query_params.get('employeeId')
         status_param = request.query_params.get('status')

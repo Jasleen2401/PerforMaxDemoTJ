@@ -27,7 +27,6 @@ import {
   ShieldCheck,
   UserX,
   RotateCcw,
-  X,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useGetEmployeeByIdQuery } from "../../features/employee/employeeapi";
@@ -39,10 +38,6 @@ import {
   useGetScoreBreakdownQuery,
 } from "../../features/appraisal/appraisalApi";
 import { useGetGoalSetByEmployeeQuery } from "../../services/kpiApi";
-import { useGetPipsByEmployeeQuery } from "../../services/pipApi";
-import { useGetIdpsByEmployeeQuery } from "../../services/idpApi";
-import { PipStatus, type PipResponse } from "../../features/pip/types";
-import { IdpStatus, type IdpResponse } from "../../features/idp/idpTypes";
 import type { GoalItemResponse } from "../../features/kpi/kpiTypes";
 import ProvideFeedbackModal from "../../components/feedback/ProvideFeedbackModal";
 import ChooseKraWeightageModal from "../../components/kpi/ChooseKraWeightageModal";
@@ -110,10 +105,18 @@ const formatDate = (date?: string) => {
 
 const formatStatus = (status?: string) => status?.replaceAll("_", " ") ?? "Unknown";
 
+const getAvatarUrl = (img?: string | null) => {
+  if (!img || img === "default.jpg") return null;
+  if (img.startsWith("blob:") || img.startsWith("data:") || img.startsWith("http://") || img.startsWith("https://")) {
+    return img;
+  }
+  return img.startsWith("/") ? img : `/${img}`;
+};
+
 const EmployeeProfileView = () => {
   const navigate = useNavigate();
-  const { id } = useParams();
-  const employeeId = Number(id);
+  const { id } = useParams<{ id: string }>();
+  const employeeId = id || "";
 
   const [activeTab, setActiveTab] = useState<TabType>("Feedback");
   const [feedbackDirection, setFeedbackDirection] = useState<"received" | "given">("received");
@@ -189,7 +192,7 @@ const EmployeeProfileView = () => {
   const cycleAppraisal = useMemo(
     () =>
       cycleAppraisals.find(
-        (item: any) => Number(item.employeeId ?? item.employee?.id) === employeeId
+        (item: any) => String(item.employeeId ?? item.employee?.id) === String(employeeId)
       ),
     [cycleAppraisals, employeeId]
   );
@@ -212,9 +215,6 @@ const EmployeeProfileView = () => {
     () => goalSet?.kpiItems ?? goalSet?.items ?? [],
     [goalSet?.items, goalSet?.kpiItems]
   );
-
-  const { data: pipsResp } = useGetPipsByEmployeeQuery(employeeId, { skip: !employeeId });
-  const { data: idpsResp } = useGetIdpsByEmployeeQuery(employeeId, { skip: !employeeId });
 
   // Fetch Feedbacks & Stats
   const fetchFeedbacks = useCallback(async () => {
@@ -415,9 +415,12 @@ const EmployeeProfileView = () => {
           >
             {employee.profileImage && employee.profileImage !== "default.jpg" ? (
               <img
-                src={`http://localhost:8000${employee.profileImage}`}
+                src={getAvatarUrl(employee.profileImage) || ""}
                 alt={employee.staffName}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
             ) : (
               employee.staffName?.charAt(0) || "?"

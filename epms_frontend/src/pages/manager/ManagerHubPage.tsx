@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   Users,
@@ -17,6 +17,8 @@ import {
   FolderOpen,
   Calendar,
   Layers,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   useGetAssignedMenteesQuery,
@@ -37,14 +39,33 @@ import {
 import type { MenteeItem } from '../../features/manager/managerApi';
 
 export const ManagerHubPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') || 'mentees';
-  const [activeTab, setActiveTab] = useState<string>(initialTab);
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const getTabFromLocation = (): string => {
+    if (location.pathname === '/manager/technical-capabilities') return 'capabilities';
+    if (location.pathname === '/manager/tasks') return 'tasks';
+    if (location.pathname === '/manager/evidence') return 'evidence';
+    if (location.pathname === '/manager/mentees') return 'mentees';
+    return searchParams.get('tab') || 'mentees';
+  };
+
+  const [activeTab, setActiveTab] = useState<string>(getTabFromLocation);
+
+  useEffect(() => {
+    setActiveTab(getTabFromLocation());
+  }, [location.pathname, searchParams]);
 
   // Search & Filter state for Mentees
   const [menteeSearch, setMenteeSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [menteePage, setMenteePage] = useState(0);
+  const menteePageSize = 12;
+
+  useEffect(() => {
+    setMenteePage(0);
+  }, [menteeSearch, statusFilter]);
 
   // Selected Mentee for detail or action
   const [selectedMentee, setSelectedMentee] = useState<MenteeItem | null>(null);
@@ -123,7 +144,17 @@ export const ManagerHubPage: React.FC = () => {
 
   const handleTabChange = (tabKey: string) => {
     setActiveTab(tabKey);
-    setSearchParams({ tab: tabKey });
+    if (tabKey === 'capabilities') {
+      navigate('/manager/technical-capabilities');
+    } else if (tabKey === 'tasks') {
+      navigate('/manager/tasks');
+    } else if (tabKey === 'evidence') {
+      navigate('/manager/evidence');
+    } else if (tabKey === 'mentees') {
+      navigate('/manager/mentees');
+    } else {
+      navigate(`/manager/hub?tab=${tabKey}`);
+    }
   };
 
   // Sync tech scores when techDossier arrives
@@ -261,6 +292,8 @@ export const ManagerHubPage: React.FC = () => {
 
   // Metrics summary
   const totalMentees = mentees.length;
+  const totalMenteePages = Math.ceil(totalMentees / menteePageSize) || 1;
+  const pagedMentees = mentees.slice(menteePage * menteePageSize, (menteePage + 1) * menteePageSize);
   const totalActiveTasks = tasks.filter((t) => t.status !== 'COMPLETED').length;
   const totalPendingEvidence = evidenceList.filter((e) => e.reviewStatus === 'PENDING').length;
   const pendingAppraisals = mentees.filter((m) => m.activeAppraisal?.status === 'SUBMITTED' || m.activeAppraisal?.status === 'UNDER_REVIEW').length;
@@ -280,7 +313,7 @@ export const ManagerHubPage: React.FC = () => {
               Assigned Interns & Performance Operations
             </h1>
             <p className="text-indigo-200 text-sm mt-1.5 max-w-2xl">
-              Supervise assigned mentees, set technical capability benchmarks, assign sprint tasks, inspect evidence, and conduct weighted appraisals.
+              Supervise assigned students, set technical capability benchmarks, assign sprint tasks, inspect evidence, and conduct weighted appraisals.
             </p>
           </div>
 
@@ -312,11 +345,11 @@ export const ManagerHubPage: React.FC = () => {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-8 pt-6 border-t border-white/10">
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-medium">Assigned Mentees</span>
+              <span className="text-xs text-indigo-200 font-medium">Assigned Students</span>
               <Users size={16} className="text-indigo-300" />
             </div>
             <div className="text-2xl font-black mt-2 text-white">{totalMentees}</div>
-            <div className="text-[11px] text-indigo-200/80 mt-1">Directly reporting interns</div>
+            <div className="text-[11px] text-indigo-200/80 mt-1">Directly reporting students</div>
           </div>
 
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
@@ -351,7 +384,7 @@ export const ManagerHubPage: React.FC = () => {
       {/* Navigation Tabs (M-01 to M-12) */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200">
         {[
-          { key: 'mentees', label: 'Assigned Mentees (M-01)', icon: Users },
+          { key: 'mentees', label: 'Assigned Students (M-01)', icon: Users },
           { key: 'tasks', label: 'Tasks & Goals (M-02, M-03)', icon: Target },
           { key: 'capabilities', label: 'Technical Capabilities (M-04, M-05)', icon: Sparkles },
           { key: 'evidence', label: 'Evidence Review (M-06)', icon: FolderOpen },
@@ -378,7 +411,7 @@ export const ManagerHubPage: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: ASSIGNED MENTEES / EMPLOYEES (M-01) */}
+      {/* TAB 1: ASSIGNED STUDENTS / EMPLOYEES (M-01) */}
       {/* ========================================================================= */}
       {activeTab === 'mentees' && (
         <div className="space-y-4">
@@ -388,7 +421,7 @@ export const ManagerHubPage: React.FC = () => {
               <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search mentee name, code, or email..."
+                placeholder="Search student name, code, or email..."
                 value={menteeSearch}
                 onChange={(e) => setMenteeSearch(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
@@ -410,7 +443,7 @@ export const ManagerHubPage: React.FC = () => {
               <button
                 onClick={() => refetchMentees()}
                 className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
-                title="Refresh Mentees"
+                title="Refresh Students"
               >
                 <RefreshCw size={15} />
               </button>
@@ -419,18 +452,19 @@ export const ManagerHubPage: React.FC = () => {
 
           {/* Mentees Grid */}
           {menteesLoading ? (
-            <div className="py-20 text-center text-xs text-slate-400">Loading assigned mentees...</div>
+            <div className="py-20 text-center text-xs text-slate-400">Loading assigned students...</div>
           ) : mentees.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <Users size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Mentees Found</h3>
+              <h3 className="text-base font-bold text-slate-800">No Students Found</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                No interns match your current search filters or are assigned under your manager portfolio.
+                No students match your current search filters or are assigned under your manager portfolio.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mentees.map((mentee) => (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pagedMentees.map((mentee) => (
                 <div
                   key={mentee.id}
                   className="bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 transition-all p-5 shadow-xs flex flex-col justify-between"
@@ -547,6 +581,36 @@ export const ManagerHubPage: React.FC = () => {
                 </div>
               ))}
             </div>
+
+            {totalMentees > menteePageSize && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 mt-4 shadow-2xs">
+                <span className="text-xs text-slate-500">
+                  Showing <strong className="text-slate-800">{menteePage * menteePageSize + 1}–{Math.min((menteePage + 1) * menteePageSize, totalMentees)}</strong> of <strong className="text-slate-800">{totalMentees}</strong> students
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMenteePage((p) => Math.max(0, p - 1))}
+                    disabled={menteePage === 0}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                  >
+                    <ChevronLeft size={14} />
+                    Previous
+                  </button>
+                  <span className="text-xs font-bold text-slate-600 px-2">
+                    Page {menteePage + 1} of {totalMenteePages}
+                  </span>
+                  <button
+                    onClick={() => setMenteePage((p) => Math.min(totalMenteePages - 1, p + 1))}
+                    disabled={menteePage >= totalMenteePages - 1}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                  >
+                    Next
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
           )}
         </div>
       )}
@@ -560,7 +624,7 @@ export const ManagerHubPage: React.FC = () => {
             <div>
               <h2 className="text-base font-bold text-slate-900">Assigned Tasks & Sprint Goals</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Create new tasks, adjust milestone completion, and track intern progress.
+                Create new tasks, adjust milestone completion, and track student/intern progress.
               </p>
             </div>
             <button
@@ -581,7 +645,7 @@ export const ManagerHubPage: React.FC = () => {
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <Target size={36} className="mx-auto text-slate-300 mb-3" />
               <h3 className="text-base font-bold text-slate-800">No Tasks Assigned Yet</h3>
-              <p className="text-xs text-slate-500 mt-1">Assign deliverables to mentees to start tracking progress.</p>
+              <p className="text-xs text-slate-500 mt-1">Assign deliverables to students/interns to start tracking progress.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -619,7 +683,7 @@ export const ManagerHubPage: React.FC = () => {
 
                     <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap pt-1">
                       <span>
-                        Mentee: <strong className="text-slate-700 font-semibold">{task.employeeName}</strong>
+                        Student: <strong className="text-slate-700 font-semibold">{task.employeeName}</strong>
                       </span>
                       <span>
                         Due: <strong className="text-slate-700 font-semibold">{task.dueDate || 'No due date'}</strong>
@@ -702,14 +766,14 @@ export const ManagerHubPage: React.FC = () => {
               <div>
                 <h2 className="text-base font-bold text-slate-900">Technical Capability Evaluation Matrix</h2>
                 <p className="text-xs text-slate-500">
-                  Rate assigned interns on technical dimensions (1-5 scale) with evidence links and mentor remarks.
+                  Rate assigned students/interns on technical dimensions (1-5 scale) with evidence links and mentor remarks.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-600">Evaluating Mentee:</span>
+                <span className="text-xs font-semibold text-slate-600">Evaluating Student:</span>
                 <select
                   value={activeTechMenteeId}
                   onChange={(e) => setTechReviewMenteeId(e.target.value)}
@@ -717,7 +781,7 @@ export const ManagerHubPage: React.FC = () => {
                 >
                   {mentees.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.fullName} ({m.employeeCode})
+                      {m.fullName} ({m.employeeCode}) {m.department ? `• ${m.department}` : ''}
                     </option>
                   ))}
                 </select>
@@ -991,7 +1055,7 @@ export const ManagerHubPage: React.FC = () => {
             <div>
               <h2 className="text-base font-bold text-slate-900">Continuous Feedback & Employee Reflections</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Issue coaching notes to interns and inspect reflections/feedback submitted by direct reports.
+                Issue coaching notes to students/interns and inspect reflections/feedback submitted by direct reports.
               </p>
             </div>
             <button
@@ -1010,7 +1074,7 @@ export const ManagerHubPage: React.FC = () => {
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
               <MessageSquare size={36} className="mx-auto text-slate-300 mb-3" />
               <h3 className="text-base font-bold text-slate-800">No Feedback Records Yet</h3>
-              <p className="text-xs text-slate-500 mt-1">Start by sending coaching feedback to your mentees.</p>
+              <p className="text-xs text-slate-500 mt-1">Start by sending coaching feedback to your students/interns.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1086,7 +1150,7 @@ export const ManagerHubPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600">Filter Mentee:</span>
+              <span className="text-xs font-semibold text-slate-600">Filter Student:</span>
               <select
                 value={selectedMentee?.id || ''}
                 onChange={(e) => {
@@ -1095,10 +1159,10 @@ export const ManagerHubPage: React.FC = () => {
                 }}
                 className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
               >
-                <option value="">All Mentees</option>
+                <option value="">All Students</option>
                 {mentees.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.fullName}
+                    {m.fullName} ({m.employeeCode}) {m.department ? `• ${m.department}` : ''}
                   </option>
                 ))}
               </select>
@@ -1176,17 +1240,17 @@ export const ManagerHubPage: React.FC = () => {
 
             <form onSubmit={handleAssignTaskSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Select Mentee *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Select Student / Intern *</label>
                 <select
                   required
                   value={taskForm.employee_id}
                   onChange={(e) => setTaskForm({ ...taskForm, employee_id: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
                 >
-                  <option value="">-- Choose Assigned Intern --</option>
+                  <option value="">-- Choose Student / Intern --</option>
                   {mentees.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.fullName} ({m.employeeCode})
+                      {m.fullName} ({m.employeeCode}) {m.department ? `• ${m.department}` : ''}
                     </option>
                   ))}
                 </select>
@@ -1269,7 +1333,7 @@ export const ManagerHubPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Provide Mentee Feedback (M-07)</h3>
+              <h3 className="font-bold text-base text-slate-900">Provide Student Feedback (M-07)</h3>
               <button onClick={() => setIsGiveFeedbackOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
@@ -1277,17 +1341,17 @@ export const ManagerHubPage: React.FC = () => {
 
             <form onSubmit={handleGiveFeedbackSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Select Mentee *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Select Student / Intern *</label>
                 <select
                   required
                   value={feedbackForm.employee_id}
                   onChange={(e) => setFeedbackForm({ ...feedbackForm, employee_id: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
                 >
-                  <option value="">-- Choose Intern --</option>
+                  <option value="">-- Choose Student / Intern --</option>
                   {mentees.map((m) => (
                     <option key={m.userId} value={m.userId}>
-                      {m.fullName} ({m.employeeCode})
+                      {m.fullName} ({m.employeeCode}) {m.department ? `• ${m.department}` : ''}
                     </option>
                   ))}
                 </select>

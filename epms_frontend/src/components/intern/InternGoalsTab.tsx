@@ -29,6 +29,20 @@ export const InternGoalsTab: React.FC<InternGoalsTabProps> = ({
   const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
   const [sliderValue, setSliderValue] = useState<Record<string, number>>({});
   const [isSubmittingComment, setIsSubmittingComment] = useState<Record<string, boolean>>({});
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+
+  const handleCheckForUpdates = async () => {
+    try {
+      setIsCheckingUpdates(true);
+      toast.info('Checking for active goals and milestones...');
+      await onRefetch();
+      toast.success('Goals and milestones updated successfully!');
+    } catch {
+      toast.error('Failed to check for updates.');
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
 
   const toggleComments = (goalId: string) => {
     setExpandedComments((prev) => ({ ...prev, [goalId]: !prev[goalId] }));
@@ -113,10 +127,12 @@ export const InternGoalsTab: React.FC<InternGoalsTabProps> = ({
           Your direct mentor or manager will assign your core quarterly deliverables and goals for the active performance cycle.
         </p>
         <button
-          onClick={onRefetch}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+          onClick={handleCheckForUpdates}
+          disabled={isCheckingUpdates || isLoading}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
         >
-          <RefreshCw size={12} /> Check for updates
+          <RefreshCw size={13} className={isCheckingUpdates ? 'animate-spin' : ''} />
+          {isCheckingUpdates ? 'Checking for updates...' : 'Check for updates'}
         </button>
       </div>
     );
@@ -124,6 +140,22 @@ export const InternGoalsTab: React.FC<InternGoalsTabProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Top summary & Check for updates button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200 shadow-xs px-5 py-3.5">
+        <div>
+          <h3 className="font-bold text-slate-800 text-sm">Active Goals & Milestones ({goals.length})</h3>
+          <p className="text-xs text-slate-500">Track and submit progress for your assigned deliverables in the active cycle.</p>
+        </div>
+        <button
+          onClick={handleCheckForUpdates}
+          disabled={isCheckingUpdates || isLoading}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+        >
+          <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
+          {isCheckingUpdates ? 'Checking for updates...' : 'Check for updates'}
+        </button>
+      </div>
+
       {goals.map((goal) => {
         const currentProgress = sliderValue[goal.id] ?? goal.completionPercentage ?? goal.progress ?? 0;
         const isCompleted = goal.status === 'COMPLETED' || currentProgress === 100;
@@ -215,6 +247,26 @@ export const InternGoalsTab: React.FC<InternGoalsTabProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Associated Key Milestones */}
+            {(goal as any).milestones && (goal as any).milestones.length > 0 && (
+              <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-3.5 space-y-2">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>Associated Key Milestones</span>
+                  <span className="text-slate-400 font-normal">{(goal as any).milestones.length} milestones</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(goal as any).milestones.map((m: any) => (
+                    <div key={m.id || m.name} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200/80 text-xs shadow-2xs">
+                      <span className="font-medium text-slate-700 truncate pr-2" title={m.name}>{m.name}</span>
+                      <span className="shrink-0 font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md text-[11px]">
+                        {m.achievedValue} / {m.targetValue} {m.unit}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Due date & footer */}
             <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1">

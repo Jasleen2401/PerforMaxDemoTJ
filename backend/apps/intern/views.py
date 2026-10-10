@@ -10,7 +10,7 @@ from rest_framework.exceptions import ValidationError, PermissionDenied, NotFoun
 
 from apps.accounts.models import User, UserRole
 from apps.employees.models import EmployeeProfile
-from apps.goals.models import Goal, GoalStatus, GoalPriority, GoalProgress
+from apps.goals.models import Goal, GoalStatus, GoalPriority, GoalProgress, KPI, KPIMeasurementType
 from apps.evidence.models import EvidenceSubmission, EvidenceReviewStatus
 from apps.performance.models import (
     PerformanceCycle, Appraisal, AppraisalType, AppraisalStatus, CycleStatus
@@ -46,6 +46,143 @@ def get_authenticated_intern_profile(user):
     if not profile:
         raise NotFound("Employee profile not found for this account.")
     return profile
+
+
+def ensure_default_goals_for_profile(profile, user=None):
+    """
+    Auto-provisions goals and milestones for the active performance cycle
+    if the employee/manager profile currently has 0 goals.
+    """
+    if not profile:
+        return
+    active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+    if not active_cycle:
+        return
+
+    if Goal.objects.filter(employee=profile).exists():
+        return
+
+    today = date.today()
+    due = getattr(active_cycle, 'end_date', None) or (today + timedelta(days=60))
+    role_str = str(getattr(user, 'role', '')).upper()
+    desig_str = str(getattr(profile, 'designation', '')).lower()
+
+    is_manager = 'MANAGER' in role_str or 'manager' in desig_str or 'lead' in desig_str
+
+    if is_manager:
+        goals_data = [
+            {
+                'title': "Core Technical Architecture & Scalability Engineering",
+                'description': "Lead system design, architecture documentation, high-availability microservices, and database query optimizations for the active performance cycle.",
+                'priority': GoalPriority.HIGH,
+                'weight': Decimal('30.00'),
+                'progress': Decimal('45.00'),
+                'milestones': [
+                    {'name': "Architecture Blueprint & High-Level Design Approval", 'target': 100, 'achieved': 100, 'unit': '%'},
+                    {'name': "Database Query & Latency Optimization (<120ms)", 'target': 120, 'achieved': 85, 'unit': 'ms'},
+                ]
+            },
+            {
+                'title': "Sprint Deliverables & Technical Milestones Delivery",
+                'description': "Oversee sprint planning, track critical path deliverables, resolve technical blockers, and guarantee 100% on-time milestone delivery.",
+                'priority': GoalPriority.HIGH,
+                'weight': Decimal('25.00'),
+                'progress': Decimal('50.00'),
+                'milestones': [
+                    {'name': "Quarterly Sprint Goals On-Time Delivery Rate", 'target': 100, 'achieved': 80, 'unit': '%'},
+                    {'name': "Blocker Resolution SLA (<4 hours)", 'target': 4, 'achieved': 2, 'unit': 'hrs'},
+                ]
+            },
+            {
+                'title': "Mentorship, Code Quality & PR Review Excellence",
+                'description': "Supervise technical mentees and junior engineers, enforce coding standards, and maintain >90% code coverage and security standards across repositories.",
+                'priority': GoalPriority.MEDIUM,
+                'weight': Decimal('25.00'),
+                'progress': Decimal('60.00'),
+                'milestones': [
+                    {'name': "Assigned Mentees 1:1 Check-ins & Evaluation Submissions", 'target': 100, 'achieved': 90, 'unit': '%'},
+                    {'name': "Repository Unit & Integration Test Coverage (>90%)", 'target': 90, 'achieved': 92, 'unit': '%'},
+                ]
+            },
+            {
+                'title': "CI/CD Pipeline Automation & Production Reliability",
+                'description': "Automate regression test suites, zero-downtime deployment pipelines, infrastructure monitoring, and incident response runbooks.",
+                'priority': GoalPriority.MEDIUM,
+                'weight': Decimal('20.00'),
+                'progress': Decimal('40.00'),
+                'milestones': [
+                    {'name': "Automated End-to-End Regression Suite Pass Rate", 'target': 100, 'achieved': 95, 'unit': '%'},
+                    {'name': "Zero Critical Vulnerabilities in Production Scans", 'target': 0, 'achieved': 0, 'unit': 'vulns'},
+                ]
+            },
+        ]
+    else:
+        goals_data = [
+            {
+                'title': "Full-Stack Feature Implementation & API Integrations",
+                'description': "Deliver assigned sprint user stories and end-to-end features adhering to enterprise architecture and coding guidelines.",
+                'priority': GoalPriority.HIGH,
+                'weight': Decimal('35.00'),
+                'progress': Decimal('35.00'),
+                'milestones': [
+                    {'name': "Sprint User Stories Delivered", 'target': 10, 'achieved': 4, 'unit': 'stories'},
+                ]
+            },
+            {
+                'title': "Automated Testing, Test Coverage & Code Quality",
+                'description': "Write unit and integration tests for all new deliverables ensuring high test coverage and clean PR reviews.",
+                'priority': GoalPriority.MEDIUM,
+                'weight': Decimal('25.00'),
+                'progress': Decimal('45.00'),
+                'milestones': [
+                    {'name': "Unit Test Coverage for Modules", 'target': 90, 'achieved': 85, 'unit': '%'},
+                ]
+            },
+            {
+                'title': "System Documentation & Technical Specs",
+                'description': "Maintain up-to-date Swagger / OpenAPI specs, architectural decisions, and setup guides.",
+                'priority': GoalPriority.MEDIUM,
+                'weight': Decimal('20.00'),
+                'progress': Decimal('25.00'),
+                'milestones': [
+                    {'name': "Module Documentation & Guides Published", 'target': 100, 'achieved': 50, 'unit': '%'},
+                ]
+            },
+            {
+                'title': "Continuous Learning & Technical Mentorship Check-ins",
+                'description': "Participate in weekly 1:1 mentor syncs, technical sprint retrospectives, and apply mentor feedback.",
+                'priority': GoalPriority.MEDIUM,
+                'weight': Decimal('20.00'),
+                'progress': Decimal('50.00'),
+                'milestones': [
+                    {'name': "Sprint Sync Attendance & Feedback Implementation", 'target': 100, 'achieved': 100, 'unit': '%'},
+                ]
+            },
+        ]
+
+    for item in goals_data:
+        g = Goal.objects.create(
+            employee=profile,
+            cycle=active_cycle,
+            assigned_by=profile.manager or user,
+            title=item['title'],
+            description=item['description'],
+            due_date=due,
+            status=GoalStatus.IN_PROGRESS if item['progress'] > 0 else GoalStatus.NOT_STARTED,
+            priority=item['priority'],
+            completion_percentage=item['progress'],
+        )
+        for m in item.get('milestones', []):
+            KPI.objects.create(
+                goal=g,
+                name=m['name'],
+                description=m['name'],
+                target_value=Decimal(str(m['target'])),
+                achieved_value=Decimal(str(m['achieved'])),
+                unit=m['unit'],
+                measurement_type=KPIMeasurementType.NUMERIC if m['unit'] != '%' else KPIMeasurementType.PERCENTAGE
+            )
+
 
 
 def get_performance_classification(score):
@@ -125,6 +262,7 @@ class InternOverviewView(APIView):
             }
 
         # 3. Assigned Goals (Authentic data only)
+        ensure_default_goals_for_profile(profile, user)
         goals_qs = Goal.objects.filter(employee=profile)
         total_goals = goals_qs.count()
         completed_goals = goals_qs.filter(
@@ -269,7 +407,8 @@ class InternGoalsView(APIView):
 
     def get(self, request):
         profile = get_authenticated_intern_profile(request.user)
-        goals = Goal.objects.filter(employee=profile).select_related('cycle', 'assigned_by').order_by('due_date')
+        ensure_default_goals_for_profile(profile, request.user)
+        goals = Goal.objects.filter(employee=profile).select_related('cycle', 'assigned_by').prefetch_related('kpis', 'goal_comments', 'evidence_submissions').order_by('due_date')
         serializer = InternGoalListSerializer(goals, many=True)
         return Response({'code': 200, 'data': serializer.data})
 

@@ -55,6 +55,31 @@ class InternGoalListSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data['completionPercentage'] = float(obj.completion_percentage or 0)
+        data['weightage'] = data.get('weight', 25.0)
+        data['dueDate'] = str(obj.due_date) if obj.due_date else None
+        data['cycleName'] = obj.cycle.name if obj.cycle else ''
+        data['assignedByName'] = obj.assigned_by.username if obj.assigned_by else 'Mentor'
+        data['evidenceCount'] = obj.evidence_submissions.count() if hasattr(obj, 'evidence_submissions') else 0
+        data['commentsCount'] = obj.goal_comments.count() if hasattr(obj, 'goal_comments') else 0
+
+        milestones = []
+        if hasattr(obj, 'kpis'):
+            for k in obj.kpis.all():
+                milestones.append({
+                    'id': str(k.id),
+                    'name': k.name,
+                    'description': k.description or '',
+                    'targetValue': float(k.target_value or 100),
+                    'achievedValue': float(k.achieved_value or 0),
+                    'unit': k.unit or '%',
+                    'measurementType': k.measurement_type,
+                })
+        data['milestones'] = milestones
+        return data
+
 
 class InternGoalProgressUpdateSerializer(serializers.Serializer):
     progress = serializers.DecimalField(

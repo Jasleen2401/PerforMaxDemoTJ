@@ -45,6 +45,16 @@ def ok_response(data, message="Success"):
     })
 
 
+def error_response(message="An error occurred", status_code=status.HTTP_400_BAD_REQUEST, data=None):
+    """Format error response matching the frontend's expected ApiResponse wrapper."""
+    return Response({
+        "code": status_code,
+        "message": message,
+        "detail": message,
+        "data": data,
+    }, status=status_code)
+
+
 def map_employee(profile: EmployeeProfile) -> dict:
     user = profile.user
     dept_name = profile.department.name if profile.department else "Engineering"
@@ -1879,8 +1889,12 @@ def map_appraisal(app: Appraisal) -> dict:
         "cycleName": app.cycle.name,
         "employeeId": str(app.employee.id),
         "employeeName": app.employee.full_name,
+        "employeeCode": getattr(app.employee, 'employee_code', ''),
+        "positionName": getattr(app.employee, 'designation', ''),
+        "departmentName": app.employee.department.name if app.employee and app.employee.department else '',
         "managerId": mgr_id,
         "managerName": mgr_name,
+        "managerEmail": getattr(getattr(app.employee, 'manager', None), 'email', '') or (getattr(app.reviewer, 'email', '') if app.reviewer else ''),
         "reviewerId": str(app.reviewer.id) if app.reviewer else mgr_id,
         "reviewerName": app.reviewer.username if app.reviewer else mgr_name,
         "status": app.status,
@@ -2023,7 +2037,7 @@ class AppraisalsDetailCompatView(APIView):
                     "finalGrade": "Exceeds Expectations",
                     "ratings": []
                 })
-            app = Appraisal.objects.get(id=pk)
+            app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').get(id=pk)
             ratings = [
                 {
                     "criterionId": str(r.criterion.id),
@@ -2035,6 +2049,22 @@ class AppraisalsDetailCompatView(APIView):
             ]
             data = map_appraisal(app)
             data["ratings"] = ratings
+
+            is_admin_or_hr = (
+                getattr(request.user, 'is_hr', False) or
+                getattr(request.user, 'is_super_admin', False) or
+                getattr(request.user, 'is_staff', False) or
+                getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR, 'ADMIN', 'HR']
+            )
+            is_assigned = (
+                is_admin_or_hr or
+                (app.employee and app.employee.manager_id and str(app.employee.manager_id) == str(request.user.id)) or
+                (app.reviewer_id and str(app.reviewer_id) == str(request.user.id)) or
+                (app.employee and app.employee.team_memberships.filter(team__manager=request.user).exists())
+            )
+            data["isAssignedManager"] = is_assigned
+            data["canEvaluate"] = is_assigned
+            data["canEdit"] = is_assigned and app.status not in ['HR_APPROVED', 'FINALIZED']
             return ok_response(data)
         except (Appraisal.DoesNotExist, Exception):
             return ok_response({
@@ -2308,29 +2338,52 @@ class ManagerEvaluationFormCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        app = Appraisal.objects.filter(id=pk).first()
+        app = Appraisal.objects.select_related('employee', 'employee__user', 'employee__department', 'cycle', 'reviewer').filter(id=pk).first()
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if app.employee and app.employee.manager != request.user:
-                return error_response("You can only review employees assigned to you by HR or Super Admin.", status_code=403)
+        is_admin_or_hr = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'is_staff', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR, 'ADMIN', 'HR']
+        )
+        is_assigned = (
+            is_admin_or_hr or
+            (app.employee and app.employee.manager_id and str(app.employee.manager_id) == str(request.user.id)) or
+            (app.reviewer_id and str(app.reviewer_id) == str(request.user.id)) or
+            (app.employee and app.employee.team_memberships.filter(team__manager=request.user).exists())
+        )
+
+        is_mgr = (
+            getattr(request.user, 'role', '') in [UserRole.MANAGER, 'MANAGER', 'manager'] or
+            getattr(request.user, 'is_manager', False)
+        )
+
+        if is_mgr and not is_admin_or_hr and not is_assigned:
+            return error_response("You can only review employees assigned to you by HR or Super Admin.", status_code=403)
 
         mgr_id = None
         mgr_name = None
+        mgr_email = None
         if app.employee and app.employee.manager:
             mgr = app.employee.manager
             mgr_id = str(mgr.id)
             mgr_name = getattr(getattr(mgr, 'profile', None), 'full_name', None) or mgr.get_full_name() or mgr.username
+            mgr_email = getattr(mgr, 'email', '')
         elif app.reviewer:
             mgr_id = str(app.reviewer.id)
             mgr_name = getattr(getattr(app.reviewer, 'profile', None), 'full_name', None) or app.reviewer.get_full_name() or app.reviewer.username
+            mgr_email = getattr(app.reviewer, 'email', '')
         else:
             mgr_id = str(request.user.id)
             mgr_name = getattr(getattr(request.user, 'profile', None), 'full_name', None) or request.user.get_full_name() or request.user.username
+            mgr_email = getattr(request.user, 'email', '')
+
+        can_edit = is_assigned and app.status not in ['HR_APPROVED', 'FINALIZED']
 
         existing_ratings = {str(r.criterion.id): r for r in app.ratings.all()}
-        criteria = EvaluationCriterion.objects.filter(Q(cycle=app.cycle) | Q(cycle__isnull=True))
+        criteria = EvaluationCriterion.objects.filter(is_active=True)
         if not criteria.exists():
             criteria = EvaluationCriterion.objects.all()
 
@@ -2363,10 +2416,17 @@ class ManagerEvaluationFormCompatView(APIView):
         data = {
             "evaluationId": str(app.id),
             "appraisalId": str(app.id),
-            "employeeId": str(app.employee.id),
-            "employeeName": app.employee.full_name,
-            "managerId": mgr_id,
+            "employeeId": str(app.employee.id) if app.employee else None,
+            "employeeName": app.employee.full_name if app.employee else "",
+            "employeeCode": getattr(app.employee, 'employee_code', '') if app.employee else "",
+            "positionName": getattr(app.employee, 'designation', '') if app.employee else "",
+            "departmentName": app.employee.department.name if app.employee and app.employee.department else "",
+            "managerId": str(request.user.id) if is_assigned else mgr_id,
             "managerName": mgr_name,
+            "managerEmail": mgr_email,
+            "canEdit": can_edit,
+            "canEvaluate": is_assigned,
+            "isAssignedManager": is_assigned,
             "appraisalStatus": app.status,
             "isSelfSubmitted": has_self,
             "submitted": is_mgr_submitted,
@@ -2391,12 +2451,27 @@ class ManagerEvaluationAnswersCompatView(APIView):
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if app.employee and app.employee.manager != request.user:
-                return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
+        is_admin_or_hr = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'is_staff', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR, 'ADMIN', 'HR']
+        )
+        is_assigned = (
+            is_admin_or_hr or
+            (app.employee and app.employee.manager_id and str(app.employee.manager_id) == str(request.user.id)) or
+            (app.reviewer_id and str(app.reviewer_id) == str(request.user.id)) or
+            (app.employee and app.employee.team_memberships.filter(team__manager=request.user).exists())
+        )
+        is_mgr = (
+            getattr(request.user, 'role', '') in [UserRole.MANAGER, 'MANAGER', 'manager'] or
+            getattr(request.user, 'is_manager', False)
+        )
+        if is_mgr and not is_admin_or_hr and not is_assigned:
+            return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
 
         answers = request.data if isinstance(request.data, list) else request.data.get("answers", [])
-        criteria = list(EvaluationCriterion.objects.filter(Q(cycle=app.cycle) | Q(cycle__isnull=True)))
+        criteria = list(EvaluationCriterion.objects.filter(is_active=True))
         if not criteria:
             criteria = list(EvaluationCriterion.objects.all())
 
@@ -2436,15 +2511,31 @@ class ManagerEvaluationDraftCompatView(APIView):
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if app.employee and app.employee.manager != request.user:
-                return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
+        is_admin_or_hr = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'is_staff', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR, 'ADMIN', 'HR']
+        )
+        is_assigned = (
+            is_admin_or_hr or
+            (app.employee and app.employee.manager_id and str(app.employee.manager_id) == str(request.user.id)) or
+            (app.reviewer_id and str(app.reviewer_id) == str(request.user.id)) or
+            (app.employee and app.employee.team_memberships.filter(team__manager=request.user).exists())
+        )
+        is_mgr = (
+            getattr(request.user, 'role', '') in [UserRole.MANAGER, 'MANAGER', 'manager'] or
+            getattr(request.user, 'is_manager', False)
+        )
+        if is_mgr and not is_admin_or_hr and not is_assigned:
+            return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
 
         final_comment = request.query_params.get("finalComment") or request.data.get("finalComment") or request.data.get("reviewer_comments") or ""
         if final_comment:
             app.reviewer_comments = final_comment
 
-        app.status = AppraisalStatus.DRAFT
+        if app.status in [AppraisalStatus.DRAFT, 'DRAFT', None, '']:
+            app.status = AppraisalStatus.DRAFT
         app.reviewer = request.user
         app.save()
         return ok_response({"message": "Draft saved successfully", "appraisalId": str(app.id)})
@@ -2458,9 +2549,24 @@ class ManagerEvaluationSubmitCompatView(APIView):
         if not app:
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if app.employee and app.employee.manager != request.user:
-                return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
+        is_admin_or_hr = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'is_staff', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR, 'ADMIN', 'HR']
+        )
+        is_assigned = (
+            is_admin_or_hr or
+            (app.employee and app.employee.manager_id and str(app.employee.manager_id) == str(request.user.id)) or
+            (app.reviewer_id and str(app.reviewer_id) == str(request.user.id)) or
+            (app.employee and app.employee.team_memberships.filter(team__manager=request.user).exists())
+        )
+        is_mgr = (
+            getattr(request.user, 'role', '') in [UserRole.MANAGER, 'MANAGER', 'manager'] or
+            getattr(request.user, 'is_manager', False)
+        )
+        if is_mgr and not is_admin_or_hr and not is_assigned:
+            return error_response("You can only evaluate employees assigned to you by HR or Super Admin.", status_code=403)
 
         final_comment = request.query_params.get("finalComment") or request.data.get("finalComment") or request.data.get("reviewer_comments")
         if final_comment:
@@ -2497,7 +2603,7 @@ class SelfAssessmentFormCompatView(APIView):
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
         existing_ratings = {str(r.criterion.id): r for r in app.ratings.all()}
-        criteria = EvaluationCriterion.objects.filter(Q(cycle=app.cycle) | Q(cycle__isnull=True))
+        criteria = EvaluationCriterion.objects.filter(is_active=True)
         if not criteria.exists():
             criteria = EvaluationCriterion.objects.all()
 
@@ -2552,7 +2658,7 @@ class SelfAssessmentAnswersCompatView(APIView):
             return Response({"detail": "Appraisal not found"}, status=status.HTTP_404_NOT_FOUND)
 
         answers = request.data if isinstance(request.data, list) else request.data.get("answers", [])
-        criteria = list(EvaluationCriterion.objects.filter(Q(cycle=app.cycle) | Q(cycle__isnull=True)))
+        criteria = list(EvaluationCriterion.objects.filter(is_active=True))
         if not criteria:
             criteria = list(EvaluationCriterion.objects.all())
 

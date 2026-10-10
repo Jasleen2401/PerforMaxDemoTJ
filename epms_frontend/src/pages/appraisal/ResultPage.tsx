@@ -76,8 +76,12 @@ const ResultPage: React.FC = () => {
     </div>
   );
 
-  const isEmployee = user?.id === appraisal.employeeId;
-  const isManager = user?.id === appraisal.managerId;
+  const isEmployee = String(user?.id).toLowerCase() === String(appraisal.employeeId).toLowerCase() ||
+    String(user?.email || '').toLowerCase() === String(appraisal.employeeEmail || '').toLowerCase();
+  const isManager = Boolean((appraisal as any).isAssignedManager) ||
+    String(user?.id).toLowerCase() === String(appraisal.managerId).toLowerCase() ||
+    String(user?.email || '').toLowerCase() === String(appraisal.managerEmail || '').toLowerCase() ||
+    (user?.staffName && appraisal.managerName && String(user.staffName).toLowerCase() === String(appraisal.managerName).toLowerCase());
   const isPrivileged = isHR || isAdmin;
   const displayScore = breakdown?.finalTotalScore ?? appraisal.finalScore;
 

@@ -118,13 +118,22 @@ const ManagerEvaluation = () => {
     <div style={{ padding: '48px 24px', textAlign: 'center', fontSize: 13, color: '#9EA3B0' }}>Evaluation form could not be loaded.</div>
   );
 
-  const isManagerRole = user?.role === 'MANAGER' || (user as any)?.isManager;
-  const isAssignedManager = formData.managerId != null
-    ? (String(user?.id).toLowerCase() === String(formData.managerId).toLowerCase() ||
-       String(user?.username || '').toLowerCase() === String(formData.managerName || '').toLowerCase())
-    : !(isHR || isAdmin);
+  const isManagerRole = user?.role === 'MANAGER' || (user as any)?.isManager || user?.roles?.some(r => r.includes('MANAGER'));
+  const isAssignedManager = formData.isAssignedManager ?? (
+    formData.managerId != null
+      ? (
+          String(user?.id).toLowerCase() === String(formData.managerId).toLowerCase() ||
+          String((user as any)?.userId || '').toLowerCase() === String(formData.managerId).toLowerCase() ||
+          String(user?.email || '').toLowerCase() === String(formData.managerEmail || '').toLowerCase() ||
+          String(user?.staffName || '').toLowerCase() === String(formData.managerName || '').toLowerCase() ||
+          String((user as any)?.username || '').toLowerCase() === String(formData.managerName || '').toLowerCase()
+        )
+      : !(isHR || isAdmin)
+  );
 
-  if (isManagerRole && !isHR && !isAdmin && !isAssignedManager) {
+  const canEvaluate = isHR || isAdmin || (formData.canEvaluate ?? isAssignedManager);
+
+  if (isManagerRole && !isHR && !isAdmin && !canEvaluate) {
     return (
       <div className="p-8 max-w-xl mx-auto my-12 bg-white rounded-2xl border border-amber-200 shadow-sm text-center space-y-4">
         <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto">
@@ -145,8 +154,9 @@ const ManagerEvaluation = () => {
     );
   }
 
-  const canEvaluate = isHR || isAdmin || isAssignedManager;
-  const isReadOnly = !canEvaluate || formData.appraisalStatus === 'HR_APPROVED' || formData.appraisalStatus === 'FINALIZED';
+  const isReadOnly = formData.canEdit !== undefined
+    ? !formData.canEdit
+    : (!canEvaluate || formData.appraisalStatus === 'HR_APPROVED' || formData.appraisalStatus === 'FINALIZED');
   const isDisabled = isSubmitting || isReadOnly;
 
   const grandTotal = Object.values(managerRatings).reduce((a, b) => a + b, 0);
@@ -195,16 +205,16 @@ const ManagerEvaluation = () => {
           {!isReadOnly ? (
             <>
               <button onClick={handleSaveDraft} disabled={isSaving || isDrafting}
-                className="transition-colors disabled:opacity-50"
+                className="transition-colors disabled:opacity-50 cursor-pointer"
                 style={{ background: '#F5F6F8', color: '#5A6070', border: '0.5px solid #E0E2E8', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 500 }}>
                 {isDrafting ? 'Saving…' : 'Save Draft'}
               </button>
               <button onClick={handleSubmit}
-                disabled={isSubmitting || isSaving || completedCount < totalQuestions || !formData.isSelfSubmitted}
-                title={!formData.isSelfSubmitted ? 'Employee must submit self-assessment first' : ''}
-                className="inline-flex items-center gap-2 transition-colors disabled:opacity-50"
+                disabled={isSubmitting || isSaving || isDrafting || completedCount < totalQuestions}
+                title={completedCount < totalQuestions ? `Please rate all ${totalQuestions} criteria before submitting` : ''}
+                className="inline-flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                 style={{ background: '#1A56DB', color: '#FFFFFF', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none' }}>
-                {!formData.isSelfSubmitted ? 'Awaiting Employee' : isSubmitting ? 'Submitting…' : formData.submitted ? 'Update Evaluation' : 'Submit Evaluation'}
+                {isSubmitting ? 'Submitting…' : formData.submitted ? 'Update Evaluation' : 'Submit Evaluation'}
               </button>
             </>
           ) : (
@@ -216,6 +226,13 @@ const ManagerEvaluation = () => {
           )}
         </div>
       </div>
+
+      {!formData.isSelfSubmitted && (
+        <div style={{ background: '#F0F5FF', border: '0.5px solid #C8D8FA', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#1E40AF', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3B82F6', flexShrink: 0 }} />
+          <span>Employee self-assessment is currently in progress. As the assigned manager, you can evaluate criteria, save draft notes, or submit your manager evaluation at any time.</span>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '12px 18px' }}>

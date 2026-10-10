@@ -62,9 +62,13 @@ const AppraisalDetail: React.FC = () => {
     </div>
   );
 
-  const isEmployee = String(user?.id).toLowerCase() === String(appraisal.employeeId).toLowerCase();
-  const isManager = String(user?.id).toLowerCase() === String(appraisal.managerId).toLowerCase() ||
-    (user?.username && appraisal.managerName && String(user.username).toLowerCase() === String(appraisal.managerName).toLowerCase());
+  const isEmployee = String(user?.id).toLowerCase() === String(appraisal.employeeId).toLowerCase() ||
+    String(user?.email || '').toLowerCase() === String(appraisal.employeeEmail || '').toLowerCase();
+  const isManager = Boolean((appraisal as any).isAssignedManager) ||
+    String(user?.id).toLowerCase() === String(appraisal.managerId).toLowerCase() ||
+    String(user?.email || '').toLowerCase() === String(appraisal.managerEmail || '').toLowerCase() ||
+    (user?.staffName && appraisal.managerName && String(user.staffName).toLowerCase() === String(appraisal.managerName).toLowerCase()) ||
+    ((user as any)?.username && appraisal.managerName && String((user as any).username).toLowerCase() === String(appraisal.managerName).toLowerCase());
   const isPrivileged = isAdmin || isHR;
   const canViewSelfAssessment = isEmployee || isManager || isPrivileged;
   const canViewManagerEvaluation = isManager || isPrivileged || (isEmployee && !!appraisal.managerSubmittedAt);

@@ -25,9 +25,23 @@ class ManagerGiveFeedbackView(APIView):
         return ManagerEmployeeFeedbacksView().get(request)
 
     def post(self, request):
-        emp_id = request.data.get('employee_id') or request.data.get('employeeId') or request.data.get('recipient_id')
+        emp_id = (
+            request.data.get('employee_id') or
+            request.data.get('employeeId') or
+            request.data.get('recipient_id') or
+            request.data.get('recipientId') or
+            request.data.get('user_id') or
+            request.data.get('userId')
+        )
         feedback_type = request.data.get('feedback_type') or request.data.get('category', 'POSITIVE')
-        message = request.data.get('message', '').strip()
+        message = (
+            request.data.get('message') or
+            request.data.get('content') or
+            request.data.get('feedback') or
+            request.data.get('comments') or
+            request.data.get('note') or
+            ''
+        ).strip()
         visibility = request.data.get('visibility', FeedbackVisibility.PUBLIC).upper()
         goal_id = request.data.get('goal_id') or request.data.get('goalId')
 

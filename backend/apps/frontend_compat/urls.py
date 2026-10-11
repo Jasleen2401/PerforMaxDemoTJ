@@ -19,6 +19,7 @@ from apps.frontend_compat.views import (
     AppraisalsDetailCompatView,
     AppraisalsScoreBreakdownCompatView,
     AppraisalsFinalizeCompatView,
+    AppraisalsPublishCompatView,
     ManagerEvaluationFormCompatView,
     ManagerEvaluationAnswersCompatView,
     ManagerEvaluationDraftCompatView,
@@ -28,6 +29,17 @@ from apps.frontend_compat.views import (
     SelfAssessmentDraftCompatView,
     SelfAssessmentSubmitCompatView,
     KpiActiveCycleCompatView,
+    KpiCategoryCompatView,
+    KpiLibraryCompatView,
+    KpiGoalSetCompatView,
+    KpiGoalItemCompatView,
+    KpiProgressCompatView,
+    KpiRevisionCompatView,
+    KpiScoreCompatView,
+    KpiHistoryCompatView,
+    KpiGoalSetAuditCompatView,
+    KpiSummaryReportCompatView,
+    KpiActualsCompletionReportCompatView,
     KpiAuditOrgCompatView,
     KpiAuditTeamCompatView,
     KpiAuditEmployeeCompatView,
@@ -95,6 +107,7 @@ urlpatterns = [
     re_path(r'^appraisals/employee/(?P<employeeId>[^/]+)/cycle/(?P<cycleId>[^/]+)/?$', AppraisalsByEmployeeAndCycleCompatView.as_view(), name='compat_appraisal_employee_cycle'),
     re_path(r'^appraisals/(?P<pk>[^/]+)/score-breakdown/?$', AppraisalsScoreBreakdownCompatView.as_view(), name='compat_appraisal_score_breakdown'),
     re_path(r'^appraisals/(?P<pk>[^/]+)/finalize/?$', AppraisalsFinalizeCompatView.as_view(), name='compat_appraisal_finalize'),
+    re_path(r'^appraisals/(?P<pk>[^/]+)/publish/?$', AppraisalsPublishCompatView.as_view(), name='compat_appraisal_publish'),
     re_path(r'^appraisals/360/?$', AppraisalsDetailCompatView.as_view(), {'pk': '360'}, name='compat_appraisals_360'),
     re_path(r'^appraisals/(?P<pk>[^/]+)/?$', AppraisalsDetailCompatView.as_view(), name='compat_appraisal_detail'),
 
@@ -102,6 +115,7 @@ urlpatterns = [
     re_path(r'^manager-evaluations/form/(?P<pk>[^/]+)/?$', ManagerEvaluationFormCompatView.as_view(), name='compat_mgr_eval_form'),
     re_path(r'^manager-evaluations/(?P<pk>[^/]+)/answers/?$', ManagerEvaluationAnswersCompatView.as_view(), name='compat_mgr_eval_answers'),
     re_path(r'^manager-evaluations/(?P<pk>[^/]+)/draft/?$', ManagerEvaluationDraftCompatView.as_view(), name='compat_mgr_eval_draft'),
+    re_path(r'^manager-evaluations/(?P<pk>[^/]+)/publish/?$', AppraisalsPublishCompatView.as_view(), name='compat_mgr_eval_publish'),
     re_path(r'^manager-evaluations/(?P<pk>[^/]+)/submit/?$', ManagerEvaluationSubmitCompatView.as_view(), name='compat_mgr_eval_submit'),
 
     # Self Assessments
@@ -163,6 +177,44 @@ urlpatterns = [
     re_path(r'^kpi-audit/team/?$', KpiAuditTeamCompatView.as_view(), name='compat_kpi_audit_team'),
     re_path(r'^kpi-audit/employee/(?P<pk>[^/]+)/?$', KpiAuditEmployeeCompatView.as_view(), name='compat_kpi_audit_employee'),
     re_path(r'^kpi/active-cycle/?$', KpiActiveCycleCompatView.as_view(), name='compat_kpi_active_cycle'),
+
+    # Explicit KPI Framework Endpoints
+    re_path(r'^kpi/categories/paginated/?$', KpiCategoryCompatView.as_view(), name='compat_kpi_categories_paginated'),
+    re_path(r'^kpi/categories/(?P<pk>[^/]+)/?$', KpiCategoryCompatView.as_view(), name='compat_kpi_categories_detail'),
+    re_path(r'^kpi/categories/?$', KpiCategoryCompatView.as_view(), name='compat_kpi_categories_list'),
+
+    re_path(r'^kpi/library/all/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_all'),
+    re_path(r'^kpi/library/import/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_import'),
+    re_path(r'^kpi/library/history/(?P<position_id>[^/]+)/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_history'),
+    re_path(r'^kpi/library/(?P<pk>[^/]+)/status/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_status'),
+    re_path(r'^kpi/library/(?P<pk>[^/]+)/toggle-history-status/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_toggle_history'),
+    re_path(r'^kpi/library/(?P<pk>[^/]+)/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_detail'),
+    re_path(r'^kpi/library/?$', KpiLibraryCompatView.as_view(), name='compat_kpi_library_list'),
+
+    re_path(r'^kpi/bulk-assign/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_bulk_assign'),
+    re_path(r'^kpi/assign/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_assign'),
+    re_path(r'^kpi/goal-set/team/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_goal_set_team'),
+    re_path(r'^kpi/goal-set/department/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_goal_set_dept'),
+    re_path(r'^kpi/goal-set/employee/(?P<employee_id>[^/]+)/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_goal_set_emp'),
+    re_path(r'^kpi/goal-set/(?P<goal_set_id>[^/]+)/bulk-items/?$', KpiGoalItemCompatView.as_view(), name='compat_kpi_goal_bulk_items'),
+    re_path(r'^kpi/goal-set/(?P<goal_set_id>[^/]+)/items/?$', KpiGoalItemCompatView.as_view(), name='compat_kpi_goal_items'),
+    re_path(r'^kpi/goal-set/(?P<pk>[^/]+)/revert/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_goal_set_revert'),
+    re_path(r'^kpi/goal-set/(?P<pk>[^/]+)/lock/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_goal_set_lock'),
+    re_path(r'^kpi/goal-set/(?P<pk>[^/]+)/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_goal_set_detail'),
+    re_path(r'^kpi/items/(?P<pk>[^/]+)/?$', KpiGoalItemCompatView.as_view(), name='compat_kpi_item_detail'),
+    re_path(r'^kpi/approve/(?P<pk>[^/]+)/?$', KpiGoalSetCompatView.as_view(), name='compat_kpi_approve'),
+
+    re_path(r'^kpi/progress/history/?$', KpiProgressCompatView.as_view(), name='compat_kpi_progress_history'),
+    re_path(r'^kpi/progress/?$', KpiProgressCompatView.as_view(), name='compat_kpi_progress'),
+    re_path(r'^kpi/revise/(?P<pk>[^/]+)/?$', KpiRevisionCompatView.as_view(), name='compat_kpi_revise'),
+    re_path(r'^kpi/calculate-score/?$', KpiScoreCompatView.as_view(), name='compat_kpi_score'),
+
+    re_path(r'^kpi-history/employee/(?P<employee_id>[^/]+)/?$', KpiHistoryCompatView.as_view(), name='compat_kpi_history_emp'),
+    re_path(r'^kpi-history/goal-set/(?P<goal_set_id>[^/]+)/audit/?$', KpiGoalSetAuditCompatView.as_view(), name='compat_kpi_audit_goal_set'),
+
+    # Reports
+    re_path(r'^(?:v1/)?reports/kpi-summary/?$', KpiSummaryReportCompatView.as_view(), name='compat_reports_kpi_summary'),
+    re_path(r'^(?:v1/)?reports/kpi-actuals-completion/?$', KpiActualsCompletionReportCompatView.as_view(), name='compat_reports_kpi_actuals'),
 
     # Reports
     re_path(r'^(?:v1/)?reports/(?P<endpoint>[^/]+)/download/?$', ReportDownloadCompatView.as_view(), name='compat_reports_download'),

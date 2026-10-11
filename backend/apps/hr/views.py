@@ -53,12 +53,22 @@ class HrPublishCycleView(APIView):
     permission_classes = [IsHrOrAdminUser]
 
     def post(self, request, pk):
+        from django.utils import timezone
+        from apps.frontend_compat.views import resolve_cycle_id
+
         cycle = PerformanceCycle.objects.filter(id=pk).first()
+        if not cycle:
+            c_uuid = resolve_cycle_id(pk)
+            if c_uuid:
+                cycle = PerformanceCycle.objects.filter(id=c_uuid).first()
         if not cycle:
             return Response({'code': 404, 'message': 'Cycle not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        Appraisal.objects.filter(cycle=cycle, status='HR_APPROVED').update(status='PUBLISHED')
-        return Response({'code': 200, 'message': f'Appraisals for cycle {cycle.name} have been published.'})
+        count = Appraisal.objects.filter(
+            cycle=cycle,
+            status__in=['HR_APPROVED', 'SUBMITTED', 'EVALUATED']
+        ).update(status='PUBLISHED', published_at=timezone.now())
+        return Response({'code': 200, 'message': f'{count} appraisal(s) for cycle {cycle.name} have been published.'})
 
 
 class HrCriteriaView(APIView):

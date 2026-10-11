@@ -353,14 +353,27 @@ export const appraisalApi = api.injectEndpoints({
         method: 'POST',
         body: answers,
       }),
-      invalidatesTags: ['Appraisal'],
+      invalidatesTags: ['Appraisal', 'Manager', 'Profile', 'Employee', 'Score', 'FinalScore', 'Cycle'],
     }),
-    submitManagerEvaluation: builder.mutation<any, string>({
-      query: (id) => ({
-        url: `/manager-evaluations/${id}/submit`,
+    submitManagerEvaluation: builder.mutation<any, string | { id: string; publish?: boolean }>({
+      query: (arg) => {
+        const id = typeof arg === 'string' ? arg : arg.id;
+        const publish = typeof arg === 'object' && arg.publish !== undefined ? arg.publish : true;
+        return {
+          url: `/manager-evaluations/${id}/submit`,
+          method: 'POST',
+          body: { publish },
+        };
+      },
+      invalidatesTags: ['Appraisal', 'Manager', 'Profile', 'Employee', 'Score', 'FinalScore', 'Cycle'],
+    }),
+    publishAppraisal: builder.mutation<any, { appraisalId: string; publish?: boolean; score?: number; classification?: string }>({
+      query: ({ appraisalId, ...body }) => ({
+        url: `/appraisals/${appraisalId}/publish`,
         method: 'POST',
+        body: { publish: true, ...body },
       }),
-      invalidatesTags: ['Appraisal'],
+      invalidatesTags: ['Appraisal', 'Manager', 'Profile', 'Employee', 'Score', 'FinalScore', 'Cycle'],
     }),
 
     saveDraft: builder.mutation<any, { selfAssessmentId: string; overallReflection: string }>({
@@ -378,7 +391,7 @@ export const appraisalApi = api.injectEndpoints({
         method: 'POST',
         params: { finalComment },
       }),
-      invalidatesTags: ['Appraisal'],
+      invalidatesTags: ['Appraisal', 'Manager', 'Profile', 'Employee', 'Score', 'FinalScore', 'Cycle'],
     }),
 
     getDiagnosticHealth: builder.query<any, void>({
@@ -546,6 +559,7 @@ export const {
   useGetManagerEvaluationFormQuery,
   useSaveManagerEvaluationAnswersMutation,
   useSubmitManagerEvaluationMutation,
+  usePublishAppraisalMutation,
   useSaveDraftMutation,
   useSaveManagerDraftMutation,
   useLazyGetEmployeeAssessmentQuery,

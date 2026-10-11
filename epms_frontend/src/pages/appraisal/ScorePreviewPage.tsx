@@ -55,17 +55,17 @@ const ScorePreviewPage: React.FC = () => {
   let stageBannerMsg = 'Preview — self-assessment in progress. Scores will change as more data is submitted.';
   let StageIcon = Clock;
 
-  if (status === 'EVALUATED') {
+  if (status === 'EVALUATED' || status === 'SUBMITTED') {
     stageBannerBg = '#FAEEDA';
     stageBannerText = '#633806';
     stageBannerBorder = '#F0D4A4';
-    stageBannerMsg = 'Provisional — manager evaluation complete, awaiting HR approval.';
+    stageBannerMsg = 'Manager evaluation complete and recorded.';
     StageIcon = Info;
-  } else if (status === 'HR_APPROVED' || status === 'FINALIZED') {
+  } else if (status === 'HR_APPROVED' || status === 'FINALIZED' || status === 'PUBLISHED') {
     stageBannerBg = '#EAF3DE';
     stageBannerText = '#27500A';
     stageBannerBorder = '#B8DCA0';
-    stageBannerMsg = 'Final score.';
+    stageBannerMsg = 'Official published score.';
     StageIcon = CheckCircle2;
   }
 

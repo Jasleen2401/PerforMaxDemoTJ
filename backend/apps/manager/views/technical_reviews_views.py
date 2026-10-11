@@ -96,10 +96,12 @@ class ManagerTechnicalReviewsView(APIView):
         emp_id = request.data.get('employee_id') or request.data.get('employeeId')
         review_status = request.data.get('status', 'DRAFT').upper()
         reviews_list = request.data.get('reviews', [])
+        if not reviews_list and ('parameter_id' in request.data or 'parameterId' in request.data):
+            reviews_list = [request.data]
 
         if not emp_id or not reviews_list:
             return Response(
-                {'code': 400, 'message': 'employee_id and reviews array are required.'},
+                {'code': 400, 'message': 'employee_id and reviews array or review parameter are required.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -125,7 +127,7 @@ class ManagerTechnicalReviewsView(APIView):
         for item in reviews_list:
             param_id = item.get('parameter_id') or item.get('parameterId')
             score = item.get('score', 0)
-            assessment = item.get('mentor_assessment') or item.get('mentorAssessment', '')
+            assessment = item.get('mentor_assessment') or item.get('mentorAssessment') or item.get('notes', '')
             evidence_url = item.get('evidence_url') or item.get('evidenceUrl', '')
 
             param = TechnicalCapabilityParameter.objects.filter(id=param_id).first()

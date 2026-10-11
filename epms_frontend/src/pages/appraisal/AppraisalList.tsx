@@ -14,7 +14,8 @@ import {
   useDeleteAppraisalFormMutation,
   useDeleteFormSetMutation,
   useDeleteCycleMutation,
-  useSendCycleRemindersMutation
+  useSendCycleRemindersMutation,
+  usePublishAppraisalMutation
 } from '../../features/appraisal/appraisalApi';
 import { useGetDepartmentsQuery } from '../../features/org/departmentApi';
 import { format } from 'date-fns';
@@ -32,7 +33,8 @@ import {
   Search,
   Mail,
   Trash2,
-  Calculator
+  Calculator,
+  Send
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../components/Can';
@@ -43,7 +45,9 @@ const panelStyle: React.CSSProperties = {
 
 const STATUS_STYLE: Record<string, { bg: string; text: string; border: string }> = {
   FINALIZED:    { bg: '#EAF3DE', text: '#27500A', border: '#B8DCA0' },
+  PUBLISHED:    { bg: '#EAF3DE', text: '#27500A', border: '#B8DCA0' },
   PENDING:      { bg: '#FAEEDA', text: '#633806', border: '#F0D4A4' },
+  SUBMITTED:    { bg: '#EEF3FD', text: '#0C447C', border: '#B5D4F4' },
   SELF_ASSESSED:{ bg: '#EEF3FD', text: '#0C447C', border: '#B5D4F4' },
   EVALUATED:    { bg: '#EEF3FD', text: '#0C447C', border: '#B5D4F4' },
   HR_APPROVED:  { bg: '#F1EFE8', text: '#444441', border: '#DDDBD2' },
@@ -55,8 +59,10 @@ const getStatusStyle = (status: string) =>
 const APPRAISAL_STATUS_OPTIONS = [
   'PENDING',
   'SELF_ASSESSED',
+  'SUBMITTED',
   'EVALUATED',
   'HR_APPROVED',
+  'PUBLISHED',
   'FINALIZED',
   'ARCHIVED',
 ];
@@ -105,6 +111,7 @@ const AppraisalList: React.FC = () => {
   const [deleteForm] = useDeleteAppraisalFormMutation();
   const [deleteCycle] = useDeleteCycleMutation();
   const [sendReminders, { isLoading: isSendingReminders }] = useSendCycleRemindersMutation();
+  const [publishAppraisal] = usePublishAppraisalMutation();
 
   const { data: formSets = [] } = useGetAppraisalFormSetsQuery(undefined, { skip: !isPrivileged });
 
@@ -211,33 +218,61 @@ const AppraisalList: React.FC = () => {
             onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}>
             <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
               <span style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{appraisal.cycleName}</span>
-              <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
-                {appraisal.status.replace('_', ' ')}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {(appraisal.overallScore != null || appraisal.finalScore != null) && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', borderRadius: 20, padding: '2px 8px' }}>
+                    {Number(appraisal.overallScore ?? appraisal.finalScore).toFixed(1)}%
+                  </span>
+                )}
+                <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
+                  {appraisal.status.replace('_', ' ')}
+                </span>
+              </div>
             </div>
             <p style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginBottom: 4 }}>{appraisal.employeeName}</p>
-            <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>Team Performance Evaluation</p>
-            <div className="flex items-center justify-between" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6' }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/manager-evaluation`);
-                }}
-                style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                className="hover:underline flex items-center gap-1 font-semibold"
-              >
-                <ClipboardList size={12} /> Evaluate Form
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
-                }}
-                style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                className="hover:underline flex items-center gap-1 font-medium"
-              >
-                <Calculator size={12} /> Preview Score
-              </button>
+            <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>
+              {appraisal.departmentName ? `${appraisal.departmentName} · ` : ''}{appraisal.positionName || 'Team Performance Evaluation'}
+            </p>
+            <div className="flex items-center justify-between gap-2" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6' }}>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/appraisal/${appraisal.appraisalId}/manager-evaluation`);
+                  }}
+                  style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  className="hover:underline flex items-center gap-1 font-semibold"
+                >
+                  <ClipboardList size={12} /> Evaluate Form
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                  }}
+                  style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  className="hover:underline flex items-center gap-1 font-medium"
+                >
+                  <Calculator size={12} /> Preview
+                </button>
+              </div>
+              {(appraisal.status === 'SUBMITTED' || appraisal.status === 'HR_APPROVED') && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await publishAppraisal({ appraisalId: appraisal.appraisalId, publish: true }).unwrap();
+                      toast.success(`Published evaluation for ${appraisal.employeeName}!`);
+                    } catch {
+                      toast.error('Failed to publish appraisal.');
+                    }
+                  }}
+                  style={{ fontSize: 11, color: '#047857', background: '#ECFDF5', border: '0.5px solid #A7F3D0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}
+                  className="hover:bg-emerald-100 flex items-center gap-1 font-semibold"
+                >
+                  <Send size={11} /> Publish
+                </button>
+              )}
             </div>
           </div>
         );
@@ -532,11 +567,28 @@ const AppraisalList: React.FC = () => {
                         <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
                           {appraisal.finalScore != null ? `${Number(appraisal.finalScore).toFixed(1)}%` : '—'}
                         </td>
-                        <td style={{ padding: '10px 16px', display: 'flex', gap: 12 }}>
+                        <td style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                           <button onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}
                             style={{ fontSize: 12, color: '#1A56DB' }} className="hover:underline font-medium">Detail</button>
                           <button onClick={() => navigate(`/appraisal/${appraisal.appraisalId}/score`)}
                             style={{ fontSize: 12, color: '#0C447C' }} className="hover:underline font-medium">Preview</button>
+                          {isPrivileged && (appraisal.status === 'SUBMITTED' || appraisal.status === 'HR_APPROVED') && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await publishAppraisal({ appraisalId: appraisal.appraisalId, publish: true }).unwrap();
+                                  toast.success(`Published evaluation for ${appraisal.employeeName}!`);
+                                } catch {
+                                  toast.error('Failed to publish appraisal.');
+                                }
+                              }}
+                              style={{ fontSize: 11, color: '#047857', background: '#ECFDF5', border: '0.5px solid #A7F3D0', borderRadius: 6, padding: '2px 6px', cursor: 'pointer' }}
+                              className="hover:bg-emerald-100 flex items-center gap-1 font-semibold"
+                            >
+                              <Send size={11} /> Publish
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

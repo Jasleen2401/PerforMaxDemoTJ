@@ -27,6 +27,8 @@ import {
   ShieldCheck,
   UserX,
   RotateCcw,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useGetEmployeeByIdQuery } from "../../features/employee/employeeapi";
@@ -42,6 +44,7 @@ import type { GoalItemResponse } from "../../features/kpi/kpiTypes";
 import ProvideFeedbackModal from "../../components/feedback/ProvideFeedbackModal";
 import ChooseKraWeightageModal from "../../components/kpi/ChooseKraWeightageModal";
 import { useAuth } from "../../hooks/useAuth";
+import { useGetAssignedMenteesQuery } from "../../features/manager/managerApi";
 
 type ProfileGoalItem = GoalItemResponse & {
   kpiName?: string;
@@ -133,6 +136,7 @@ const EmployeeProfileView = () => {
 
   // Feedbacks state
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
+  const [editingFeedback, setEditingFeedback] = useState<FeedbackItem | null>(null);
   const [feedbackStats, setFeedbackStats] = useState({
     all: 0,
     positive: 0,
@@ -151,13 +155,30 @@ const EmployeeProfileView = () => {
     useGetEmployeeByIdQuery(employeeId, { skip: !employeeId });
   const { user: currentUser } = useAuth();
   const isManager = currentUser?.role === 'MANAGER' || (currentUser as any)?.isManager;
-  const isAssignedReport = !isManager || (
-    Boolean(employee) && (
-      (employee?.directManagerId && String(employee.directManagerId) === String(currentUser?.id)) ||
-      (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.username || '').toLowerCase()) ||
-      (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.staffName || '').toLowerCase())
-    )
-  );
+  const { data: assignedMentees = [] } = useGetAssignedMenteesQuery(undefined, { skip: !isManager });
+
+  const isAssignedReport = useMemo(() => {
+    if (!isManager) return true;
+    const targetId = String(employeeId || '').toLowerCase();
+    const empObjId = String(employee?.id || '').toLowerCase();
+    const empCode = String(employee?.employeeCode || '').toLowerCase();
+
+    const isMentee = assignedMentees.some(
+      (m) =>
+        String(m.id).toLowerCase() === targetId ||
+        String(m.id).toLowerCase() === empObjId ||
+        String(m.userId).toLowerCase() === targetId ||
+        String(m.userId).toLowerCase() === empObjId ||
+        String(m.employeeCode).toLowerCase() === targetId ||
+        String(m.employeeCode).toLowerCase() === empCode
+    );
+    if (isMentee) return true;
+
+    if (employee?.directManagerId && String(employee.directManagerId) === String(currentUser?.id)) return true;
+    if (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.username || '').toLowerCase()) return true;
+    if (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.staffName || '').toLowerCase()) return true;
+    return false;
+  }, [isManager, assignedMentees, employeeId, employee, currentUser]);
   const { data: activeCycle } = useGetActiveCycleQuery();
   const { data: allCycles = [] } = useGetCyclesQuery();
 
@@ -255,7 +276,13 @@ const EmployeeProfileView = () => {
       if (feedRes.ok) {
         const feedData = await feedRes.json();
         const results = feedData.results || feedData.data || feedData;
-        setFeedbacks(Array.isArray(results) ? results : []);
+        if (Array.isArray(results)) {
+          setFeedbacks(results);
+        } else if (results && Array.isArray(results.content)) {
+          setFeedbacks(results.content);
+        } else {
+          setFeedbacks([]);
+        }
       }
     } catch {
       // Ignore or log
@@ -267,6 +294,27 @@ const EmployeeProfileView = () => {
   useEffect(() => {
     fetchFeedbacks();
   }, [fetchFeedbacks]);
+
+  // Delete feedback handler
+  const handleDeleteFeedback = async (fbId: string) => {
+    if (!window.confirm("Are you sure you want to delete this feedback?")) return;
+    try {
+      const token = localStorage.getItem("accessToken") || "";
+      const res = await fetch(`/api/feedbacks/${fbId}/`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        toast.success("Feedback deleted successfully!");
+        fetchFeedbacks();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.message || "Failed to delete feedback.");
+      }
+    } catch {
+      toast.error("Network error deleting feedback.");
+    }
+  };
 
   // Post comment handler
   const handleAddComment = async (feedbackId: string) => {
@@ -559,7 +607,10 @@ const EmployeeProfileView = () => {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsFeedbackModalOpen(true)}
+                  onClick={() => {
+                    setEditingFeedback(null);
+                    setIsFeedbackModalOpen(true);
+                  }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all"
                   style={{ backgroundColor: "#4338CA" }}
                 >
@@ -756,12 +807,29 @@ const EmployeeProfileView = () => {
                             {isPositive ? <ThumbsUp size={12} /> : <Star size={12} />}
                             {fb.category || fb.feedback_type}
                           </span>
-                          <button
-                            type="button"
-                            className="p-1 text-slate-400 hover:text-slate-600 rounded-md"
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
+                          {(isManager || fb.sender_name?.toLowerCase() === currentUser?.username?.toLowerCase() || fb.sender_name?.toLowerCase() === currentUser?.staffName?.toLowerCase()) && (
+                            <div className="flex items-center gap-1 ml-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingFeedback(fb);
+                                  setIsFeedbackModalOpen(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                                title="Edit Feedback"
+                              >
+                                <Edit2 size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFeedback(fb.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                                title="Delete Feedback"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1120,9 +1188,13 @@ const EmployeeProfileView = () => {
       {/* Modal 1: Provide Feedback Modal matching media_1789919618447.png */}
       <ProvideFeedbackModal
         isOpen={isFeedbackModalOpen}
-        onClose={() => setIsFeedbackModalOpen(false)}
+        onClose={() => {
+          setIsFeedbackModalOpen(false);
+          setEditingFeedback(null);
+        }}
         onSuccess={fetchFeedbacks}
         defaultEmployeeId={employee?.id}
+        editingFeedback={editingFeedback}
         employees={[
           {
             id: employee?.id || 1,

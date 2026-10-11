@@ -196,6 +196,41 @@ class GoalViewSet(viewsets.ModelViewSet):
             }
         })
 
+    @action(detail=False, methods=['get'], url_path='cascading')
+    def cascading(self, request):
+        """Returns organizational goal hierarchy for cascading goals view."""
+        qs = self.get_queryset()
+        nodes = []
+        for goal in qs:
+            nodes.append({
+                'id': str(goal.id),
+                'title': goal.title,
+                'description': goal.description,
+                'status': goal.status,
+                'completion_percentage': float(goal.completion_percentage),
+                'due_date': str(goal.due_date) if goal.due_date else None,
+                'employee_name': goal.employee.full_name if goal.employee else None,
+                'employee_id': str(goal.employee.id) if goal.employee else None,
+                'cycle_name': goal.cycle.name if goal.cycle else None,
+                'priority': goal.priority,
+                'kpis': [
+                    {
+                        'id': str(k.id),
+                        'name': k.name,
+                        'target_value': float(k.target_value) if k.target_value else None,
+                        'current_value': float(k.achieved_value) if k.achieved_value else None,
+                        'unit': k.unit
+                    }
+                    for k in goal.kpis.all()
+                ]
+            })
+        return Response({
+            'code': 200,
+            'message': 'Cascading goals loaded successfully.',
+            'data': nodes
+        })
+
+
 
 
 class KPIViewSet(viewsets.ModelViewSet):

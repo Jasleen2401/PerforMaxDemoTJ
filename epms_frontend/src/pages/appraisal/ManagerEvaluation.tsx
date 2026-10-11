@@ -104,8 +104,8 @@ const ManagerEvaluation = () => {
     try {
       await saveAnswers({ id: formData.evaluationId, answers: buildPayload() }).unwrap();
       await saveManagerDraft({ evaluationId: formData.evaluationId, finalComment: managerComment }).unwrap();
-      await submitEvaluation(formData.evaluationId).unwrap();
-      toast.success('Manager evaluation submitted!');
+      await submitEvaluation({ id: formData.evaluationId, publish: true }).unwrap();
+      toast.success('Manager evaluation submitted and published successfully!');
       navigate('/appraisal');
     } catch (err: any) { toast.error('Operation failed.'); }
   };
@@ -214,7 +214,7 @@ const ManagerEvaluation = () => {
                 title={completedCount < totalQuestions ? `Please rate all ${totalQuestions} criteria before submitting` : ''}
                 className="inline-flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                 style={{ background: '#1A56DB', color: '#FFFFFF', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none' }}>
-                {isSubmitting ? 'Submitting…' : formData.submitted ? 'Update Evaluation' : 'Submit Evaluation'}
+                {isSubmitting ? 'Submitting…' : formData.submitted ? 'Update & Publish Evaluation' : 'Submit & Publish Evaluation'}
               </button>
             </>
           ) : (

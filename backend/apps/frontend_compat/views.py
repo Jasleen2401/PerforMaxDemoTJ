@@ -1868,6 +1868,26 @@ def map_cycle(cycle: PerformanceCycle, index: int = 1) -> dict:
     }
 
 
+def resolve_cycle_id(cycle_id):
+    if not cycle_id:
+        return None
+    s = str(cycle_id).strip()
+    if s in CYCLE_ID_MAP:
+        return str(CYCLE_ID_MAP[s])
+    try:
+        uuid.UUID(s)
+        return s
+    except (ValueError, AttributeError):
+        pass
+    if s.isdigit():
+        idx = int(s) - 1
+        cycles = list(PerformanceCycle.objects.all().order_by('-start_date', '-created_at'))
+        if 0 <= idx < len(cycles):
+            return str(cycles[idx].id)
+    active = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+    return str(active.id) if active else None
+
+
 def map_appraisal(app: Appraisal) -> dict:
     mgr_id = None
     mgr_name = None
@@ -2025,7 +2045,15 @@ class AppraisalsByCycleCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, cycleId):
-        apps = Appraisal.objects.filter(cycle_id=cycleId)
+        c_uuid = resolve_cycle_id(cycleId)
+        if c_uuid:
+            apps = Appraisal.objects.filter(Q(cycle_id=c_uuid) | Q(cycle_id=cycleId))
+        else:
+            apps = Appraisal.objects.filter(cycle_id=cycleId)
+        if not apps.exists():
+            active = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+            if active:
+                apps = Appraisal.objects.filter(cycle=active)
         return ok_response([map_appraisal(a) for a in apps])
 
 
@@ -2033,7 +2061,13 @@ class AppraisalsByEmployeeAndCycleCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, employeeId, cycleId):
-        app = Appraisal.objects.filter(employee_id=employeeId, cycle_id=cycleId).first()
+        c_uuid = resolve_cycle_id(cycleId)
+        q_emp = Q(employee__id=employeeId) | Q(employee__user__id=employeeId) | Q(employee__employee_code__iexact=str(employeeId))
+        app = None
+        if c_uuid:
+            app = Appraisal.objects.filter(q_emp, Q(cycle_id=c_uuid) | Q(cycle_id=cycleId)).first()
+        if not app:
+            app = Appraisal.objects.filter(q_emp).order_by('-created_at').first()
         if app:
             return ok_response(map_appraisal(app))
         return ok_response({})
@@ -2130,45 +2164,79 @@ class AppraisalsScoreBreakdownCompatView(APIView):
 
     def get(self, request, pk):
         try:
-            app = Appraisal.objects.get(id=pk)
-            score = float(app.final_score) if app.final_score else 8.0
-            mgr_score = float(app.manager_overall_score or score)
-            self_score = float(app.self_overall_score or score)
+            app = Appraisal.objects.select_related('employee', 'cycle').filter(id=pk).first()
+            if not app:
+                app = Appraisal.objects.select_related('employee', 'cycle').filter(
+                    Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
+                ).order_by('-created_at').first()
+            if not app:
+                return ok_response({
+                    "appraisalId": str(pk),
+                    "kpiRawScore": 80.0,
+                    "managerRawScore": 80.0,
+                    "selfRawScore": 80.0,
+                    "feedbackRawScore": 0.0,
+                    "kpiWeight": 40.0,
+                    "managerWeight": 40.0,
+                    "selfWeight": 20.0,
+                    "feedbackWeight": 0.0,
+                    "kpiWeightedScore": 32.0,
+                    "managerWeightedScore": 32.0,
+                    "selfWeightedScore": 16.0,
+                    "feedbackWeightedScore": 0.0,
+                    "finalTotalScore": 80.0,
+                    "finalGrade": "Meets Expectations",
+                    "performanceCategoryName": "Core Engineering"
+                })
+
+            score_data = ScoringService.calculate_cycle_score(app.employee, app.cycle)
+            overall = float(app.overall_score) if app.overall_score is not None else float(score_data.get('overall_score', 0))
+            kpi_raw = float(score_data.get('goals_progress_avg', 0))
+            mgr_raw = float(score_data.get('manager_criteria_score', 0))
+            self_raw = float(score_data.get('self_assessment_score', 0))
+            weights = score_data.get('weight_distribution', {})
+            kpi_w = float(weights.get('goals_and_kpis', 40.0))
+            mgr_w = float(weights.get('manager_evaluation', 40.0))
+            self_w = float(weights.get('self_assessment', 20.0))
+            kpi_weighted = round(kpi_raw * (kpi_w / 100.0), 2)
+            mgr_weighted = round(mgr_raw * (mgr_w / 100.0), 2)
+            self_weighted = round(self_raw * (self_w / 100.0), 2)
+
             return ok_response({
                 "appraisalId": str(app.id),
-                "kpiRawScore": score,
-                "managerRawScore": mgr_score,
-                "selfRawScore": self_score,
+                "kpiRawScore": kpi_raw,
+                "managerRawScore": mgr_raw,
+                "selfRawScore": self_raw,
                 "feedbackRawScore": 0.0,
-                "kpiWeight": 50.0,
-                "managerWeight": 30.0,
-                "selfWeight": 20.0,
+                "kpiWeight": kpi_w,
+                "managerWeight": mgr_w,
+                "selfWeight": self_w,
                 "feedbackWeight": 0.0,
-                "kpiWeightedScore": round(score * 0.5, 2),
-                "managerWeightedScore": round(mgr_score * 0.3, 2),
-                "selfWeightedScore": round(self_score * 0.2, 2),
+                "kpiWeightedScore": kpi_weighted,
+                "managerWeightedScore": mgr_weighted,
+                "selfWeightedScore": self_weighted,
                 "feedbackWeightedScore": 0.0,
-                "finalTotalScore": score,
-                "finalGrade": "Exceeds Expectations" if score >= 8 else "Meets Expectations",
+                "finalTotalScore": overall,
+                "finalGrade": app.classification or score_data.get('performance_grade', 'Meets Expectations'),
                 "performanceCategoryName": "Core Engineering"
             })
-        except (Appraisal.DoesNotExist, Exception):
+        except Exception:
             return ok_response({
                 "appraisalId": str(pk),
-                "kpiRawScore": 8.0,
-                "managerRawScore": 8.0,
-                "selfRawScore": 8.0,
+                "kpiRawScore": 80.0,
+                "managerRawScore": 80.0,
+                "selfRawScore": 80.0,
                 "feedbackRawScore": 0.0,
-                "kpiWeight": 50.0,
-                "managerWeight": 30.0,
+                "kpiWeight": 40.0,
+                "managerWeight": 40.0,
                 "selfWeight": 20.0,
                 "feedbackWeight": 0.0,
-                "kpiWeightedScore": 4.0,
-                "managerWeightedScore": 2.4,
-                "selfWeightedScore": 1.6,
+                "kpiWeightedScore": 32.0,
+                "managerWeightedScore": 32.0,
+                "selfWeightedScore": 16.0,
                 "feedbackWeightedScore": 0.0,
-                "finalTotalScore": 8.0,
-                "finalGrade": "Exceeds Expectations",
+                "finalTotalScore": 80.0,
+                "finalGrade": "Meets Expectations",
                 "performanceCategoryName": "Core Engineering"
             })
 
@@ -2280,16 +2348,16 @@ class AppraisalsPublishCompatView(APIView):
         app = Appraisal.objects.filter(id=pk).first()
         if not app:
             app = Appraisal.objects.filter(
-                Q(employee__id=pk) | Q(employee__user__id=pk)
+                Q(employee__id=pk) | Q(employee__user__id=pk) | Q(employee__employee_code__iexact=str(pk))
             ).order_by('-created_at').first()
 
         if not app:
-            emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk)).first()
+            emp = EmployeeProfile.objects.filter(Q(id=pk) | Q(user__id=pk) | Q(employee_code__iexact=str(pk))).first()
             if emp:
                 cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
                 if cycle:
-                    score_val = request.data.get("score", 75.0)
-                    class_val = request.data.get("classification", "Progressing")
+                    score_val = request.data.get("score", 85.0)
+                    class_val = request.data.get("classification", "Exceeds Expectations")
                     app = Appraisal.objects.create(
                         employee=emp,
                         cycle=cycle,
@@ -2303,8 +2371,19 @@ class AppraisalsPublishCompatView(APIView):
         if app:
             if "score" in request.data:
                 app.overall_score = Decimal(str(request.data["score"]))
+            elif app.overall_score is None:
+                ratings = app.ratings.all()
+                if ratings.exists():
+                    app.overall_score = round(Decimal(str(sum(float(r.score) for r in ratings) / len(ratings))), 2)
             if "classification" in request.data:
                 app.classification = request.data["classification"]
+            elif not app.classification and app.overall_score is not None:
+                if app.overall_score >= 85:
+                    app.classification = "Exceeds Expectations"
+                elif app.overall_score >= 70:
+                    app.classification = "Meets Expectations"
+                else:
+                    app.classification = "Needs Improvement"
             if publish:
                 app.status = AppraisalStatus.PUBLISHED
                 app.published_at = timezone.now()
@@ -2708,12 +2787,32 @@ class ManagerEvaluationSubmitCompatView(APIView):
             else:
                 app.classification = "Needs Improvement"
 
-        app.status = AppraisalStatus.SUBMITTED
+        # Check publish flag (defaults to True on evaluation submission so it publishes and cascades to all modules!)
+        publish = True
+        if isinstance(request.data, dict) and "publish" in request.data:
+            publish = bool(request.data.get("publish"))
+        elif "publish" in request.query_params:
+            publish = request.query_params.get("publish", "true").lower() in ['true', '1', 'yes']
+
         app.reviewer = request.user
         app.submitted_at = timezone.now()
+        if publish:
+            app.status = AppraisalStatus.PUBLISHED
+            app.published_at = timezone.now()
+        else:
+            app.status = AppraisalStatus.SUBMITTED
+
         app.save()
 
-        return ok_response({"message": "Manager evaluation submitted successfully", "data": map_appraisal(app)})
+        # Send notification to employee if published
+        if publish:
+            try:
+                from apps.notifications.services import NotificationService
+                NotificationService.notify_feedback_published(app)
+            except Exception:
+                pass
+
+        return ok_response({"message": f"Manager evaluation {'submitted and published' if publish else 'submitted'} successfully", "data": map_appraisal(app)})
 
 
 def resolve_appraisal_for_self_assessment(pk, user):
@@ -4867,43 +4966,136 @@ class TagsCompatView(APIView):
         return ok_response({"success": True}, "Tag deleted successfully")
 
 
+def serialize_db_feedback(fb):
+    user_sender = fb.sender
+    user_recipient = fb.recipient
+    sender_prof = getattr(user_sender, 'profile', None)
+    recip_prof = getattr(user_recipient, 'profile', None)
+
+    sender_name = sender_prof.full_name if sender_prof and sender_prof.full_name else user_sender.username
+    sender_desig = sender_prof.designation if sender_prof and sender_prof.designation else "Manager"
+    recip_name = recip_prof.full_name if recip_prof and recip_prof.full_name else user_recipient.username
+    recip_code = recip_prof.employee_code if recip_prof else str(user_recipient.id)
+
+    comments_data = []
+    for c in fb.comments.select_related('author', 'author__profile').all():
+        c_prof = getattr(c.author, 'profile', None)
+        c_author_name = c_prof.full_name if c_prof and c_prof.full_name else c.author.username
+        comments_data.append({
+            "id": str(c.id),
+            "replyId": str(c.id),
+            "author": c.author.username,
+            "author_name": c_author_name,
+            "author_id": str(c.author.id),
+            "comment": c.comment,
+            "replyText": c.comment,
+            "created_at": c.created_at.isoformat(),
+            "createdAt": c.created_at.isoformat(),
+        })
+
+    return {
+        "id": str(fb.id),
+        "feedbackId": str(fb.id),
+        "employeeId": str(recip_prof.id) if recip_prof else str(user_recipient.id),
+        "employeeCode": recip_code,
+        "employeeName": recip_name,
+        "recipient": str(user_recipient.id),
+        "recipient_id": str(user_recipient.id),
+        "recipientId": str(user_recipient.id),
+        "recipient_name": recip_name,
+        "recipientName": recip_name,
+        "managerId": str(user_sender.id),
+        "managerName": sender_name,
+        "sender": str(user_sender.id),
+        "sender_id": str(user_sender.id),
+        "senderId": str(user_sender.id),
+        "sender_name": sender_name,
+        "senderName": sender_name,
+        "sender_designation": sender_desig,
+        "feedback_type": fb.feedback_type,
+        "feedbackType": fb.feedback_type,
+        "category": fb.feedback_type,
+        "message": fb.message,
+        "description": fb.message,
+        "visibility": fb.visibility,
+        "is_anonymous": fb.is_anonymous,
+        "status": fb.status,
+        "tag": {"tagId": 1, "tagName": fb.feedback_type},
+        "replyCount": len(comments_data),
+        "comments": comments_data,
+        "created_at": fb.created_at.isoformat(),
+        "createdAt": fb.created_at.isoformat(),
+        "publishedAt": fb.created_at.isoformat() if fb.status == "PUBLISHED" else None,
+    }
+
+
 class FeedbacksCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk=None, manager_id=None, employee_id=None, *args, **kwargs):
+        from apps.feedback.models import Feedback
+        from apps.accounts.models import User
+
         if pk and not manager_id and not employee_id:
-            fb = next((f for f in DEFAULT_FEEDBACKS if str(f["feedbackId"]) == str(pk) or str(f["id"]) == str(pk)), None)
+            if is_valid_uuid(pk):
+                fb_obj = Feedback.objects.filter(id=pk).first()
+                if fb_obj:
+                    return ok_response(serialize_db_feedback(fb_obj))
+            fb = next((f for f in DEFAULT_FEEDBACKS if str(f.get("feedbackId")) == str(pk) or str(f.get("id")) == str(pk)), None)
             if fb:
                 return ok_response(fb)
             return Response({"detail": "Feedback not found"}, status=status.HTTP_404_NOT_FOUND)
 
         page = int(request.query_params.get("page", 0))
-        size = int(request.query_params.get("size", 10))
+        size = int(request.query_params.get("size", 20))
         filter_status = request.query_params.get("status")
-        filter_type = request.query_params.get("feedbackType")
-        filter_tag_id = request.query_params.get("tagId")
-        filter_after = request.query_params.get("createdAfter")
-        filter_before = request.query_params.get("createdBefore")
+        filter_type = request.query_params.get("feedbackType") or request.query_params.get("category")
+        emp_param = employee_id or request.query_params.get("employeeId") or request.query_params.get("employee_id")
+        mgr_param = manager_id or request.query_params.get("managerId") or request.query_params.get("manager_id")
+        direction = request.query_params.get("direction") or request.query_params.get("type")
 
-        items = list(DEFAULT_FEEDBACKS)
+        qs = Feedback.objects.select_related(
+            'sender', 'recipient', 'sender__profile', 'recipient__profile'
+        ).prefetch_related('comments', 'comments__author', 'comments__author__profile').order_by('-created_at')
 
-        # Perspective filtering
-        if manager_id:
-            # If specific manager ID, filter by manager or include user feedbacks
-            items = [f for f in items if str(f.get("managerId")) == str(manager_id) or str(f.get("createdBy")) == str(manager_id)]
-        elif employee_id:
-            items = [f for f in items if str(f.get("employeeId")) == str(employee_id)]
+        if emp_param:
+            target_user = User.objects.filter(
+                Q(id__iexact=str(emp_param)) |
+                Q(profile__id__iexact=str(emp_param)) |
+                Q(profile__employee_code__iexact=str(emp_param))
+            ).first()
+            if target_user:
+                if direction == 'given':
+                    qs = qs.filter(sender=target_user)
+                else:
+                    qs = qs.filter(recipient=target_user)
+            else:
+                qs = qs.none()
+        elif mgr_param:
+            mgr_user = User.objects.filter(
+                Q(id__iexact=str(mgr_param)) |
+                Q(profile__id__iexact=str(mgr_param)) |
+                Q(username__iexact=str(mgr_param))
+            ).first()
+            if mgr_user:
+                qs = qs.filter(sender=mgr_user)
+            else:
+                qs = qs.none()
 
         if filter_status:
-            items = [f for f in items if f.get("status", "").upper() == filter_status.upper()]
-        if filter_type:
-            items = [f for f in items if f.get("feedbackType", "").upper() == filter_type.upper()]
-        if filter_tag_id:
-            items = [f for f in items if str(f.get("tag", {}).get("tagId")) == str(filter_tag_id)]
-        if filter_after:
-            items = [f for f in items if f.get("createdAt", "") >= filter_after]
-        if filter_before:
-            items = [f for f in items if f.get("createdAt", "") <= (filter_before + "T23:59:59Z")]
+            qs = qs.filter(status__iexact=filter_status)
+        if filter_type and filter_type.upper() != 'ALL':
+            qs = qs.filter(Q(feedback_type__iexact=filter_type) | Q(feedback_type__iexact=filter_type.replace('POSITIVE', 'PRAISE')))
+
+        items = [serialize_db_feedback(f) for f in qs]
+
+        if not emp_param:
+            for dfb in DEFAULT_FEEDBACKS:
+                if not any(it["id"] == str(dfb.get("id")) or it["feedbackId"] == str(dfb.get("feedbackId")) for it in items):
+                    items.append(dfb)
+
+        if direction or emp_param:
+            return ok_response(items)
 
         total = len(items)
         start = page * size
@@ -4920,88 +5112,111 @@ class FeedbacksCompatView(APIView):
         })
 
     def post(self, request, *args, **kwargs):
-        emp_id = request.data.get("employeeId") or 1
-        tag_id = request.data.get("tagId") or 1
-        fb_type = request.data.get("feedbackType", "PRAISE").upper()
-        description = request.data.get("description", "")
-        status_val = request.data.get("status", "PUBLISHED").upper()
+        emp_id = request.data.get("employeeId") or request.data.get("recipientId") or request.data.get("recipient_id") or request.data.get("employee_id")
+        fb_type = (request.data.get("feedbackType") or request.data.get("feedback_type") or request.data.get("category") or "POSITIVE").upper()
+        message_text = (request.data.get("description") or request.data.get("message") or "").strip()
+        status_val = (request.data.get("status") or "PUBLISHED").upper()
+        is_anon = bool(request.data.get("is_anonymous") or request.data.get("anonymous", False))
+
+        from apps.accounts.models import User, UserRole
+        from apps.employees.models import EmployeeProfile
+        from apps.feedback.models import Feedback
+
+        target_user = None
+        if emp_id:
+            target_user = User.objects.filter(
+                Q(id__iexact=str(emp_id)) |
+                Q(profile__id__iexact=str(emp_id)) |
+                Q(profile__employee_code__iexact=str(emp_id))
+            ).first()
 
         # Enforce: Tech Manager can only provide feedback to employees assigned by HR or Super Admin
         if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            from apps.employees.models import EmployeeProfile
-            is_assigned = EmployeeProfile.objects.filter(
-                Q(id__iexact=str(emp_id)) | Q(user__id__iexact=str(emp_id)) | Q(employee_code__iexact=str(emp_id)),
-                manager=request.user
-            ).exists()
+            is_assigned = False
+            if target_user:
+                is_assigned = EmployeeProfile.objects.filter(user=target_user, manager=request.user).exists()
+            if not is_assigned and emp_id:
+                is_assigned = EmployeeProfile.objects.filter(
+                    Q(id__iexact=str(emp_id)) | Q(user__id__iexact=str(emp_id)) | Q(employee_code__iexact=str(emp_id)),
+                    manager=request.user
+                ).exists()
             if not is_assigned:
                 return error_response("You can only provide feedback to employees assigned to you by HR or Super Admin.", status_code=403)
 
-        # Find employee name from EmployeeProfile if available
-        emp_name = "Team Member"
-        try:
-            from apps.employees.models import EmployeeProfile
-            prof = EmployeeProfile.objects.filter(Q(id=emp_id) | Q(user__id=emp_id)).first()
-            if prof:
-                emp_name = prof.full_name or prof.user.username
-        except Exception:
-            pass
+        if not target_user:
+            return error_response("Target employee not found.", status_code=404)
 
-        # Find tag name
-        tag_obj = next((t for t in DEFAULT_FEEDBACK_TAGS if str(t["tagId"]) == str(tag_id)), {"tagId": int(tag_id) if str(tag_id).isdigit() else 1, "tagName": "Core Competency"})
+        fb = Feedback.objects.create(
+            sender=request.user,
+            recipient=target_user,
+            feedback_type=fb_type,
+            message=message_text or "Great effort and continuous improvement.",
+            is_anonymous=is_anon,
+            status=status_val
+        )
 
-        next_id = max([f["feedbackId"] for f in DEFAULT_FEEDBACKS], default=0) + 1
-        now_iso = timezone.now().isoformat()
-
-        user_name = request.user.username
-        try:
-            if hasattr(request.user, 'profile') and request.user.profile and request.user.profile.full_name:
-                user_name = request.user.profile.full_name
-        except Exception:
-            pass
-
-        new_fb = {
-            "feedbackId": next_id,
-            "id": str(next_id),
-            "employeeId": int(emp_id) if str(emp_id).isdigit() else emp_id,
-            "employeeName": emp_name,
-            "managerId": request.user.id,
-            "managerName": user_name,
-            "feedbackType": fb_type,
-            "tag": tag_obj,
-            "description": description,
-            "status": status_val,
-            "createdBy": request.user.id,
-            "replyCount": 0,
-            "createdAt": now_iso,
-            "publishedAt": now_iso if status_val == "PUBLISHED" else None,
-        }
-        DEFAULT_FEEDBACKS.insert(0, new_fb)
-        DEFAULT_FEEDBACK_REPLIES[next_id] = []
-        return ok_response(new_fb, "Feedback saved successfully")
+        item = serialize_db_feedback(fb)
+        DEFAULT_FEEDBACKS.insert(0, item)
+        return ok_response(item, "Feedback saved successfully")
 
     def put(self, request, pk=None, *args, **kwargs):
-        fb = next((f for f in DEFAULT_FEEDBACKS if str(f["feedbackId"]) == str(pk) or str(f["id"]) == str(pk)), None)
-        if not fb:
+        from apps.feedback.models import Feedback
+        from apps.accounts.models import UserRole
+
+        fb = None
+        if is_valid_uuid(pk):
+            fb = Feedback.objects.filter(id=pk).first()
+
+        if fb:
+            if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+                if fb.sender != request.user:
+                    return error_response("You can only edit feedback you provided.", status_code=403)
+
+            new_msg = request.data.get("message") or request.data.get("description")
+            if new_msg:
+                fb.message = new_msg.strip()
+            new_type = request.data.get("feedbackType") or request.data.get("feedback_type") or request.data.get("category")
+            if new_type:
+                fb.feedback_type = str(new_type).upper()
+            if "status" in request.data:
+                fb.status = request.data["status"].upper()
+            fb.save()
+            item = serialize_db_feedback(fb)
+            return ok_response(item, "Feedback updated successfully")
+
+        # Fallback to DEFAULT_FEEDBACKS
+        dfb = next((f for f in DEFAULT_FEEDBACKS if str(f.get("feedbackId")) == str(pk) or str(f.get("id")) == str(pk)), None)
+        if not dfb:
             return Response({"detail": "Feedback not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if "description" in request.data:
-            fb["description"] = request.data["description"]
-        if "feedbackType" in request.data:
-            fb["feedbackType"] = request.data["feedbackType"].upper()
-        if "tagId" in request.data:
-            tag_id = request.data["tagId"]
-            tag_obj = next((t for t in DEFAULT_FEEDBACK_TAGS if str(t["tagId"]) == str(tag_id)), fb["tag"])
-            fb["tag"] = tag_obj
+        new_msg = request.data.get("message") or request.data.get("description")
+        if new_msg:
+            dfb["description"] = new_msg.strip()
+            dfb["message"] = new_msg.strip()
+        new_type = request.data.get("feedbackType") or request.data.get("feedback_type") or request.data.get("category")
+        if new_type:
+            dfb["feedbackType"] = str(new_type).upper()
+            dfb["feedback_type"] = str(new_type).upper()
+            dfb["category"] = str(new_type).upper()
         if "status" in request.data:
-            fb["status"] = request.data["status"].upper()
+            dfb["status"] = request.data["status"].upper()
 
-        return ok_response(fb, "Feedback updated successfully")
+        return ok_response(dfb, "Feedback updated successfully")
 
     def delete(self, request, pk=None, *args, **kwargs):
+        from apps.feedback.models import Feedback
+        from apps.accounts.models import UserRole
+
+        if is_valid_uuid(pk):
+            fb = Feedback.objects.filter(id=pk).first()
+            if fb:
+                if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
+                    if fb.sender != request.user:
+                        return error_response("You can only delete feedback you provided.", status_code=403)
+                fb.delete()
+
         global DEFAULT_FEEDBACKS
-        DEFAULT_FEEDBACKS = [f for f in DEFAULT_FEEDBACKS if str(f["feedbackId"]) != str(pk) and str(f["id"]) != str(pk)]
-        if int(pk) if str(pk).isdigit() else 0 in DEFAULT_FEEDBACK_REPLIES:
-            DEFAULT_FEEDBACK_REPLIES.pop(int(pk), None)
+        DEFAULT_FEEDBACKS = [f for f in DEFAULT_FEEDBACKS if str(f.get("feedbackId")) != str(pk) and str(f.get("id")) != str(pk)]
         return ok_response({"success": True}, "Feedback deleted successfully")
 
 
@@ -5009,14 +5224,23 @@ class FeedbackManagerStatsCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, manager_id=None):
-        published = [f for f in DEFAULT_FEEDBACKS if f.get("status") == "PUBLISHED"]
-        drafts = [f for f in DEFAULT_FEEDBACKS if f.get("status") == "DRAFT"]
-        praise = sum(1 for f in published if f.get("feedbackType") == "PRAISE")
-        improvement = sum(1 for f in published if f.get("feedbackType") == "IMPROVEMENT")
-        warning = sum(1 for f in published if f.get("feedbackType") == "WARNING")
+        from apps.feedback.models import Feedback
+        from apps.accounts.models import User
+        mgr = request.user
+        if manager_id and is_valid_uuid(manager_id):
+            mgr_user = User.objects.filter(id=manager_id).first()
+            if mgr_user:
+                mgr = mgr_user
+
+        feedbacks = Feedback.objects.filter(sender=mgr)
+        published = feedbacks.filter(status="PUBLISHED")
+        drafts = feedbacks.filter(status="DRAFT")
+        praise = published.filter(feedback_type__in=["PRAISE", "POSITIVE"]).count()
+        improvement = published.filter(feedback_type__in=["IMPROVEMENT", "CONSTRUCTIVE"]).count()
+        warning = published.filter(feedback_type__in=["WARNING", "NEGATIVE"]).count()
         return ok_response({
-            "totalPublished": len(published),
-            "totalDraft": len(drafts),
+            "totalPublished": published.count(),
+            "totalDraft": drafts.count(),
             "praiseCount": praise,
             "improvementCount": improvement,
             "correctionCount": warning
@@ -5027,33 +5251,90 @@ class FeedbackEmployeeStatsCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, employee_id=None):
-        published = [f for f in DEFAULT_FEEDBACKS if f.get("status") == "PUBLISHED"]
-        drafts = [f for f in DEFAULT_FEEDBACKS if f.get("status") == "DRAFT"]
-        praise = sum(1 for f in published if f.get("feedbackType") == "PRAISE")
-        improvement = sum(1 for f in published if f.get("feedbackType") == "IMPROVEMENT")
-        warning = sum(1 for f in published if f.get("feedbackType") == "WARNING")
-        return ok_response({
-            "totalPublished": len(published),
-            "totalDraft": len(drafts),
-            "praiseCount": praise,
-            "improvementCount": improvement,
-            "correctionCount": warning
-        })
+        from apps.feedback.models import Feedback
+        from apps.accounts.models import User
+        user_target = User.objects.filter(
+            Q(id__iexact=str(employee_id)) |
+            Q(profile__id__iexact=str(employee_id)) |
+            Q(profile__employee_code__iexact=str(employee_id))
+        ).first()
+
+        feedbacks = Feedback.objects.filter(recipient=user_target) if user_target else Feedback.objects.none()
+        stats_map = {
+            'all': feedbacks.count(),
+            'positive': feedbacks.filter(feedback_type__in=['POSITIVE', 'PRAISE']).count(),
+            'negative': feedbacks.filter(feedback_type__in=['NEGATIVE', 'WARNING']).count(),
+            'observation': feedbacks.filter(feedback_type__in=['OBSERVATION', 'PROGRESS']).count(),
+            'rewards': feedbacks.filter(feedback_type='REWARDS').count(),
+            'training': feedbacks.filter(feedback_type__in=['TRAINING', 'COACHING']).count(),
+            'satisfactory': feedbacks.filter(feedback_type__in=['SATISFACTORY', 'SUGGESTION']).count(),
+            'constructive': feedbacks.filter(feedback_type='CONSTRUCTIVE').count(),
+            'totalPublished': feedbacks.filter(status='PUBLISHED').count(),
+            'totalDraft': feedbacks.filter(status='DRAFT').count(),
+            'praiseCount': feedbacks.filter(feedback_type__in=['POSITIVE', 'PRAISE']).count(),
+            'improvementCount': feedbacks.filter(feedback_type__in=['IMPROVEMENT', 'CONSTRUCTIVE', 'TRAINING']).count(),
+            'correctionCount': feedbacks.filter(feedback_type__in=['WARNING', 'NEGATIVE']).count(),
+        }
+        return ok_response(stats_map)
 
 
 class FeedbackRepliesCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk=None, reply_id=None):
+        from apps.feedback.models import FeedbackComment
+        if is_valid_uuid(pk):
+            comments = FeedbackComment.objects.filter(feedback_id=pk).select_related('author', 'author__profile')
+            data = [{
+                "id": str(c.id),
+                "replyId": str(c.id),
+                "author": c.author.username,
+                "author_name": c.author.profile.full_name if hasattr(c.author, 'profile') else c.author.username,
+                "author_id": str(c.author.id),
+                "comment": c.comment,
+                "replyText": c.comment,
+                "created_at": c.created_at.isoformat(),
+                "createdAt": c.created_at.isoformat(),
+            } for c in comments]
+            return ok_response(data)
+
         fb_id = int(pk) if (pk and str(pk).isdigit()) else 1
         replies = DEFAULT_FEEDBACK_REPLIES.get(fb_id, [])
         return ok_response(replies)
 
     def post(self, request, pk=None):
+        from apps.feedback.models import Feedback, FeedbackComment
+        comment_text = (request.data.get("replyText") or request.data.get("comment") or request.data.get("message") or "").strip()
+        if not comment_text:
+            return error_response("Comment text is required.", status_code=400)
+
+        if is_valid_uuid(pk):
+            fb = Feedback.objects.filter(id=pk).first()
+            if fb:
+                cmt = FeedbackComment.objects.create(
+                    feedback=fb,
+                    author=request.user,
+                    comment=comment_text
+                )
+                author_name = request.user.profile.full_name if hasattr(request.user, 'profile') else request.user.username
+                new_reply = {
+                    "id": str(cmt.id),
+                    "replyId": str(cmt.id),
+                    "feedbackId": str(fb.id),
+                    "employeeId": str(request.user.id),
+                    "employeeName": author_name,
+                    "author": request.user.username,
+                    "author_name": author_name,
+                    "comment": cmt.comment,
+                    "replyText": cmt.comment,
+                    "createdAt": cmt.created_at.isoformat(),
+                    "created_at": cmt.created_at.isoformat(),
+                }
+                return ok_response(new_reply, "Reply posted successfully")
+
         fb_id = int(pk) if (pk and str(pk).isdigit()) else 1
-        text = request.data.get("replyText") or request.data.get("comment") or "Acknowledged"
+        text = comment_text
         parent_id = request.data.get("parentId")
-        
         user_name = request.user.username
         try:
             if hasattr(request.user, 'profile') and request.user.profile and request.user.profile.full_name:
@@ -5080,7 +5361,6 @@ class FeedbackRepliesCompatView(APIView):
             DEFAULT_FEEDBACK_REPLIES[fb_id] = []
         DEFAULT_FEEDBACK_REPLIES[fb_id].append(new_reply)
 
-        # Increment reply count in feedback
         for f in DEFAULT_FEEDBACKS:
             if f.get("feedbackId") == fb_id:
                 f["replyCount"] = len(DEFAULT_FEEDBACK_REPLIES[fb_id])

@@ -12,12 +12,24 @@ interface EmployeeOption {
   designation?: string;
 }
 
+export interface EditingFeedbackData {
+  id: string;
+  recipientId?: string;
+  recipient_name?: string;
+  employeeName?: string;
+  category?: string;
+  feedback_type?: string;
+  message?: string;
+  is_anonymous?: boolean;
+}
+
 interface ProvideFeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
   defaultEmployeeId?: string | number;
   employees?: EmployeeOption[];
+  editingFeedback?: EditingFeedbackData | null;
 }
 
 export const CATEGORIES = [
@@ -89,6 +101,7 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
   onSuccess,
   defaultEmployeeId,
   employees = [],
+  editingFeedback = null,
 }) => {
   const [selectedEmpId, setSelectedEmpId] = useState<string | number>(defaultEmployeeId || "");
   const [feedbackText, setFeedbackText] = useState(
@@ -139,6 +152,20 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
         ];
 
   useEffect(() => {
+    if (editingFeedback) {
+      setFeedbackText(editingFeedback.message || "");
+      setSelectedCategory(editingFeedback.category || editingFeedback.feedback_type || "POSITIVE");
+      setIsAnonymous(Boolean(editingFeedback.is_anonymous));
+    } else {
+      setFeedbackText(
+        "Your performance this quarter has been excellent. You consistently meet your goals and demonstrate a strong work ethic. Keep up the great work!"
+      );
+      setSelectedCategory("POSITIVE");
+      setIsAnonymous(false);
+    }
+  }, [editingFeedback, isOpen]);
+
+  useEffect(() => {
     if (defaultEmployeeId && employeeList.some((e) => String(e.id) === String(defaultEmployeeId))) {
       setSelectedEmpId(defaultEmployeeId);
     } else if (employeeList.length > 0 && (!selectedEmpId || !employeeList.some((e) => String(e.id) === String(selectedEmpId)))) {
@@ -153,7 +180,8 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
     employeeList[0];
 
   const handlePost = async () => {
-    if (isManager && employeeList.length === 0) {
+    const isEditing = Boolean(editingFeedback?.id);
+    if (!isEditing && isManager && employeeList.length === 0) {
       toast.error("You can only provide feedback to employees assigned to you by HR or Super Admin.");
       return;
     }
@@ -165,31 +193,49 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
     try {
       setIsSubmitting(true);
       const token = localStorage.getItem("accessToken") || "";
-      const response = await fetch("/api/feedbacks/", {
-        method: "POST",
+      const targetEmp = currentEmployee?.id || selectedEmpId || defaultEmployeeId;
+      const url = isEditing ? `/api/feedbacks/${editingFeedback!.id}/` : "/api/feedbacks/";
+      const method = isEditing ? "PUT" : "POST";
+
+      const payload = isEditing
+        ? {
+            category: selectedCategory,
+            feedback_type: selectedCategory,
+            feedbackType: selectedCategory,
+            message: feedbackText.trim(),
+            description: feedbackText.trim(),
+          }
+        : {
+            recipientId: targetEmp,
+            employeeId: targetEmp,
+            recipient_id: targetEmp,
+            category: selectedCategory,
+            feedback_type: selectedCategory,
+            feedbackType: selectedCategory,
+            message: feedbackText.trim(),
+            description: feedbackText.trim(),
+            is_anonymous: isAnonymous,
+          };
+
+      const response = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify({
-          recipientId: currentEmployee?.id || selectedEmpId,
-          category: selectedCategory,
-          feedback_type: selectedCategory,
-          message: feedbackText.trim(),
-          is_anonymous: isAnonymous,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.message || "Failed to post feedback");
+        throw new Error(errData.message || errData.detail || (isEditing ? "Failed to update feedback" : "Failed to post feedback"));
       }
 
-      toast.success("Feedback posted successfully!");
+      toast.success(isEditing ? "Feedback updated successfully!" : "Feedback posted successfully!");
       if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || "Could not post feedback. Please try again.");
+      toast.error(err.message || "Could not save feedback. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -206,7 +252,9 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-xl font-semibold text-slate-800">Provide Feedback</h2>
+          <h2 className="text-xl font-semibold text-slate-800">
+            {editingFeedback ? "Edit Feedback" : "Provide Feedback"}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -218,8 +266,20 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-          {/* Select Employee Card or Restricted Notice */}
-          {isManager && employeeList.length === 0 ? (
+          {/* Select Employee Card or Restricted Notice or Edit Info */}
+          {editingFeedback ? (
+            <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between">
+              <div className="text-xs text-slate-700">
+                Editing feedback for:{" "}
+                <span className="font-bold text-indigo-700">
+                  {editingFeedback.recipient_name || editingFeedback.employeeName || currentEmployee?.staffName || "Team Member"}
+                </span>
+              </div>
+              <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Edit Mode
+              </span>
+            </div>
+          ) : isManager && employeeList.length === 0 ? (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-800 text-xs">
               <ShieldAlert size={20} className="shrink-0 mt-0.5 text-amber-600" />
               <div>
@@ -369,11 +429,17 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
               <button
                 type="button"
                 onClick={handlePost}
-                disabled={isSubmitting || (isManager && employeeList.length === 0)}
+                disabled={isSubmitting || (!editingFeedback && isManager && employeeList.length === 0)}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50"
                 style={{ backgroundColor: "#4338CA" }}
               >
-                {isSubmitting ? "Posting..." : "Post"}
+                {isSubmitting
+                  ? editingFeedback
+                    ? "Saving..."
+                    : "Posting..."
+                  : editingFeedback
+                  ? "Save Changes"
+                  : "Post"}
               </button>
             </div>
           </div>

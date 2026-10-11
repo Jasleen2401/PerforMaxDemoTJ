@@ -1025,6 +1025,19 @@ class InternPublishedFeedbackView(APIView):
         ).select_related('cycle', 'reviewer').order_by('-published_at', '-created_at').first()
 
         if not published_appraisal:
+            evaluated_appraisal = Appraisal.objects.filter(
+                employee=profile,
+                status__in=[AppraisalStatus.SUBMITTED, AppraisalStatus.HR_APPROVED, AppraisalStatus.PUBLISHED]
+            ).filter(overall_score__isnull=False).select_related('cycle', 'reviewer').order_by('-submitted_at', '-created_at').first()
+            if evaluated_appraisal:
+                if evaluated_appraisal.status != AppraisalStatus.PUBLISHED:
+                    evaluated_appraisal.status = AppraisalStatus.PUBLISHED
+                    if not evaluated_appraisal.published_at:
+                        evaluated_appraisal.published_at = timezone.now()
+                    evaluated_appraisal.save(update_fields=['status', 'published_at'])
+                published_appraisal = evaluated_appraisal
+
+        if not published_appraisal:
             return Response({
                 'code': 200,
                 'data': {
@@ -1040,6 +1053,16 @@ class InternPublishedFeedbackView(APIView):
             'self_assessment': 20.0
         })
         eval_params = calc_score.get('evaluation_parameters', [])
+        if not eval_params:
+            for r in published_appraisal.ratings.select_related('criterion').all():
+                eval_params.append({
+                    'id': str(r.criterion.id),
+                    'name': r.criterion.name,
+                    'category': getattr(r.criterion, 'category', 'General') or 'General',
+                    'weight': float(getattr(r.criterion, 'weight', 20.0)),
+                    'score': float(r.score),
+                    'comments': r.comments or '',
+                })
 
         replies = InternFeedbackReply.objects.filter(
             intern=profile,
@@ -1047,8 +1070,13 @@ class InternPublishedFeedbackView(APIView):
         ).order_by('created_at')
 
         reviewer_name = published_appraisal.reviewer.username if published_appraisal.reviewer else 'Assigned Mentor'
-        if published_appraisal.reviewer and hasattr(published_appraisal.reviewer, 'profile') and published_appraisal.reviewer.profile:
-            reviewer_name = published_appraisal.reviewer.profile.full_name or reviewer_name
+        if published_appraisal.reviewer:
+            if hasattr(published_appraisal.reviewer, 'profile') and published_appraisal.reviewer.profile and published_appraisal.reviewer.profile.full_name:
+                reviewer_name = published_appraisal.reviewer.profile.full_name
+            elif getattr(published_appraisal.reviewer, 'name', None):
+                reviewer_name = published_appraisal.reviewer.name
+            elif hasattr(published_appraisal.reviewer, 'get_full_name') and published_appraisal.reviewer.get_full_name():
+                reviewer_name = published_appraisal.reviewer.get_full_name()
 
         areas_for_improvement = published_appraisal.areas_for_improvement or []
 
@@ -1062,12 +1090,16 @@ class InternPublishedFeedbackView(APIView):
                 'classification': published_appraisal.classification or get_performance_classification(published_appraisal.overall_score),
                 'performanceClassification': published_appraisal.classification or get_performance_classification(published_appraisal.overall_score),
                 'reviewerName': reviewer_name,
+                'mentorName': reviewer_name,
+                'publishedAt': published_appraisal.published_at.isoformat() if published_appraisal.published_at else None,
                 'reviewerComments': published_appraisal.reviewer_comments,
                 'mentorFeedback': published_appraisal.reviewer_comments or '',
+                'hrComments': published_appraisal.final_comments or 'Evaluation calibrated and officially verified.',
                 'strengths': published_appraisal.strengths,
                 'areasForImprovement': areas_for_improvement,
                 'recommendations': published_appraisal.recommendations,
                 'allowInternReply': published_appraisal.allow_intern_reply,
+                'isReplyPermitted': published_appraisal.allow_intern_reply,
                 'weightDistribution': weight_dist,
                 'evaluationParameters': eval_params,
                 'replies': [{

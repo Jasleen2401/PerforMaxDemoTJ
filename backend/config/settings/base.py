@@ -200,12 +200,17 @@ SIMPLE_JWT = {
 }
 
 # CORS configuration
+from corsheaders.defaults import default_headers
+
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
     if origin.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'ngrok-skip-browser-warning',
+]
 
 # OpenAPI Documentation (drf-spectacular)
 SPECTACULAR_SETTINGS = {

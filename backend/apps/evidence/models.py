@@ -20,6 +20,16 @@ class EvidenceSubmission(models.Model):
         'goals.Goal',
         on_delete=models.CASCADE,
         related_name='evidence_submissions',
+        db_index=True,
+        null=True,
+        blank=True
+    )
+    task = models.ForeignKey(
+        'intern.InternTask',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='evidence_submissions',
         db_index=True
     )
     title = models.CharField(max_length=255)

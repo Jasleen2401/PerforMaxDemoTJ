@@ -58,6 +58,11 @@ class Goal(models.Model):
         choices=GoalPriority.choices,
         default=GoalPriority.MEDIUM
     )
+    category = models.CharField(
+        max_length=100,
+        default='TECHNICAL',
+        blank=True
+    )
     completion_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,

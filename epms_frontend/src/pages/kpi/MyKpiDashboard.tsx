@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useGetGoalSetByEmployeeQuery, useGetProgressHistoryQuery } from '../../services/kpiApi';
 import ProgressUpdateModal from '../../components/kpi/ProgressUpdateModal';
@@ -9,7 +10,11 @@ import { TrendingUp, Target } from 'lucide-react';
 import { formatRelativeTime } from '../../utils/timeUtils';
 
 const MyKpiDashboard: React.FC = () => {
-  const { user, activeCycleId, activeCycleName } = useAuth();
+  const { user, activeCycleId, activeCycleName, isIntern } = useAuth();
+
+  if (isIntern) {
+    return <Navigate to="/dashboard?tab=goals" replace />;
+  }
 
   const { data: goalSetResponse, isLoading } = useGetGoalSetByEmployeeQuery(
     { employeeId: user?.id || 0, cycleId: activeCycleId ?? 0 },

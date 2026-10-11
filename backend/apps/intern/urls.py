@@ -26,6 +26,8 @@ urlpatterns = [
 
     # Assigned Tasks & Lifecycle
     path('tasks/', views.InternTasksView.as_view(), name='tasks_list'),
+    path('tasks/all/', views.InternAllTasksView.as_view(), name='all_tasks_alt'),
+    path('all-tasks/', views.InternAllTasksView.as_view(), name='all_tasks'),
     path('tasks/<uuid:pk>/', views.InternTaskDetailView.as_view(), name='task_detail'),
     path('tasks/<uuid:pk>/complete/', views.InternCompleteTaskView.as_view(), name='complete_task'),
     path('tasks/<uuid:pk>/mentor-review/', views.InternTaskReviewView.as_view(), name='mentor_review_task'),
@@ -49,5 +51,6 @@ urlpatterns = [
     path('journey/certifications/', views.MiraiCertificationSubmitView.as_view(), name='journey_submit_certification'),
     path('journey/certifications/<uuid:pk>/verify/', views.MiraiCertificationVerifyView.as_view(), name='journey_verify_certification'),
     path('journey/quarters/<str:quarter_code>/configure/', views.MiraiQuarterConfigureView.as_view(), name='journey_configure_quarter'),
+    path('journey/<str:pk>/', views.InternJourneyView.as_view(), name='journey_detail'),
 ]
 

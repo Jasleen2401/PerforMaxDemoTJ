@@ -108,3 +108,11 @@ class HrBellCurveAnalyticsView(APIView):
                 ]
             }
         })
+
+
+class HrInternTasksView(APIView):
+    permission_classes = [IsHrOrAdminUser]
+
+    def get(self, request):
+        from apps.intern.views import InternAllTasksView
+        return InternAllTasksView().get(request)

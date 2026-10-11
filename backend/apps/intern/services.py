@@ -96,6 +96,7 @@ class MiraiJourneyService:
                     'project_name': q_cfg['project_name'],
                     'status': QuarterStatus.NOT_STARTED,
                     'completion_percentage': Decimal('0.00'),
+                    'is_manually_updated': False,
                     'prerequisites_met': True,
                     'pending_requirements': [],
                     'completed_requirements': [],
@@ -257,6 +258,19 @@ class MiraiJourneyService:
         else:
             new_status = QuarterStatus.NOT_STARTED
 
+        # Check if quarter was manually set by HR or migrated
+        is_manual = getattr(q_record, 'is_manually_updated', False) or bool(q_record.requirements_config.get('is_manually_updated'))
+        is_already_completed = (q_record.status == QuarterStatus.COMPLETED and q_record.completion_percentage >= Decimal('100.00'))
+
+        if is_manual or is_already_completed:
+            q_record.prerequisites_met = True
+            if completed and not q_record.completed_requirements:
+                q_record.completed_requirements = completed
+            q_record.save(update_fields=[
+                'prerequisites_met', 'completed_requirements', 'pending_requirements', 'updated_at'
+            ])
+            return q_record
+
         q_record.completion_percentage = progress_pct
         q_record.status = new_status
         q_record.prerequisites_met = True
@@ -339,11 +353,23 @@ class MiraiJourneyService:
         if n4_cert:
             progress_points += 20
 
+        # Check if quarter was manually set by HR
+        is_manual = getattr(q_record, 'is_manually_updated', False) or bool(q_record.requirements_config.get('is_manually_updated'))
+        if is_manual:
+            q_record.prerequisites_met = True
+            q_record.attendance_percentage = attendance_val
+            if completed and not q_record.completed_requirements:
+                q_record.completed_requirements = completed
+            q_record.save(update_fields=[
+                'prerequisites_met', 'completed_requirements', 'pending_requirements', 'attendance_percentage', 'updated_at'
+            ])
+            return q_record
+
         progress_pct = Decimal(str(min(100, progress_points)))
 
         if progress_points >= 100:
             new_status = QuarterStatus.COMPLETED
-        elif progress_points > 0 or q1_status == QuarterStatus.COMPLETED:
+        elif progress_points > 0:
             new_status = QuarterStatus.IN_PROGRESS
         else:
             new_status = QuarterStatus.NOT_STARTED
@@ -462,13 +488,23 @@ class MiraiJourneyService:
 
         progress_pct = Decimal(str(min(100, progress_points)))
 
+        # Check if quarter was manually set by HR
+        is_manual = getattr(q_record, 'is_manually_updated', False) or bool(q_record.requirements_config.get('is_manually_updated'))
+        if is_manual:
+            if completed and not q_record.completed_requirements:
+                q_record.completed_requirements = completed
+            q_record.save(update_fields=[
+                'completed_requirements', 'pending_requirements', 'updated_at'
+            ])
+            return q_record
+
         # Status logic: A quarter can start only when its configured prerequisites have been met
         if not prerequisites_met:
             new_status = QuarterStatus.NOT_STARTED
             progress_pct = Decimal('0.00')
         elif progress_points >= 100:
             new_status = QuarterStatus.COMPLETED
-        elif progress_points > 0 or q2_status == QuarterStatus.COMPLETED:
+        elif progress_points > 0:
             new_status = QuarterStatus.IN_PROGRESS
         else:
             new_status = QuarterStatus.NOT_STARTED
@@ -566,13 +602,23 @@ class MiraiJourneyService:
 
         progress_pct = Decimal(str(min(100, progress_points)))
 
+        # Check if quarter was manually set by HR
+        is_manual = getattr(q_record, 'is_manually_updated', False) or bool(q_record.requirements_config.get('is_manually_updated'))
+        if is_manual:
+            if completed and not q_record.completed_requirements:
+                q_record.completed_requirements = completed
+            q_record.save(update_fields=[
+                'completed_requirements', 'pending_requirements', 'updated_at'
+            ])
+            return q_record
+
         # Status transition: A quarter can start only when its configured prerequisites have been met
         if not prerequisites_met:
             new_status = QuarterStatus.NOT_STARTED
             progress_pct = Decimal('0.00')
         elif progress_points >= 100 and decision in [ConversionDecision.OFFERED, ConversionDecision.CONVERTED]:
             new_status = QuarterStatus.COMPLETED
-        elif progress_points > 0 or q3_status == QuarterStatus.COMPLETED:
+        elif progress_points > 0:
             new_status = QuarterStatus.IN_PROGRESS
         else:
             new_status = QuarterStatus.NOT_STARTED

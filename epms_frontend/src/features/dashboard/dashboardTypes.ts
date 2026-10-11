@@ -168,6 +168,8 @@ export interface InternGoalItem {
   progress: number;
   completionPercentage: number;
   weightage?: number;
+  weight?: number;
+  category?: string;
   status: string;
   priority: string;
   dueDate: string | null;
@@ -180,10 +182,12 @@ export interface InternGoalItem {
 export interface InternTaskItem {
   id: string;
   title: string;
-  category: string;
-  instructions: string;
+  category?: string;
+  instructions?: string;
+  description?: string;
   priority: string;
   dueDate: string;
+  status?: string;
   isCompleted: boolean;
   completedAt: string | null;
   hoursSpent: number | null;
@@ -191,6 +195,14 @@ export interface InternTaskItem {
   artifactUrl: string;
   isPermittedToComplete: boolean;
   isOverdue: boolean;
+  goalId?: string | null;
+  goalTitle?: string | null;
+  isSelfCreated?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  internName?: string;
+  internId?: string;
+  internEmail?: string;
 }
 
 export interface InternEvidenceItem {

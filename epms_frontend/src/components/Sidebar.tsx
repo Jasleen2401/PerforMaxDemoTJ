@@ -105,7 +105,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
   const internNav: NavItem[] = [
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, end: true },
-    { label: "My Goals", to: "/kpi/my", icon: Target },
+    { label: "My Goals", to: "/dashboard?tab=goals", icon: Target },
     { label: "My Tasks", to: "/dashboard?tab=tasks", icon: ClipboardList },
     { label: "MIRAI Journey", to: "/dashboard?tab=journey", icon: Compass },
     { label: "Performance Reviews", to: "/appraisal", icon: Award },

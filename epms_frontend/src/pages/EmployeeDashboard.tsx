@@ -206,6 +206,7 @@ export const EmployeeDashboard: React.FC = () => {
         {activeTab === 'tasks' && (
           <InternTasksTab
             tasks={tasks}
+            goals={goals}
             isLoading={isTasksLoading}
             onCompleteTask={async (payload) => {
               return completeTask(payload).unwrap();

@@ -27,6 +27,7 @@ import {
   ShieldCheck,
   UserX,
   RotateCcw,
+  Compass,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useGetEmployeeByIdQuery } from "../../features/employee/employeeapi";
@@ -41,6 +42,7 @@ import { useGetGoalSetByEmployeeQuery } from "../../services/kpiApi";
 import type { GoalItemResponse } from "../../features/kpi/kpiTypes";
 import ProvideFeedbackModal from "../../components/feedback/ProvideFeedbackModal";
 import ChooseKraWeightageModal from "../../components/kpi/ChooseKraWeightageModal";
+import { ProfileMiraiJourneySection } from "../../components/intern/ProfileMiraiJourneySection";
 
 type ProfileGoalItem = GoalItemResponse & {
   kpiName?: string;
@@ -67,7 +69,7 @@ interface FeedbackItem {
   }>;
 }
 
-const TABS = [
+const BASE_TABS = [
   "Key Accountability",
   "Goals",
   "KRA vs Goals",
@@ -77,7 +79,8 @@ const TABS = [
   "Appraisal Data",
 ] as const;
 
-type TabType = typeof TABS[number];
+type BaseTabType = typeof BASE_TABS[number];
+type TabType = BaseTabType | "MIRAI Journey";
 
 const AVATAR_COLORS = [
   { bg: "#EEF3FD", text: "#0C447C" },
@@ -169,6 +172,30 @@ const EmployeeProfileView = () => {
       }
     }
   }, [activeCycle?.cycleId, selectedCycleId, sortedCycles]);
+
+  const isIntern = useMemo(() => {
+    if (!employee) return false;
+    const roles = employee.roles || [];
+    const isInternRole = roles.some((r: any) => String(r).toUpperCase().includes("INTERN"));
+    const isInternPosition = (employee.positionName || "").toLowerCase().includes("intern");
+    return isInternRole || isInternPosition;
+  }, [employee]);
+
+  const availableTabs = useMemo(() => {
+    if (isIntern) {
+      return ["MIRAI Journey", ...BASE_TABS] as TabType[];
+    }
+    return [...BASE_TABS] as TabType[];
+  }, [isIntern]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "journey" && isIntern) {
+      setActiveTab("MIRAI Journey");
+    } else if (isIntern && activeTab === "Feedback") {
+      setActiveTab("MIRAI Journey");
+    }
+  }, [isIntern]);
 
   const selectedCycle = sortedCycles.find((c) => c.cycleId === selectedCycleId);
   const isActiveCycle = selectedCycleId === activeCycle?.cycleId;
@@ -473,11 +500,12 @@ const EmployeeProfileView = () => {
         </div>
       </div>
 
-      {/* 8 Sub-navigation Tabs matching media_1789919618455.png */}
+      {/* Sub-navigation Tabs */}
       <div className="border-b border-slate-200 bg-white px-3 pt-2 rounded-t-xl overflow-x-auto shadow-xs">
         <nav className="flex space-x-6 min-w-max">
-          {TABS.map((tab) => {
+          {availableTabs.map((tab) => {
             const isActive = activeTab === tab;
+            const isJourneyTab = tab === "MIRAI Journey";
             return (
               <button
                 key={tab}
@@ -485,16 +513,40 @@ const EmployeeProfileView = () => {
                 onClick={() => setActiveTab(tab)}
                 className={`py-3 px-1 text-sm font-semibold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
                   isActive
-                    ? "border-indigo-600 text-indigo-600 font-bold"
+                    ? isJourneyTab
+                      ? "border-purple-600 text-purple-700 font-bold"
+                      : "border-indigo-600 text-indigo-600 font-bold"
+                    : isJourneyTab
+                    ? "border-transparent text-purple-600/80 hover:text-purple-700 hover:border-purple-300 font-medium"
                     : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
                 }`}
               >
-                {tab}
+                {isJourneyTab ? (
+                  <span className="flex items-center gap-1.5">
+                    <Compass className="w-4 h-4 text-purple-600" />
+                    <span>MIRAI Journey</span>
+                    <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold rounded-full border border-purple-200">
+                      Cohort 1
+                    </span>
+                  </span>
+                ) : (
+                  tab
+                )}
               </button>
             );
           })}
         </nav>
       </div>
+
+      {/* ========================================================================= */}
+      {/* TAB: MIRAI JOURNEY TAB (Intern Four-Quarter Progression)                  */}
+      {/* ========================================================================= */}
+      {activeTab === "MIRAI Journey" && isIntern && (
+        <ProfileMiraiJourneySection
+          employeeId={String(employee?.id || employeeId)}
+          employeeName={employee?.staffName || "Intern"}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: FEEDBACK TAB matching media_1789919618455.png */}

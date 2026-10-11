@@ -1,5 +1,5 @@
 import os
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta
 from django.db.models import Q
 from django.utils import timezone
@@ -13,11 +13,13 @@ from apps.employees.models import EmployeeProfile
 from apps.goals.models import Goal, GoalStatus, GoalPriority, GoalProgress
 from apps.evidence.models import EvidenceSubmission, EvidenceReviewStatus
 from apps.performance.models import (
-    PerformanceCycle, Appraisal, AppraisalType, AppraisalStatus, CycleStatus
+    PerformanceCycle, Appraisal, AppraisalType, AppraisalStatus, CycleStatus,
+    TechnicalCapabilityParameter, TechnicalCapabilityReview
 )
 from apps.performance.services.scoring import ScoringService
 from apps.notifications.services import NotificationService
 from apps.notifications.models import Notification, NotificationType
+from apps.audit.services import AuditService
 
 from .models import (
     InternTask, TaskCategory, TaskPriority, TaskStatus,
@@ -440,12 +442,21 @@ class InternEvidenceView(APIView):
     def post(self, request):
         profile = get_authenticated_intern_profile(request.user)
         goal_id = request.data.get('goalId') or request.data.get('goal_id') or request.data.get('goal')
-        if not goal_id:
-            return Response({'code': 400, 'message': 'Goal ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        task_id = request.data.get('taskId') or request.data.get('task_id') or request.data.get('task')
+        if not goal_id and not task_id:
+            return Response({'code': 400, 'message': 'Goal ID or Task ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        goal = Goal.objects.filter(id=goal_id, employee=profile).first()
-        if not goal:
-            return Response({'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'}, status=status.HTTP_400_BAD_REQUEST)
+        goal = None
+        if goal_id:
+            goal = Goal.objects.filter(id=goal_id, employee=profile).first()
+            if not goal:
+                return Response({'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        task = None
+        if task_id:
+            task = InternTask.objects.filter(id=task_id, intern=profile).first()
+            if not task:
+                return Response({'code': 400, 'message': 'Specified task does not belong to your assigned tasks.'}, status=status.HTTP_400_BAD_REQUEST)
 
         title = request.data.get('title', '').strip()
         if not title:
@@ -465,22 +476,23 @@ class InternEvidenceView(APIView):
             except ValidationError as ve:
                 return Response({'code': 400, 'message': ve.detail[0] if isinstance(ve.detail, list) else str(ve.detail)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Duplicate submission protection (same title and goal within 1 hour)
-        recent_duplicate = EvidenceSubmission.objects.filter(
-            employee=profile,
-            goal=goal,
-            title__iexact=title,
-            created_at__gte=timezone.now() - timedelta(hours=1)
-        ).first()
+        # Duplicate submission protection (same title and goal/task within 1 hour)
+        dup_filter = {'employee': profile, 'title__iexact': title, 'created_at__gte': timezone.now() - timedelta(hours=1)}
+        if goal:
+            dup_filter['goal'] = goal
+        if task:
+            dup_filter['task'] = task
+        recent_duplicate = EvidenceSubmission.objects.filter(**dup_filter).first()
         if recent_duplicate:
             return Response({
                 'code': 400,
-                'message': 'A duplicate evidence submission with this title was already submitted recently for this goal.'
+                'message': 'A duplicate evidence submission with this title was already submitted recently.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         evidence = EvidenceSubmission.objects.create(
             employee=profile,
             goal=goal,
+            task=task,
             title=title,
             description=description,
             external_url=external_url.strip() if external_url else None,
@@ -520,28 +532,100 @@ class InternEvidenceDetailView(APIView):
 class InternTasksView(APIView):
     """
     List all assigned tasks for the intern, filterable by ?status=...
+    Or create a personal task for the authenticated intern.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         profile = get_authenticated_intern_profile(request.user)
-        tasks = InternTask.objects.filter(intern=profile).select_related('reviewed_by')
+        tasks = InternTask.objects.filter(intern=profile).select_related('reviewed_by', 'goal')
         status_filter = request.query_params.get('status')
         if status_filter:
             tasks = tasks.filter(status=status_filter.upper())
         serializer = InternTaskSerializer(tasks, many=True)
         return Response({'code': 200, 'data': serializer.data})
 
+    def post(self, request):
+        profile = get_authenticated_intern_profile(request.user)
+        title = request.data.get('title', '').strip()
+        if not title:
+            return Response({'code': 400, 'message': 'Task title is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        description = request.data.get('description', '').strip() or request.data.get('instructions', '').strip()
+        category = request.data.get('category', TaskCategory.TECHNICAL)
+        if category not in [c[0] for c in TaskCategory.choices]:
+            category = TaskCategory.TECHNICAL
+
+        priority = request.data.get('priority', TaskPriority.MEDIUM).upper()
+        if priority not in [p[0] for p in TaskPriority.choices]:
+            priority = TaskPriority.MEDIUM
+
+        due_date_val = request.data.get('due_date') or request.data.get('dueDate')
+        if not due_date_val:
+            due_date = date.today() + timedelta(days=14)
+        else:
+            try:
+                due_date = datetime.strptime(str(due_date_val)[:10], '%Y-%m-%d').date()
+            except ValueError:
+                due_date = date.today() + timedelta(days=14)
+
+        raw_status = (request.data.get('status') or 'ASSIGNED').upper()
+        if raw_status in ['TO DO', 'TO_DO', 'TODO', 'ASSIGNED', 'NOT_STARTED']:
+            task_status = TaskStatus.ASSIGNED
+        elif raw_status in ['IN PROGRESS', 'IN_PROGRESS']:
+            task_status = TaskStatus.IN_PROGRESS
+        elif raw_status in ['COMPLETED', 'DONE']:
+            task_status = TaskStatus.COMPLETED
+        else:
+            task_status = TaskStatus.ASSIGNED
+
+        # Related goal validation (anti-IDOR: goal must belong to this intern)
+        goal_id = request.data.get('goalId') or request.data.get('goal_id') or request.data.get('goal')
+        related_goal = None
+        if goal_id:
+            related_goal = Goal.objects.filter(id=goal_id, employee=profile).first()
+            if not related_goal:
+                return Response(
+                    {'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        is_completed = (task_status == TaskStatus.COMPLETED)
+        completed_at = date.today() if is_completed else None
+
+        task = InternTask.objects.create(
+            intern=profile,
+            created_by=request.user,
+            goal=related_goal,
+            title=title,
+            description=description,
+            instructions=description,
+            category=category,
+            priority=priority,
+            due_date=due_date,
+            status=task_status,
+            is_completed=is_completed,
+            completed_at=completed_at,
+            requires_mentor_review=False,
+            is_permitted_to_complete=True
+        )
+
+        return Response({
+            'code': 201,
+            'message': 'Task created successfully',
+            'data': InternTaskSerializer(task).data
+        }, status=status.HTTP_201_CREATED)
+
 
 class InternTaskDetailView(APIView):
     """
-    Retrieve single task detail or transition status (e.g. ASSIGNED -> IN_PROGRESS).
+    Retrieve single task detail, update task details/status, or delete personal task.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
         profile = get_authenticated_intern_profile(request.user)
-        task = InternTask.objects.filter(id=pk, intern=profile).select_related('reviewed_by').first()
+        task = InternTask.objects.filter(id=pk, intern=profile).select_related('reviewed_by', 'goal').first()
         if not task:
             return Response({'code': 404, 'message': 'Task not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = InternTaskSerializer(task)
@@ -553,12 +637,106 @@ class InternTaskDetailView(APIView):
         if not task:
             return Response({'code': 404, 'message': 'Task not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
 
+        title = request.data.get('title')
+        if title is not None:
+            if not str(title).strip():
+                return Response({'code': 400, 'message': 'Task title cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+            task.title = str(title).strip()
+
+        desc = request.data.get('description') or request.data.get('instructions')
+        if desc is not None:
+            task.description = str(desc).strip()
+            task.instructions = str(desc).strip()
+
+        priority = request.data.get('priority')
+        if priority and priority.upper() in [p[0] for p in TaskPriority.choices]:
+            task.priority = priority.upper()
+
+        due_date_val = request.data.get('due_date') or request.data.get('dueDate')
+        if due_date_val:
+            try:
+                task.due_date = datetime.strptime(str(due_date_val)[:10], '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        goal_id = request.data.get('goalId') or request.data.get('goal_id')
+        if goal_id is not None:
+            if str(goal_id).strip() in ('', 'null', 'none'):
+                task.goal = None
+            else:
+                goal = Goal.objects.filter(id=goal_id, employee=profile).first()
+                if not goal:
+                    return Response({'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'}, status=status.HTTP_400_BAD_REQUEST)
+                task.goal = goal
+
         target_status = request.data.get('status')
-        if target_status == TaskStatus.IN_PROGRESS and task.status == TaskStatus.ASSIGNED:
-            task.status = TaskStatus.IN_PROGRESS
-            task.save()
-            return Response({'code': 200, 'message': 'Task marked in progress', 'data': InternTaskSerializer(task).data})
-        return Response({'code': 400, 'message': 'Invalid status transition requested.'}, status=status.HTTP_400_BAD_REQUEST)
+        if target_status:
+            ts = target_status.upper()
+            if ts in ['TO DO', 'TO_DO', 'TODO', 'ASSIGNED', 'NOT_STARTED']:
+                task.status = TaskStatus.ASSIGNED
+                task.is_completed = False
+            elif ts in ['IN PROGRESS', 'IN_PROGRESS']:
+                task.status = TaskStatus.IN_PROGRESS
+                task.is_completed = False
+            elif ts in ['COMPLETED', 'DONE']:
+                task.status = TaskStatus.COMPLETED
+                task.is_completed = True
+                task.completed_at = date.today()
+
+        task.save()
+        return Response({'code': 200, 'message': 'Task updated successfully', 'data': InternTaskSerializer(task).data})
+
+    def put(self, request, pk):
+        return self.patch(request, pk)
+
+    def delete(self, request, pk):
+        profile = get_authenticated_intern_profile(request.user)
+        task = InternTask.objects.filter(id=pk, intern=profile).first()
+        if not task:
+            return Response({'code': 404, 'message': 'Task not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if task.created_by != request.user and not (request.user.role in [UserRole.HR, UserRole.SUPER_ADMIN]):
+            return Response({'code': 403, 'message': 'You can only delete tasks you created yourself.'}, status=status.HTTP_403_FORBIDDEN)
+
+        task.delete()
+        return Response({'code': 200, 'message': 'Task deleted successfully.'})
+
+
+class InternAllTasksView(APIView):
+    """
+    List all intern-created and assigned tasks for HR and Managers.
+    Allows filtering by ?employee_id=... / ?intern_id=... and ?status=...
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not (user.role in [UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER] or user.is_superuser):
+            return Response({'code': 403, 'message': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = InternTask.objects.select_related('intern__user', 'goal', 'reviewed_by', 'created_by').all()
+
+        if user.role == UserRole.MANAGER and not (user.is_superuser or user.role in [UserRole.HR, UserRole.SUPER_ADMIN]):
+            qs = qs.filter(intern__manager=user)
+
+        employee_param = request.query_params.get('employee_id') or request.query_params.get('intern_id')
+        if employee_param:
+            qs = qs.filter(
+                Q(intern__id__iexact=str(employee_param)) |
+                Q(intern__user__id__iexact=str(employee_param)) |
+                Q(intern__employee_code__iexact=str(employee_param))
+            )
+
+        status_param = request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            qs = qs.filter(status=status_param.upper())
+
+        priority_param = request.query_params.get('priority')
+        if priority_param and priority_param.upper() != 'ALL':
+            qs = qs.filter(priority=priority_param.upper())
+
+        serializer = InternTaskSerializer(qs.order_by('-created_at'), many=True)
+        return Response({'code': 200, 'data': serializer.data})
 
 
 class InternCompleteTaskView(APIView):
@@ -997,25 +1175,32 @@ class InternJourneyView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
+    def get(self, request, pk=None):
         user = request.user
-        try:
-            profile = get_authenticated_intern_profile(user)
-        except NotFound:
-            return Response({
-                'code': 404,
-                'message': 'No profile found for authenticated account.',
-                'data': None
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        # Allow authorized HR/Manager to inspect a specific intern's journey
-        target_intern_id = request.query_params.get('intern_id') or request.query_params.get('employee_id')
-        if target_intern_id and user.role in [UserRole.HR, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
-            target_profile = EmployeeProfile.objects.filter(
-                Q(id=target_intern_id) | Q(user__id=target_intern_id)
-            ).first()
-            if target_profile:
+        target_intern_id = pk or request.query_params.get('intern_id') or request.query_params.get('employee_id')
+        if target_intern_id:
+            if user.role in [UserRole.HR, UserRole.MANAGER, UserRole.SUPER_ADMIN] or user.is_superuser:
+                target_profile = EmployeeProfile.objects.filter(
+                    Q(id=target_intern_id) | Q(user__id=target_intern_id) | Q(employee_code__iexact=str(target_intern_id))
+                ).first()
+                if not target_profile:
+                    return Response({'code': 404, 'message': 'Target intern profile not found.'}, status=status.HTTP_404_NOT_FOUND)
                 profile = target_profile
+            elif user.role == UserRole.INTERN:
+                profile = getattr(user, 'profile', None)
+                if not profile or (str(profile.id) != str(target_intern_id) and str(user.id) != str(target_intern_id) and profile.employee_code != str(target_intern_id)):
+                    return Response({'code': 403, 'message': 'Forbidden: You cannot access another intern\'s journey.'}, status=status.HTTP_403_FORBIDDEN)
+            else:
+                return Response({'code': 403, 'message': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            try:
+                profile = get_authenticated_intern_profile(user)
+            except NotFound:
+                return Response({
+                    'code': 404,
+                    'message': 'No intern profile found for authenticated account.',
+                    'data': None
+                }, status=status.HTTP_404_NOT_FOUND)
 
         today = date.today()
         joining_date = profile.joining_date or (profile.created_at.date() if profile.created_at else today)
@@ -1262,6 +1447,269 @@ class InternJourneyView(APIView):
                 }
             }
         })
+
+    def patch(self, request, pk=None):
+        """
+        Allows authorized HR administrators and SuperAdmins to edit an intern's MIRAI Journey:
+        quarter progress (0–100%), quarter status transitions with prerequisite validation,
+        milestones, dates, project focus, JLPT exam certifications, and technical parameters.
+        All changes are persistently saved to the database and logged to the audit service.
+        """
+        user = request.user
+        if not (user.role in [UserRole.HR, UserRole.SUPER_ADMIN] or user.is_superuser):
+            return Response(
+                {'code': 403, 'message': 'Permission denied. Only authorized HR administrators can edit the intern journey.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        target_id = pk or request.data.get('intern_id') or request.data.get('employee_id') or request.query_params.get('employee_id')
+        if not target_id:
+            return Response({'code': 400, 'message': 'Target intern employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = EmployeeProfile.objects.filter(
+            Q(id=target_id) | Q(user__id=target_id) | Q(employee_code__iexact=str(target_id))
+        ).first()
+
+        if not profile:
+            return Response({'code': 404, 'message': 'Target intern profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        quarters_data = data.get('quarters')
+        if not quarters_data and any(k in data for k in ['quarter_code', 'quarterCode', 'status', 'progress', 'completion_percentage', 'completionPercentage']):
+            quarters_data = [data]
+
+        updated_quarters = []
+
+        if quarters_data and isinstance(quarters_data, list):
+            for q_update in quarters_data:
+                q_code = q_update.get('quarter_code') or q_update.get('quarterCode')
+                if not q_code:
+                    continue
+                q_code = str(q_code).upper()
+                if q_code not in [c[0] for c in QuarterCode.choices]:
+                    return Response({'code': 400, 'message': f'Invalid quarter code: {q_code}'}, status=status.HTTP_400_BAD_REQUEST)
+
+                quarter = MiraiQuarterProgress.objects.filter(intern=profile, quarter_code=q_code).first()
+                if not quarter:
+                    MiraiJourneyService.get_or_initialize_quarters(profile)
+                    quarter = MiraiQuarterProgress.objects.filter(intern=profile, quarter_code=q_code).first()
+
+                # 1. Progress percentage validation (strict 0.0 to 100.0)
+                progress_val = q_update.get('completion_percentage')
+                if progress_val is None:
+                    progress_val = q_update.get('completionPercentage')
+                if progress_val is None:
+                    progress_val = q_update.get('progress')
+
+                if progress_val is not None:
+                    try:
+                        p_dec = Decimal(str(progress_val))
+                    except (InvalidOperation, ValueError):
+                        return Response({
+                            'code': 400,
+                            'message': f'Progress percentage for {q_code} must be a valid number.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    if p_dec < Decimal('0.00') or p_dec > Decimal('100.00'):
+                        return Response({
+                            'code': 400,
+                            'message': f'Progress percentage for {q_code} must be strictly between 0 and 100%.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    quarter.completion_percentage = p_dec
+
+                # 2. Quarter Status transition & prerequisite validation
+                status_val = q_update.get('status')
+                if status_val:
+                    s_str = str(status_val).upper().replace(' ', '_')
+                    if s_str in ['TODO', 'NOT_STARTED']:
+                        s_str = QuarterStatus.NOT_STARTED
+                    elif s_str in ['IN_PROGRESS', 'INPROGRESS']:
+                        s_str = QuarterStatus.IN_PROGRESS
+                    elif s_str in ['COMPLETED', 'DONE']:
+                        s_str = QuarterStatus.COMPLETED
+
+                    if s_str not in [c[0] for c in QuarterStatus.choices]:
+                        return Response({'code': 400, 'message': f'Invalid quarter status: {status_val}'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    force_override = q_update.get('force_override') or q_update.get('forceOverride') or q_update.get('prerequisites_met') or q_update.get('prerequisitesMet')
+
+                    # Validate prerequisites for quarter transition
+                    if s_str in [QuarterStatus.IN_PROGRESS, QuarterStatus.COMPLETED]:
+                        if q_code == 'Q3' and not force_override:
+                            n4_verified = MiraiCertification.objects.filter(
+                                intern=profile,
+                                jlpt_level='N4',
+                                status=CertificationStatus.CLEARED,
+                                verification_status=VerificationStatus.VERIFIED
+                            ).exists()
+                            all_tech = TechnicalCapabilityReview.objects.filter(employee=profile)
+                            avg_tech = (sum(float(r.score) for r in all_tech) / all_tech.count()) if all_tech.exists() else 0.0
+                            if not n4_verified and avg_tech < 3.5:
+                                return Response({
+                                    'code': 400,
+                                    'message': f'Cannot advance Q3 to {s_str}: Entry prerequisites (verified JLPT N4 and technical capability benchmark >= 3.5/5.0) are not satisfied.'
+                                }, status=status.HTTP_400_BAD_REQUEST)
+
+                        elif q_code == 'Q4' and not force_override:
+                            n3_verified = MiraiCertification.objects.filter(
+                                intern=profile,
+                                jlpt_level='N3',
+                                status=CertificationStatus.CLEARED,
+                                verification_status=VerificationStatus.VERIFIED
+                            ).exists()
+                            all_tech = TechnicalCapabilityReview.objects.filter(employee=profile)
+                            avg_tech = (sum(float(r.score) for r in all_tech) / all_tech.count()) if all_tech.exists() else 0.0
+                            if not n3_verified and avg_tech < 4.0:
+                                return Response({
+                                    'code': 400,
+                                    'message': f'Cannot advance Q4 to {s_str}: Entry prerequisites (verified JLPT N3 and technical capability benchmark >= 4.0/5.0) are not satisfied.'
+                                }, status=status.HTTP_400_BAD_REQUEST)
+
+                    quarter.status = s_str
+
+                # Dates
+                if 'start_date' in q_update or 'startDate' in q_update:
+                    sd = q_update.get('start_date') or q_update.get('startDate')
+                    if sd:
+                        try:
+                            quarter.start_date = datetime.strptime(str(sd)[:10], '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+                if 'end_date' in q_update or 'endDate' in q_update:
+                    ed = q_update.get('end_date') or q_update.get('endDate')
+                    if ed:
+                        try:
+                            quarter.end_date = datetime.strptime(str(ed)[:10], '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+
+                # Journey Focus & Project
+                if 'title' in q_update:
+                    quarter.title = q_update['title']
+                if 'current_focus' in q_update or 'currentFocus' in q_update:
+                    quarter.current_focus = q_update.get('current_focus') or q_update.get('currentFocus', '')
+                if 'project_name' in q_update or 'projectName' in q_update:
+                    quarter.project_name = q_update.get('project_name') or q_update.get('projectName', '')
+                if 'attendance_percentage' in q_update or 'attendancePercentage' in q_update:
+                    att_val = q_update.get('attendance_percentage') or q_update.get('attendancePercentage')
+                    if att_val is not None:
+                        try:
+                            att_dec = Decimal(str(att_val))
+                            if Decimal('0.00') <= att_dec <= Decimal('100.00'):
+                                quarter.attendance_percentage = att_dec
+                        except (InvalidOperation, ValueError):
+                            pass
+
+                # Milestones & Requirements
+                if 'completed_requirements' in q_update or 'completedRequirements' in q_update:
+                    cr = q_update.get('completed_requirements') or q_update.get('completedRequirements')
+                    if isinstance(cr, list):
+                        quarter.completed_requirements = cr
+                if 'pending_requirements' in q_update or 'pendingRequirements' in q_update:
+                    pr = q_update.get('pending_requirements') or q_update.get('pendingRequirements')
+                    if isinstance(pr, list):
+                        quarter.pending_requirements = pr
+                if 'prerequisites_met' in q_update or 'prerequisitesMet' in q_update:
+                    pm = q_update.get('prerequisites_met') if 'prerequisites_met' in q_update else q_update.get('prerequisitesMet')
+                    quarter.prerequisites_met = bool(pm)
+
+                # Conversion Decision (Q4)
+                if 'conversion_decision' in q_update or 'conversionDecision' in q_update:
+                    cd = q_update.get('conversion_decision') or q_update.get('conversionDecision')
+                    if cd in [c[0] for c in ConversionDecision.choices]:
+                        quarter.conversion_decision = cd
+                if 'conversion_effective_date' in q_update or 'conversionEffectiveDate' in q_update:
+                    ced = q_update.get('conversion_effective_date') or q_update.get('conversionEffectiveDate')
+                    if ced:
+                        try:
+                            quarter.conversion_effective_date = datetime.strptime(str(ced)[:10], '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+                if 'hr_conversion_notes' in q_update or 'hrConversionNotes' in q_update:
+                    quarter.hr_conversion_notes = q_update.get('hr_conversion_notes') or q_update.get('hrConversionNotes', '')
+
+                quarter.is_manually_updated = True
+                quarter.save()
+                updated_quarters.append(q_code)
+
+        # 3. Certifications / Exams updates
+        certs_data = data.get('certifications') or data.get('exams')
+        if certs_data and isinstance(certs_data, list):
+            for c_item in certs_data:
+                jlpt = c_item.get('jlpt_level') or c_item.get('jlptLevel', 'OTHER')
+                q_code = c_item.get('quarter_code') or c_item.get('quarterCode') or {'N5': 'Q1', 'N4': 'Q2', 'N3': 'Q3'}.get(jlpt, 'Q1')
+                is_ver = c_item.get('verification_status') or c_item.get('verificationStatus') or VerificationStatus.VERIFIED
+                MiraiCertification.objects.update_or_create(
+                    intern=profile,
+                    jlpt_level=jlpt,
+                    defaults={
+                        'name': c_item.get('name') or f"JLPT {jlpt} Examination",
+                        'quarter_code': q_code,
+                        'status': c_item.get('status', CertificationStatus.CLEARED),
+                        'score': str(c_item.get('score', '')),
+                        'certificate_url': c_item.get('certificate_url') or c_item.get('certificateUrl', ''),
+                        'verification_status': is_ver,
+                        'verification_notes': c_item.get('verification_notes') or c_item.get('verificationNotes', f"Updated by HR ({user.username})"),
+                        'verified_by': user if is_ver == VerificationStatus.VERIFIED else None,
+                        'verified_at': timezone.now() if is_ver == VerificationStatus.VERIFIED else None,
+                    }
+                )
+
+        # 4. Technical Parameters updates
+        tech_data = data.get('technical_parameters') or data.get('technicalParameters')
+        if tech_data and isinstance(tech_data, list):
+            for t_item in tech_data:
+                param_id = t_item.get('parameter_id') or t_item.get('id')
+                param = None
+                if param_id:
+                    param = TechnicalCapabilityParameter.objects.filter(id=param_id).first()
+                if not param and t_item.get('parameterName'):
+                    param = TechnicalCapabilityParameter.objects.filter(name__icontains=t_item['parameterName']).first()
+                
+                score_val = t_item.get('achievedScore') if t_item.get('achievedScore') is not None else t_item.get('score')
+                if param and score_val is not None:
+                    try:
+                        s_dec = Decimal(str(score_val))
+                        if Decimal('0.00') <= s_dec <= Decimal('5.00'):
+                            TechnicalCapabilityReview.objects.update_or_create(
+                                parameter=param,
+                                employee=profile,
+                                defaults={
+                                    'score': s_dec,
+                                    'reviewer': user,
+                                    'status': 'SUBMITTED',
+                                    'mentor_assessment': t_item.get('assessmentNotes', t_item.get('mentor_assessment', 'Assessed by HR')),
+                                }
+                            )
+                    except (InvalidOperation, ValueError):
+                        pass
+
+        # 5. Record Audit Log
+        AuditService.log(
+            actor=user,
+            action='UPDATE',
+            entity_type='MIRAI_JOURNEY',
+            entity_id=str(profile.id),
+            metadata={
+                'intern_username': profile.user.username,
+                'intern_code': profile.employee_code,
+                'updated_by': user.username,
+                'quarters_updated': updated_quarters,
+            },
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        # Refresh displayed journey from database
+        eval_res = MiraiJourneyService.evaluate_intern_journey(profile)
+        return Response({
+            'code': 200,
+            'message': 'MIRAI Journey successfully updated and persisted.',
+            'data': eval_res
+        })
+
+    def put(self, request, pk=None):
+        return self.patch(request, pk)
 
 
 class MiraiCertificationSubmitView(APIView):

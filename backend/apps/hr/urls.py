@@ -10,4 +10,5 @@ urlpatterns = [
     path('criteria/', views.HrCriteriaView.as_view(), name='criteria'),
     path('pips/', views.HrPipOverviewView.as_view(), name='pips'),
     path('analytics/bell-curve/', views.HrBellCurveAnalyticsView.as_view(), name='bell_curve'),
+    path('intern-tasks/', views.HrInternTasksView.as_view(), name='intern_tasks'),
 ]

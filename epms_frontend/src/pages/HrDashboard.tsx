@@ -4,7 +4,8 @@ import {
   ArrowRight, CheckCircle2, AlertCircle, RefreshCw,
   Sparkles, ChevronRight, GraduationCap,
   FileText, ShieldCheck, HelpCircle,
-  HeartHandshake, TrendingUp, Lock, BarChart3, Info, Smile, ExternalLink
+  HeartHandshake, TrendingUp, Lock, BarChart3, Info, Smile, ExternalLink,
+  Target, Plus, Download, Check, X, Filter, Eye, FileCheck, CheckCircle
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -89,9 +90,26 @@ export interface Evidence {
   title: string;
   goalTitle: string;
   link: string;
+  fileAttachment?: string | null;
   type: string;
   status: 'PENDING' | 'APPROVED' | 'NEEDS_CHANGES';
   note?: string;
+  createdAt?: string;
+}
+
+export interface HrInternTask {
+  id: string;
+  title: string;
+  description?: string;
+  internName: string;
+  internEmail?: string;
+  goalTitle?: string | null;
+  dueDate: string;
+  priority: string;
+  status: string;
+  isSelfCreated?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface HrDashboardTelemetry {
@@ -203,6 +221,34 @@ const HrDashboard: React.FC = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [evidenceList, setEvidenceList] = useState<Evidence[]>([]);
   const [telemetry, setTelemetry] = useState<HrDashboardTelemetry | null>(null);
+
+  // Intern Tasks & Desk State
+  const [hrTasks, setHrTasks] = useState<HrInternTask[]>([]);
+  const [activeDeskTab, setActiveDeskTab] = useState<'tasks' | 'evidence' | 'goals'>('tasks');
+  const [filterTaskIntern, setFilterTaskIntern] = useState<string>('ALL');
+  const [filterTaskStatus, setFilterTaskStatus] = useState<string>('ALL');
+
+  // Assign Goal Modal State
+  const [isAssignGoalModalOpen, setIsAssignGoalModalOpen] = useState(false);
+  const [selectedInternId, setSelectedInternId] = useState('');
+  const [goalTitle, setGoalTitle] = useState('');
+  const [goalDescription, setGoalDescription] = useState('');
+  const [goalCategory, setGoalCategory] = useState('TECHNICAL');
+  const [goalPriority, setGoalPriority] = useState('HIGH');
+  const [goalDueDate, setGoalDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [goalTargetValue, setGoalTargetValue] = useState(100);
+  const [goalWeightage, setGoalWeightage] = useState(25);
+  const [isAssigningGoal, setIsAssigningGoal] = useState(false);
+
+  // Review Evidence Modal State
+  const [selectedReviewEvidence, setSelectedReviewEvidence] = useState<Evidence | null>(null);
+  const [reviewStatusChoice, setReviewStatusChoice] = useState<'APPROVED' | 'REJECTED' | 'REVISION_REQUESTED'>('APPROVED');
+  const [reviewNotesInput, setReviewNotesInput] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   // Synchronize telemetry from RTK Query endpoint
   useEffect(() => {
@@ -388,18 +434,46 @@ const HrDashboard: React.FC = () => {
               id: String(ev.id),
               internName: ev.employee_name || 'Intern',
               title: ev.title,
-              goalTitle: ev.goal_title || 'Project Goal',
-              link: ev.external_url || '#',
-              type: 'GitHub PR',
+              goalTitle: ev.goal_title || ev.task_title || 'Project Goal',
+              link: ev.external_url || '',
+              fileAttachment: ev.file_attachment || null,
+              type: ev.external_url ? 'External Link' : 'Attachment',
               status: ev.review_status === 'APPROVED' ? 'APPROVED' : (ev.review_status === 'REJECTED' ? 'NEEDS_CHANGES' : 'PENDING'),
-              note: ev.review_notes || ''
+              note: ev.review_notes || '',
+              createdAt: ev.created_at ? new Date(ev.created_at).toLocaleDateString() : ''
             }));
             setEvidenceList(mappedEv);
           }
         }
       } catch {}
 
-      // 6. Fetch HR Telemetry
+      // 6. Fetch Intern Tasks for HR Visibility
+      try {
+        const tasksRes = await authFetch('/api/hr/intern-tasks/');
+        if (tasksRes.ok) {
+          const tasksJson = await tasksRes.json();
+          const tasksList = tasksJson.data || (Array.isArray(tasksJson) ? tasksJson : []);
+          if (Array.isArray(tasksList)) {
+            const mappedTasks: HrInternTask[] = tasksList.map((t: any) => ({
+              id: String(t.id),
+              title: t.title,
+              description: t.description || '',
+              internName: t.internName || t.employee_name || 'Intern',
+              internEmail: t.internEmail || '',
+              goalTitle: t.goalTitle || t.goal_title || null,
+              dueDate: t.dueDate || t.due_date || '',
+              priority: t.priority || 'MEDIUM',
+              status: t.status || (t.isCompleted ? 'COMPLETED' : 'IN_PROGRESS'),
+              isSelfCreated: t.isSelfCreated ?? true,
+              createdAt: t.createdAt || t.created_at || '',
+              updatedAt: t.updatedAt || t.updated_at || ''
+            }));
+            setHrTasks(mappedTasks);
+          }
+        }
+      } catch {}
+
+      // 7. Fetch HR Telemetry
       try {
         const dashRes = await authFetch('/dashboard/hr');
         if (dashRes.ok) {
@@ -447,6 +521,78 @@ const HrDashboard: React.FC = () => {
       setIsRefreshing(false);
     }
   }, [dispatch, refetchTelemetry, loadDashboardData, isRefreshing, isTelemetryFetching]);
+
+  const handleAssignGoal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInternId) {
+      toast.error('Please select an intern from the employee list.');
+      return;
+    }
+    if (!goalTitle.trim()) {
+      toast.error('Goal title is required.');
+      return;
+    }
+    try {
+      setIsAssigningGoal(true);
+      const res = await authFetch('/api/goals/', {
+        method: 'POST',
+        body: JSON.stringify({
+          employee: selectedInternId,
+          title: goalTitle.trim(),
+          description: goalDescription.trim(),
+          category: goalCategory,
+          priority: goalPriority,
+          due_date: goalDueDate,
+          target_value: Number(goalTargetValue) || 100,
+          weightage: Number(goalWeightage) || 20,
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.message || 'Failed to assign goal.');
+      }
+
+      toast.success('Goal successfully assigned to intern!');
+      setIsAssignGoalModalOpen(false);
+      setGoalTitle('');
+      setGoalDescription('');
+      dispatch(api.util.invalidateTags(['GoalSet', 'Profile', 'Appraisal']));
+      await loadDashboardData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error assigning goal to intern.');
+    } finally {
+      setIsAssigningGoal(false);
+    }
+  };
+
+  const handleReviewEvidence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReviewEvidence) return;
+    try {
+      setIsSubmittingReview(true);
+      const res = await authFetch(`/api/evidence/${selectedReviewEvidence.id}/review/`, {
+        method: 'POST',
+        body: JSON.stringify({
+          review_status: reviewStatusChoice,
+          review_notes: reviewNotesInput.trim(),
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.message || 'Failed to update review status.');
+      }
+
+      toast.success(`Evidence marked as ${reviewStatusChoice.replace(/_/g, ' ')}!`);
+      setSelectedReviewEvidence(null);
+      await loadDashboardData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error reviewing evidence submission.');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     loadDashboardData();
@@ -587,6 +733,19 @@ const HrDashboard: React.FC = () => {
 
         {/* Action Controls & Data Sync */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              if (interns.length > 0 && !selectedInternId) {
+                setSelectedInternId(interns[0].id);
+              }
+              setIsAssignGoalModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs transition-all cursor-pointer"
+            title="Assign a new performance goal to an intern"
+          >
+            <Target size={14} />
+            <span>Assign Goal</span>
+          </button>
           <button
             onClick={handleRefresh}
             disabled={isRefreshing || isTelemetryFetching}
@@ -1639,6 +1798,576 @@ const HrDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* ----------------------------------------------------
+          6. INTERN OPERATIONS, TASKS & EVIDENCE DESK
+      ---------------------------------------------------- */}
+      <div className="bg-white rounded-2xl border border-purple-100/90 shadow-xs p-5 md:p-6 space-y-5">
+        {/* Desk Header & Tab Navigation */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
+                <FileCheck size={16} />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Intern Deliverables, Tasks & Evidence Desk</h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live tracking of intern-created tasks, deliverables proof of work, and assigned performance goals.
+            </p>
+          </div>
+
+          {/* Tab Selector */}
+          <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+            <button
+              onClick={() => setActiveDeskTab('tasks')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeDeskTab === 'tasks' ? 'bg-white text-purple-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Clock size={13} />
+              <span>Intern Tasks ({hrTasks.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveDeskTab('evidence')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeDeskTab === 'evidence' ? 'bg-white text-purple-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText size={13} />
+              <span>Evidence Submissions ({evidenceList.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveDeskTab('goals')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeDeskTab === 'goals' ? 'bg-white text-purple-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Target size={13} />
+              <span>Assigned Goals ({goals.length})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab 1: Intern Tasks Table */}
+        {activeDeskTab === 'tasks' && (
+          <div className="space-y-4">
+            {/* Filter Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 text-slate-600">
+                  <Filter size={13} className="text-purple-600" />
+                  <span className="font-semibold">Filter Intern:</span>
+                  <select
+                    value={filterTaskIntern}
+                    onChange={(e) => setFilterTaskIntern(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-hidden"
+                  >
+                    <option value="ALL">All Interns</option>
+                    {interns.map((i) => (
+                      <option key={i.id} value={i.name}>{i.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-slate-600">
+                  <span className="font-semibold">Status:</span>
+                  <select
+                    value={filterTaskStatus}
+                    onChange={(e) => setFilterTaskStatus(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-hidden"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="PENDING">To Do</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="SUBMITTED">Submitted / Review</option>
+                  </select>
+                </div>
+              </div>
+
+              <span className="text-[11px] text-slate-400 font-medium">
+                Showing {
+                  hrTasks
+                    .filter(t => filterTaskIntern === 'ALL' || t.internName.toLowerCase() === filterTaskIntern.toLowerCase())
+                    .filter(t => filterTaskStatus === 'ALL' || t.status?.toUpperCase() === filterTaskStatus)
+                    .length
+                } tasks
+              </span>
+            </div>
+
+            {/* Tasks Table */}
+            {hrTasks.length === 0 ? (
+              <div className="py-10 text-center text-slate-400 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                No intern tasks recorded in database yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 px-3.5">Intern</th>
+                      <th className="py-2.5 px-3.5">Task Title & Description</th>
+                      <th className="py-2.5 px-3.5">Related Goal</th>
+                      <th className="py-2.5 px-3.5">Priority</th>
+                      <th className="py-2.5 px-3.5">Due Date</th>
+                      <th className="py-2.5 px-3.5">Status</th>
+                      <th className="py-2.5 px-3.5">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {hrTasks
+                      .filter(t => filterTaskIntern === 'ALL' || t.internName.toLowerCase() === filterTaskIntern.toLowerCase())
+                      .filter(t => filterTaskStatus === 'ALL' || t.status?.toUpperCase() === filterTaskStatus)
+                      .map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2.5 px-3.5">
+                            <div className="font-bold text-slate-900">{t.internName}</div>
+                            {t.internEmail && <div className="text-[10px] text-slate-400">{t.internEmail}</div>}
+                          </td>
+                          <td className="py-2.5 px-3.5 max-w-xs">
+                            <div className="font-semibold text-slate-800">{t.title}</div>
+                            {t.description && (
+                              <div className="text-[11px] text-slate-500 line-clamp-1">{t.description}</div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3.5">
+                            {t.goalTitle ? (
+                              <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200 text-[10px] font-semibold">
+                                {t.goalTitle}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[10px]">General Task</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3.5">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              t.priority?.toUpperCase() === 'CRITICAL' || t.priority?.toUpperCase() === 'HIGH'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : t.priority?.toUpperCase() === 'MEDIUM'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {t.priority}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3.5 text-slate-600 font-medium">
+                            {t.dueDate || '—'}
+                          </td>
+                          <td className="py-2.5 px-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              t.status?.toUpperCase() === 'COMPLETED'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : t.status?.toUpperCase() === 'IN_PROGRESS'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : t.status?.toUpperCase() === 'SUBMITTED'
+                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {t.status?.replace(/_/g, ' ')}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3.5 text-[10px] font-semibold text-slate-500">
+                            {t.isSelfCreated ? 'Intern-Created' : 'Assigned'}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Evidence Submissions Table */}
+        {activeDeskTab === 'evidence' && (
+          <div className="space-y-4">
+            {evidenceList.length === 0 ? (
+              <div className="py-10 text-center text-slate-400 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                No work evidence submitted yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 px-3.5">Intern</th>
+                      <th className="py-2.5 px-3.5">Evidence Title</th>
+                      <th className="py-2.5 px-3.5">Related Goal / Task</th>
+                      <th className="py-2.5 px-3.5">Artifact Link / File</th>
+                      <th className="py-2.5 px-3.5">Submitted</th>
+                      <th className="py-2.5 px-3.5">Review Status</th>
+                      <th className="py-2.5 px-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {evidenceList.map((ev) => (
+                      <tr key={ev.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-3.5 font-bold text-slate-900">{ev.internName}</td>
+                        <td className="py-2.5 px-3.5 max-w-xs">
+                          <div className="font-semibold text-slate-800">{ev.title}</div>
+                          {ev.note && <div className="text-[10px] text-slate-500 italic mt-0.5">Notes: "{ev.note}"</div>}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-600">
+                          <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200 text-[10px] font-semibold">
+                            {ev.goalTitle}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3.5">
+                          <div className="flex items-center gap-2">
+                            {ev.link && (
+                              <a
+                                href={ev.link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-purple-600 hover:underline flex items-center gap-1 font-semibold text-[11px]"
+                              >
+                                <ExternalLink size={12} /> URL
+                              </a>
+                            )}
+                            {ev.fileAttachment && (
+                              <a
+                                href={`/api/evidence/${ev.id}/download/`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-emerald-700 hover:underline flex items-center gap-1 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200"
+                              >
+                                <Download size={11} /> File
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-400 text-[11px]">
+                          {ev.createdAt || 'Recent'}
+                        </td>
+                        <td className="py-2.5 px-3.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            ev.status === 'APPROVED'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : ev.status === 'NEEDS_CHANGES'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {ev.status === 'APPROVED' ? <CheckCircle size={10} /> : ev.status === 'NEEDS_CHANGES' ? <AlertCircle size={10} /> : <Clock size={10} />}
+                            {ev.status === 'APPROVED' ? 'Approved' : ev.status === 'NEEDS_CHANGES' ? 'Revision Needed' : 'Pending Review'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right">
+                          <button
+                            onClick={() => {
+                              setSelectedReviewEvidence(ev);
+                              setReviewStatusChoice(ev.status === 'APPROVED' ? 'APPROVED' : 'APPROVED');
+                              setReviewNotesInput(ev.note || '');
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                          >
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Assigned Goals Table */}
+        {activeDeskTab === 'goals' && (
+          <div className="space-y-4">
+            {goals.length === 0 ? (
+              <div className="py-10 text-center text-slate-400 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                No goals assigned yet. Click "Assign Goal" above to create one.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 px-3.5">Assigned Intern</th>
+                      <th className="py-2.5 px-3.5">Goal Title & Category</th>
+                      <th className="py-2.5 px-3.5">Due Date</th>
+                      <th className="py-2.5 px-3.5">Progress</th>
+                      <th className="py-2.5 px-3.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {goals.map((g) => (
+                      <tr key={g.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-3.5 font-bold text-slate-900">{g.internName}</td>
+                        <td className="py-2.5 px-3.5 max-w-sm">
+                          <div className="font-semibold text-slate-800">{g.title}</div>
+                          <div className="text-[10px] text-slate-400">{g.category}</div>
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-600 font-medium">{g.dueDate}</td>
+                        <td className="py-2.5 px-3.5 w-44">
+                          <div className="flex items-center gap-2">
+                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="bg-purple-600 h-2 rounded-full transition-all"
+                                style={{ width: `${Math.min(100, Math.max(0, g.progress))}%` }}
+                              />
+                            </div>
+                            <span className="font-bold text-slate-700 text-[11px] shrink-0">{g.progress}%</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            g.status === 'Completed'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : g.status === 'In Progress'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}>
+                            {g.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ----------------------------------------------------
+          ASSIGN GOAL MODAL
+      ---------------------------------------------------- */}
+      {isAssignGoalModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target size={18} className="text-purple-600" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Assign Performance Goal</h3>
+                  <p className="text-xs text-slate-500">Configure deliverables for an intern</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAssignGoalModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignGoal} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Select Intern *</label>
+                <select
+                  required
+                  value={selectedInternId}
+                  onChange={(e) => setSelectedInternId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                >
+                  <option value="" disabled>Select an intern...</option>
+                  {interns.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} {i.code ? `(${i.code})` : ''} — {i.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Goal Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Master Backend Service Orchestration"
+                  value={goalTitle}
+                  onChange={(e) => setGoalTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Category</label>
+                  <select
+                    value={goalCategory}
+                    onChange={(e) => setGoalCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                  >
+                    <option value="TECHNICAL">Technical Delivery</option>
+                    <option value="QUALITY">Quality & Testing</option>
+                    <option value="INNOVATION">Innovation & Research</option>
+                    <option value="DELIVERY">Sprint Delivery</option>
+                    <option value="SOFT_SKILLS">Collaboration & Soft Skills</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Priority</label>
+                  <select
+                    value={goalPriority}
+                    onChange={(e) => setGoalPriority(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="CRITICAL">Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Due Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={goalDueDate}
+                    onChange={(e) => setGoalDueDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Target Value</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={goalTargetValue}
+                    onChange={(e) => setGoalTargetValue(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Weightage (%)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={goalWeightage}
+                    onChange={(e) => setGoalWeightage(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Description & Success Criteria</label>
+                <textarea
+                  rows={3}
+                  placeholder="Outline key deliverables, verification standards, and expectations..."
+                  value={goalDescription}
+                  onChange={(e) => setGoalDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:border-purple-500 focus:bg-white resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAssignGoalModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAssigningGoal}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isAssigningGoal ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
+                  Assign Goal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------
+          REVIEW EVIDENCE MODAL
+      ---------------------------------------------------- */}
+      {selectedReviewEvidence && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Verify Work Evidence</h3>
+                <p className="text-xs text-slate-500">{selectedReviewEvidence.internName} • {selectedReviewEvidence.title}</p>
+              </div>
+              <button
+                onClick={() => setSelectedReviewEvidence(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleReviewEvidence} className="p-6 space-y-4">
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="font-bold text-slate-800">Related Goal/Task: {selectedReviewEvidence.goalTitle}</div>
+                {selectedReviewEvidence.link && (
+                  <div className="text-purple-600 font-semibold truncate">
+                    URL: <a href={selectedReviewEvidence.link} target="_blank" rel="noreferrer" className="underline">{selectedReviewEvidence.link}</a>
+                  </div>
+                )}
+                {selectedReviewEvidence.fileAttachment && (
+                  <div className="text-emerald-700 font-semibold flex items-center gap-1">
+                    <Download size={12} />
+                    <a href={`/api/evidence/${selectedReviewEvidence.id}/download/`} target="_blank" rel="noreferrer" className="underline">
+                      Download File Attachment
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Review Decision *</label>
+                <select
+                  value={reviewStatusChoice}
+                  onChange={(e) => setReviewStatusChoice(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-purple-500 focus:bg-white"
+                >
+                  <option value="APPROVED">Approve Deliverable</option>
+                  <option value="REVISION_REQUESTED">Request Revision / Changes</option>
+                  <option value="REJECTED">Reject Submission</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Review Notes / Feedback</label>
+                <textarea
+                  rows={3}
+                  placeholder="Provide guidance or feedback for the intern..."
+                  value={reviewNotesInput}
+                  onChange={(e) => setReviewNotesInput(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:border-purple-500 focus:bg-white resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedReviewEvidence(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReview}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSubmittingReview ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                  Save Verification
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

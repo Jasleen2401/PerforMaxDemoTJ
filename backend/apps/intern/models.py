@@ -34,13 +34,31 @@ class InternTask(models.Model):
         related_name='intern_tasks',
         db_index=True
     )
+    goal = models.ForeignKey(
+        'goals.Goal',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='intern_tasks',
+        db_index=True
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_intern_tasks'
+    )
     title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
     category = models.CharField(
         max_length=50,
         choices=TaskCategory.choices,
         default=TaskCategory.TECHNICAL
     )
     instructions = models.TextField(
+        blank=True,
+        default="",
         help_text="Detailed task guidelines, acceptance criteria, and instructions from mentor."
     )
     priority = models.CharField(
@@ -431,6 +449,10 @@ class MiraiQuarterProgress(models.Model):
         default=dict,
         blank=True,
         help_text="Flexible requirements config editable by authorized HR users."
+    )
+    is_manually_updated = models.BooleanField(
+        default=False,
+        help_text="Set to True if quarter was manually configured or migrated."
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

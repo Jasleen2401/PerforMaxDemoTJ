@@ -495,7 +495,11 @@ const EmployeeList = () => {
                   >
                     {/* Employee */}
                     <td style={{ padding: "11px 18px" }}>
-                      <div className="flex items-center gap-3">
+                      <Link
+                        to={`/employees/${emp.id}/profile`}
+                        className="flex items-center gap-3 group text-left cursor-pointer"
+                        title={`View ${emp.staffName || 'Employee'}'s profile`}
+                      >
                         <div
                           style={{
                             width: 30,
@@ -531,6 +535,7 @@ const EmployeeList = () => {
                         </div>
                         <div>
                           <p
+                            className="group-hover:text-blue-600 transition-colors"
                             style={{
                               fontSize: 13,
                               fontWeight: 500,
@@ -549,7 +554,7 @@ const EmployeeList = () => {
                             {emp.employeeCode}
                           </p>
                         </div>
-                      </div>
+                      </Link>
                     </td>
                     {/* Department */}
                     <td style={{ padding: "11px 18px" }}>

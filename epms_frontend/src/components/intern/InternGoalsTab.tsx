@@ -143,9 +143,14 @@ export const InternGoalsTab: React.FC<InternGoalsTabProps> = ({
                   <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusBadge(goal.status)}`}>
                     {goal.status}
                   </span>
-                  {goal.weightage !== undefined && (
+                  {goal.category && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                      {goal.category}
+                    </span>
+                  )}
+                  {(goal.weightage !== undefined || goal.weight !== undefined) && (
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                      Weight: {goal.weightage}%
+                      Weight: {goal.weightage ?? goal.weight}%
                     </span>
                   )}
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${getPriorityBadge(goal.priority)}`}>

@@ -21,23 +21,46 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return Feedback.objects.none()
 
-        qs = Feedback.objects.select_related('sender', 'recipient', 'goal', 'sender__profile', 'recipient__profile').prefetch_related('comments', 'comments__author', 'comments__author__profile')
+        qs = Feedback.objects.select_related(
+            'sender', 'recipient', 'goal', 'sender__profile', 'recipient__profile'
+        ).prefetch_related(
+            'comments', 'comments__author', 'comments__author__profile'
+        )
 
         employee_param = self.request.query_params.get('employeeId') or self.request.query_params.get('employee_id')
         feedback_type_param = self.request.query_params.get('feedbackType') or self.request.query_params.get('category')
-        tab_type = self.request.query_params.get('direction') or self.request.query_params.get('type') # 'received' or 'given'
+        tab_type = self.request.query_params.get('direction') or self.request.query_params.get('type')  # 'received' or 'given'
 
+        if user.role == 'INTERN':
+            # Interns can ONLY see published feedback addressed to them, or feedback they gave
+            if employee_param:
+                user_target = User.objects.filter(
+                    Q(id__iexact=str(employee_param)) |
+                    Q(profile__id__iexact=str(employee_param)) |
+                    Q(profile__employee_code__iexact=str(employee_param))
+                ).first()
+                if user_target and user_target != user:
+                    return Feedback.objects.none()
 
-        if not (user.is_super_admin or user.is_hr):
             qs = qs.filter(
-                Q(visibility=FeedbackVisibility.PUBLIC) |
+                (Q(recipient=user, status=FeedbackStatus.PUBLISHED) & ~Q(visibility=FeedbackVisibility.MANAGER_ONLY)) |
+                Q(sender=user)
+            )
+        elif not (user.is_super_admin or user.is_hr):
+            # Managers: feedback they sent, received, or for their direct reports
+            qs = qs.filter(
                 Q(sender=user) |
                 Q(recipient=user) |
                 Q(recipient__profile__manager=user)
             )
+            # Hide drafts from other senders unless user is recipient's manager or HR
+            qs = qs.filter(
+                Q(sender=user) |
+                Q(status=FeedbackStatus.PUBLISHED) |
+                Q(recipient__profile__manager=user)
+            )
 
-        if employee_param:
-            # Match either user UUID or employee_code or integer id
+        if employee_param and user.role != 'INTERN':
             user_target = User.objects.filter(
                 Q(id__iexact=str(employee_param)) |
                 Q(profile__id__iexact=str(employee_param)) |
@@ -66,12 +89,14 @@ class FeedbackViewSet(viewsets.ModelViewSet):
 
         feedback_type = self.request.data.get('feedback_type') or self.request.data.get('category') or 'POSITIVE'
         is_anon = bool(self.request.data.get('is_anonymous') or self.request.data.get('anonymous', False))
+        status_input = self.request.data.get('status')
+        status_val = status_input.upper() if status_input else FeedbackStatus.DRAFT
 
         kwargs = {
             'sender': self.request.user,
             'feedback_type': feedback_type.upper(),
             'is_anonymous': is_anon,
-            'status': FeedbackStatus.PUBLISHED,
+            'status': status_val,
         }
         if recipient_user:
             kwargs['recipient'] = recipient_user
@@ -81,6 +106,7 @@ class FeedbackViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='employee/(?P<employee_id>[^/.]+)')
     def by_employee(self, request, employee_id=None):
         """Retrieve feedbacks received by a given employee."""
+        user = request.user
         user_target = User.objects.filter(
             Q(id__iexact=str(employee_id)) |
             Q(profile__id__iexact=str(employee_id)) |
@@ -90,13 +116,20 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         if not user_target:
             return Response({'code': 200, 'data': [], 'message': 'Employee not found'})
 
+        if user.role == 'INTERN' and user_target != user:
+            return Response(
+                {'code': 403, 'detail': 'Permission denied. Interns can only view their own feedback.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         qs = self.get_queryset().filter(recipient=user_target)
         serializer = self.get_serializer(qs, many=True)
         return Response({'code': 200, 'data': serializer.data})
 
     @action(detail=False, methods=['get'], url_path='stats/(?P<employee_id>[^/.]+)')
     def stats(self, request, employee_id=None):
-        """Returns categorized counts matching the UI counter cards in media_1789919618455.png."""
+        """Returns categorized counts matching UI counter cards."""
+        user = request.user
         user_target = User.objects.filter(
             Q(id__iexact=str(employee_id)) |
             Q(profile__id__iexact=str(employee_id)) |
@@ -109,7 +142,16 @@ class FeedbackViewSet(viewsets.ModelViewSet):
                 'rewards': 0, 'training': 0, 'satisfactory': 0, 'constructive': 0,
             }})
 
+        if user.role == 'INTERN' and user_target != user:
+            return Response(
+                {'code': 403, 'detail': 'Permission denied. Interns can only view their own feedback statistics.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         feedbacks = Feedback.objects.filter(recipient=user_target)
+        if user.role == 'INTERN':
+            feedbacks = feedbacks.filter(status=FeedbackStatus.PUBLISHED)
+
         stats_map = {
             'all': feedbacks.count(),
             'positive': feedbacks.filter(feedback_type__in=['POSITIVE', 'PRAISE']).count(),
@@ -124,7 +166,12 @@ class FeedbackViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def publish(self, request, pk=None):
-        """HR / Manager publish feedback (notebook requirement)."""
+        """HR / Manager publish feedback."""
+        if request.user.role == 'INTERN':
+            return Response(
+                {'code': 403, 'detail': 'Permission denied. Interns cannot publish feedback.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         feedback = self.get_object()
         feedback.status = FeedbackStatus.PUBLISHED
         feedback.save(update_fields=['status'])

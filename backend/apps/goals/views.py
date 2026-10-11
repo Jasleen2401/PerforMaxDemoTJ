@@ -65,7 +65,7 @@ class GoalViewSet(viewsets.ModelViewSet):
                 data['cycle'] = str(active_cycle.id)
 
         # Resolve employee
-        emp_val = data.get('employee')
+        emp_val = data.get('employee') or data.get('employee_id') or data.get('employeeId')
         if emp_val:
             from apps.employees.models import EmployeeProfile
             from apps.frontend_compat.views import is_valid_uuid
@@ -73,12 +73,19 @@ class GoalViewSet(viewsets.ModelViewSet):
             if is_valid_uuid(str(emp_val)):
                 emp_obj = EmployeeProfile.objects.filter(Q(id=str(emp_val)) | Q(user__id=str(emp_val))).first()
             if not emp_obj:
-                emp_obj = EmployeeProfile.objects.filter(Q(employee_code__iexact=str(emp_val)) | Q(user__username__iexact=str(emp_val))).first()
+                emp_obj = EmployeeProfile.objects.filter(
+                    Q(employee_code__iexact=str(emp_val)) |
+                    Q(user__username__iexact=str(emp_val)) |
+                    Q(user__email__iexact=str(emp_val))
+                ).first()
             if emp_obj:
                 data['employee'] = str(emp_obj.id)
 
         if not data.get('due_date'):
             data['due_date'] = '2026-06-30'
+
+        category_val = data.get('category') or 'TECHNICAL'
+        data['category'] = category_val
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
@@ -87,10 +94,26 @@ class GoalViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
-        serializer.save(assigned_by=self.request.user)
+        goal = serializer.save(assigned_by=self.request.user)
+        target_val = self.request.data.get('target_value') or self.request.data.get('targetValue')
+        weight_val = self.request.data.get('weightage') or self.request.data.get('weight') or 20
+        category_val = self.request.data.get('category') or getattr(goal, 'category', 'TECHNICAL')
+        unit = self.request.data.get('unit', '%')
+        desc = f"weightage:{weight_val}|category:{category_val}"
+        target_amount = Decimal(str(target_val)) if target_val is not None else Decimal('100.00')
+        try:
+            KPI.objects.create(
+                goal=goal,
+                name=f"{goal.title} Target",
+                target_value=target_amount,
+                unit=unit,
+                description=desc,
+            )
+        except Exception:
+            pass
 
     def get_permissions(self):
-        if self.action in ['create', 'destroy']:
+        if self.action in ['create', 'destroy', 'update', 'partial_update']:
             return [IsManager()]
         return [permissions.IsAuthenticated()]
 

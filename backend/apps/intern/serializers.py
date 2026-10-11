@@ -36,21 +36,90 @@ def validate_file_attachment(file_obj):
 
 class InternGoalListSerializer(serializers.ModelSerializer):
     progress = serializers.FloatField(source='completion_percentage', read_only=True)
-    weight = serializers.FloatField(default=10.0, read_only=True)
+    completionPercentage = serializers.FloatField(source='completion_percentage', read_only=True)
+    dueDate = serializers.DateField(source='due_date', read_only=True)
+    weightage = serializers.SerializerMethodField()
+    weight = serializers.SerializerMethodField()
+    target = serializers.SerializerMethodField()
     cycle_name = serializers.CharField(source='cycle.name', read_only=True)
-    assigned_by_name = serializers.CharField(source='assigned_by.username', read_only=True, default='Mentor')
+    cycleName = serializers.CharField(source='cycle.name', read_only=True)
+    assigned_by_name = serializers.SerializerMethodField()
+    assignedByName = serializers.SerializerMethodField()
     comments_count = serializers.IntegerField(source='goal_comments.count', read_only=True)
     evidence_count = serializers.IntegerField(source='evidence_submissions.count', read_only=True)
+    category = serializers.SerializerMethodField()
+    comments = serializers.SerializerMethodField()
 
     class Meta:
         model = Goal
         fields = (
-            'id', 'title', 'description', 'due_date', 'status', 'priority',
-            'completion_percentage', 'progress', 'weight', 'cycle', 'cycle_name',
-            'assigned_by_name', 'comments_count', 'evidence_count',
+            'id', 'title', 'description', 'due_date', 'dueDate', 'status', 'priority', 'category',
+            'completion_percentage', 'completionPercentage', 'progress', 'weight', 'weightage',
+            'target', 'cycle', 'cycle_name', 'cycleName',
+            'assigned_by_name', 'assignedByName', 'comments_count', 'evidence_count', 'comments',
             'created_at', 'updated_at'
         )
         read_only_fields = fields
+
+    def get_category(self, obj):
+        if hasattr(obj, 'category') and obj.category:
+            return obj.category
+        kpi = obj.kpis.first()
+        if kpi and kpi.description and "category:" in kpi.description:
+            try:
+                return kpi.description.split("category:")[1].split("|")[0].strip()
+            except Exception:
+                pass
+        return "TECHNICAL"
+
+    def get_weightage(self, obj):
+        for kpi in obj.kpis.all():
+            if kpi.description and "weightage:" in kpi.description:
+                try:
+                    return float(kpi.description.split("weightage:")[1].split("|")[0].strip())
+                except Exception:
+                    pass
+            if "weight" in kpi.name.lower():
+                return float(kpi.target_value)
+        kpi = obj.kpis.first()
+        if kpi and kpi.target_value:
+            return float(kpi.target_value)
+        return 20.0
+
+    def get_weight(self, obj):
+        return self.get_weightage(obj)
+
+    def get_target(self, obj):
+        kpi = obj.kpis.first()
+        if kpi:
+            return {
+                'name': kpi.name,
+                'targetValue': float(kpi.target_value),
+                'achievedValue': float(kpi.achieved_value),
+                'unit': kpi.unit
+            }
+        return None
+
+    def get_assigned_by_name(self, obj):
+        if obj.assigned_by:
+            prof = getattr(obj.assigned_by, 'profile', None)
+            return prof.full_name if (prof and prof.full_name) else obj.assigned_by.username
+        return 'Mentor'
+
+    def get_assignedByName(self, obj):
+        return self.get_assigned_by_name(obj)
+
+    def get_comments(self, obj):
+        comments = obj.goal_comments.all().order_by('created_at')
+        return [{
+            'id': str(c.id),
+            'authorName': c.author_name,
+            'authorRole': c.author_role,
+            'comment': c.comment,
+            'isMentor': c.is_mentor,
+            'parentId': str(c.parent.id) if c.parent else None,
+            'createdAt': c.created_at.strftime('%Y-%m-%d %H:%M')
+        } for c in comments]
 
 
 class InternGoalProgressUpdateSerializer(serializers.Serializer):
@@ -91,8 +160,12 @@ class InternGoalCommentSerializer(serializers.ModelSerializer):
 
 class InternEvidenceSubmissionSerializer(serializers.ModelSerializer):
     goalId = serializers.UUIDField(source='goal.id', read_only=True, allow_null=True)
-    goal_title = serializers.CharField(source='goal.title', read_only=True)
-    goalTitle = serializers.CharField(source='goal.title', read_only=True)
+    goal_title = serializers.CharField(source='goal.title', read_only=True, default=None)
+    goalTitle = serializers.CharField(source='goal.title', read_only=True, default=None)
+    taskId = serializers.UUIDField(source='task.id', read_only=True, allow_null=True)
+    taskTitle = serializers.CharField(source='task.title', read_only=True, default=None)
+    internName = serializers.CharField(source='employee.full_name', read_only=True)
+    employeeName = serializers.CharField(source='employee.full_name', read_only=True)
     reviewed_by_name = serializers.CharField(source='reviewed_by.username', read_only=True, default=None)
     reviewedByName = serializers.CharField(source='reviewed_by.username', read_only=True, default=None)
     reviewStatus = serializers.CharField(source='review_status', read_only=True)
@@ -104,7 +177,10 @@ class InternEvidenceSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = EvidenceSubmission
         fields = (
-            'id', 'goal', 'goalId', 'goal_title', 'goalTitle', 'title', 'description',
+            'id', 'goal', 'goalId', 'goal_title', 'goalTitle',
+            'task', 'taskId', 'taskTitle',
+            'internName', 'employeeName',
+            'title', 'description',
             'file_attachment', 'fileAttachment', 'fileName', 'external_url', 'externalUrl',
             'review_status', 'reviewStatus', 'review_notes', 'reviewed_by_name', 'reviewedByName',
             'reviewed_at', 'created_at', 'createdAt'
@@ -136,22 +212,34 @@ class InternTaskSerializer(serializers.ModelSerializer):
     requiresMentorReview = serializers.BooleanField(source='requires_mentor_review', read_only=True)
     isPermittedToComplete = serializers.BooleanField(source='is_permitted_to_complete', read_only=True)
     reviewedByName = serializers.CharField(source='reviewed_by.username', read_only=True, default=None)
+    goalId = serializers.UUIDField(source='goal.id', read_only=True, allow_null=True)
+    goalTitle = serializers.CharField(source='goal.title', read_only=True, allow_null=True)
+    internName = serializers.CharField(source='intern.full_name', read_only=True)
+    internId = serializers.UUIDField(source='intern.id', read_only=True)
+    internEmail = serializers.CharField(source='intern.user.email', read_only=True)
+    isSelfCreated = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True, format="%Y-%m-%d %H:%M")
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True, format="%Y-%m-%d %H:%M")
 
     class Meta:
         model = InternTask
         fields = (
-            'id', 'title', 'category', 'instructions', 'priority', 'due_date', 'dueDate',
-            'status', 'requires_mentor_review', 'requiresMentorReview',
+            'id', 'title', 'description', 'category', 'instructions', 'priority', 'due_date', 'dueDate',
+            'status', 'goal', 'goalId', 'goalTitle', 'intern', 'internId', 'internName', 'internEmail',
+            'requires_mentor_review', 'requiresMentorReview',
             'is_completed', 'isCompleted', 'completed_at', 'completedAt',
             'hours_spent', 'hoursSpent', 'completion_notes', 'completionNotes',
             'artifact_url', 'artifactUrl', 'is_permitted_to_complete', 'isPermittedToComplete',
-            'reviewed_by', 'reviewedByName', 'reviewed_at', 'review_feedback', 'created_at'
+            'reviewed_by', 'reviewedByName', 'reviewed_at', 'review_feedback',
+            'isSelfCreated', 'created_at', 'createdAt', 'updated_at', 'updatedAt'
         )
         read_only_fields = (
-            'id', 'title', 'category', 'instructions', 'priority', 'due_date',
-            'requires_mentor_review', 'is_permitted_to_complete', 'reviewed_by',
-            'reviewed_at', 'review_feedback', 'created_at'
+            'id', 'requires_mentor_review', 'is_permitted_to_complete', 'reviewed_by',
+            'reviewed_at', 'review_feedback', 'created_at', 'updated_at'
         )
+
+    def get_isSelfCreated(self, obj):
+        return bool(obj.created_by and obj.intern and obj.created_by == obj.intern.user)
 
 
 class InternTaskCompleteSerializer(serializers.Serializer):

@@ -324,7 +324,7 @@ class DepartmentCompatView(APIView):
                 dept = Department.objects.get(id=pk)
                 data = {
                     "id": str(dept.id),
-                    "departmentCode": dept.code or dept.name[:3].upper(),
+                    "departmentCode": getattr(dept, 'code', None) or dept.name[:3].upper(),
                     "departmentName": dept.name,
                     "description": dept.description,
                     "isActive": dept.is_active
@@ -340,7 +340,7 @@ class DepartmentCompatView(APIView):
         data = [
             {
                 "id": str(dept.id),
-                "departmentCode": dept.code or dept.name[:3].upper(),
+                "departmentCode": getattr(dept, 'code', None) or dept.name[:3].upper(),
                 "departmentName": dept.name,
                 "description": dept.description,
                 "isActive": dept.is_active
@@ -360,11 +360,11 @@ class DepartmentCompatView(APIView):
 
         dept, _ = Department.objects.get_or_create(
             name=name,
-            defaults={"code": code, "description": desc, "is_active": True}
+            defaults={"description": desc, "is_active": True}
         )
         data = {
             "id": str(dept.id),
-            "departmentCode": dept.code or dept.name[:3].upper(),
+            "departmentCode": getattr(dept, 'code', None) or code or dept.name[:3].upper(),
             "departmentName": dept.name,
             "description": dept.description,
             "isActive": dept.is_active
@@ -376,8 +376,6 @@ class DepartmentCompatView(APIView):
             dept = Department.objects.get(id=pk)
             if "departmentName" in request.data:
                 dept.name = request.data["departmentName"].strip()
-            if "departmentCode" in request.data:
-                dept.code = request.data["departmentCode"].strip()
             if "description" in request.data:
                 dept.description = request.data["description"]
             if "isActive" in request.data:
@@ -385,7 +383,7 @@ class DepartmentCompatView(APIView):
             dept.save()
             data = {
                 "id": str(dept.id),
-                "departmentCode": dept.code or dept.name[:3].upper(),
+                "departmentCode": getattr(dept, 'code', None) or dept.name[:3].upper(),
                 "departmentName": dept.name,
                 "description": dept.description,
                 "isActive": dept.is_active

@@ -9,6 +9,18 @@ const apiProxy = (needsHtmlBypass = true) => ({
   changeOrigin: true,
   secure: false,
   ...(needsHtmlBypass ? { bypass: (req: any) => (isHtml(req) ? '/index.html' : undefined) } : {}),
+  configure: (proxy: any) => {
+    proxy.on('error', (err: any, _req: any, res: any) => {
+      if (res && !res.headersSent && typeof res.writeHead === 'function') {
+        try {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Proxy error', message: err?.message || 'Connection reset' }));
+        } catch {
+          // ignore
+        }
+      }
+    });
+  },
 });
 
 const proxyConfig = {

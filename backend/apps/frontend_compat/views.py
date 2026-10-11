@@ -137,13 +137,19 @@ class ManagerDashboardView(APIView):
         interns = summary.get("interns", [])
 
         team_members = [
-            {"name": intern["full_name"], "score": intern["latest_score"] or intern["goal_completion_percentage"]}
+            {
+                "name": intern["full_name"],
+                "score": intern["latest_score"] if intern["latest_score"] is not None else intern["goal_completion_percentage"],
+                "hasAppraisal": intern["latest_score"] is not None,
+                "appraisalScore": intern["latest_score"],
+                "goalScore": round(intern["goal_completion_percentage"], 1)
+            }
             for intern in interns
         ]
         team_kpis = [
             {
                 "name": f"{intern['full_name']}",
-                "progress": intern["goal_completion_percentage"],
+                "progress": round(intern["goal_completion_percentage"], 1),
                 "color": "#10B981" if intern["goal_completion_percentage"] >= 90 else "#3B82F6"
             }
             for intern in interns

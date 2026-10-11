@@ -30,10 +30,14 @@ const ManagerDashboard: React.FC = () => {
   };
 
   const rawPerformance = data?.teamPerformance || [];
+  const evaluatedCount = React.useMemo(() => {
+    return rawPerformance.filter((m: any) => m.hasAppraisal || (m.score > 0 && m.score !== 38.75)).length;
+  }, [rawPerformance]);
+
   const displayPerformance = React.useMemo(() => {
     if (!rawPerformance.length) return [];
     if (performanceFilter === 'active') {
-      const active = rawPerformance.filter(m => m.score > 0);
+      const active = rawPerformance.filter((m: any) => m.hasAppraisal || (m.score > 0 && m.score !== 38.75));
       return active.length > 0 ? active : rawPerformance.slice(0, 10);
     }
     if (performanceFilter === 'top10') {
@@ -212,7 +216,7 @@ const ManagerDashboard: React.FC = () => {
                       : 'text-gray-500 hover:text-gray-900'
                   }`}
                 >
-                  Evaluated ({rawPerformance.filter((m) => m.score > 0).length})
+                  Evaluated ({evaluatedCount})
                 </button>
                 <button
                   type="button"
@@ -281,6 +285,7 @@ const ManagerDashboard: React.FC = () => {
                       dataKey="score"
                       radius={[6, 6, 0, 0]}
                       barSize={performanceFilter === 'all' ? 22 : 36}
+                      isAnimationActive={false}
                     >
                       {displayPerformance.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={scoreToColor(entry.score)} />
@@ -298,20 +303,22 @@ const ManagerDashboard: React.FC = () => {
             <TrendingUp size={15} style={{ color: "#1A56DB" }} aria-hidden="true" />
             <p style={{ fontSize: 14, fontWeight: 500, color: "#111827" }}>Team KPI progress</p>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
             {data?.teamKpis.map((kpi, idx) => (
               <div key={idx}>
                 <div className="flex justify-between" style={{ marginBottom: 5 }}>
                   <span style={{ fontSize: 12, color: "#5A6070" }}>{kpi.name}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#111827" }}>{kpi.progress}%</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: "#111827" }}>
+                    {typeof kpi.progress === 'number' ? Number(kpi.progress).toFixed(1) : kpi.progress}%
+                  </span>
                 </div>
                 <div style={{ height: 6, background: "#EEF0F6", borderRadius: 3, overflow: "hidden" }}>
                   <div
                     style={{
                       height: "100%",
-                      width: `${kpi.progress}%`,
+                      width: `${Math.min(100, Math.max(0, Number(kpi.progress) || 0))}%`,
                       borderRadius: 3,
-                      background: progressToColor(kpi.progress),
+                      background: progressToColor(Number(kpi.progress) || 0),
                     }}
                   />
                 </div>

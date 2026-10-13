@@ -1,5 +1,5 @@
 # Performax Repository Code Owners
-# Requires code owner approval before any pull request can be merged into main.
-# This prevents unauthorized merges into the main branch.
+# Requires code owner (@jk2518) approval before any pull request can be merged into main.
+# This prevents collaborators from modifying code without explicit approval.
 
-* @jk2518 @JatinM007
+* @jk2518

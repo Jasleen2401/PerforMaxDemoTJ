@@ -12,8 +12,22 @@ concurrency:
 
 jobs:
   backend-test:
-    name: ⚙️ Backend Test & Invariants Check
+    name: ⚙️ Backend Test & PostgreSQL Invariants Check
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: intern_pms_test_db
+          POSTGRES_USER: intern_pms_user
+          POSTGRES_PASSWORD: intern_pms_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -37,15 +51,38 @@ jobs:
         env:
           SECRET_KEY: ci-cd-secret-key-temporary-validation-12345
           DEBUG: 'True'
-          USE_SQLITE: 'True'
+          USE_SQLITE: 'False'
+          DB_NAME: intern_pms_test_db
+          DB_USER: intern_pms_user
+          DB_PASSWORD: intern_pms_password
+          DB_HOST: localhost
+          DB_PORT: '5432'
         run: |
           python manage.py check
+
+      - name: 🗄️ Run Database Migrations against PostgreSQL
+        env:
+          SECRET_KEY: ci-cd-secret-key-temporary-validation-12345
+          DEBUG: 'True'
+          USE_SQLITE: 'False'
+          DB_NAME: intern_pms_test_db
+          DB_USER: intern_pms_user
+          DB_PASSWORD: intern_pms_password
+          DB_HOST: localhost
+          DB_PORT: '5432'
+        run: |
+          python manage.py migrate --noinput
 
       - name: 🧪 Run Automated Backend Test Suite
         env:
           SECRET_KEY: ci-cd-secret-key-temporary-validation-12345
           DEBUG: 'True'
-          USE_SQLITE: 'True'
+          USE_SQLITE: 'False'
+          DB_NAME: intern_pms_test_db
+          DB_USER: intern_pms_user
+          DB_PASSWORD: intern_pms_password
+          DB_HOST: localhost
+          DB_PORT: '5432'
         run: |
           python manage.py test apps --verbosity=2
 
@@ -59,10 +96,10 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: ⚡ Set up Node.js 20
+      - name: ⚡ Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: epms_frontend/package-lock.json
 

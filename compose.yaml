@@ -1,0 +1,79 @@
+# ==============================================================================
+# Performax - Team Docker Compose Orchestration
+# Runs PostgreSQL 16, Django REST API, and React 19 Frontend in containers.
+# No teammates need to install Python, Node, or PostgreSQL on their host machines!
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 🗄️ PostgreSQL Database Service
+  # ----------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: performax_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-intern_pms_db}
+      POSTGRES_USER: ${POSTGRES_USER:-intern_pms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intern_pms_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ----------------------------------------------------------------------------
+  # ⚙️ Django REST API Backend Service
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: performax_backend
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-intern_pms_db}
+      POSTGRES_USER: ${POSTGRES_USER:-intern_pms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intern_pms_password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-performax-dev-secret-key-12345}
+      DEBUG: ${DJANGO_DEBUG:-True}
+      USE_SQLITE: ${USE_SQLITE:-False}
+      ALLOWED_HOSTS: "*"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+
+  # ----------------------------------------------------------------------------
+  # 🌐 React + Vite Frontend Service
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./epms_frontend
+      dockerfile: Dockerfile
+    container_name: performax_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./epms_frontend:/app
+      - /app/node_modules # Anonymous volume preserves container-installed packages
+    environment:
+      VITE_API_BASE_URL: /api
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+
+volumes:
+  postgres_data:
+    name: performax_postgres_data

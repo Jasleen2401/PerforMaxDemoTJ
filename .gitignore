@@ -34,6 +34,10 @@ epms_frontend/.env
 backend/media/
 backend/staticfiles/
 
+# Logs & Docker overrides
+*.log
+docker-compose.override.yml
+
 # System & IDE
 .DS_Store
 .idea/
@@ -42,4 +46,3 @@ backend/staticfiles/
 .agent/
 .claude/
 t_pms/
-

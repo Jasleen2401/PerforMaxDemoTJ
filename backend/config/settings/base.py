@@ -125,11 +125,11 @@ if USE_SQLITE:
                     return 0
             connection.connection.create_function("JSON_VALID", 1, json_valid)
 else:
-    DB_NAME = os.getenv('DB_NAME', 'intern_pms_db')
-    DB_USER = os.getenv('DB_USER', 'intern_pms_user')
-    DB_PASSWORD = os.getenv('DB_PASSWORD', 'intern_pms_password')
-    DB_HOST = os.getenv('DB_HOST', 'localhost')
-    DB_PORT = os.getenv('DB_PORT', '5432')
+    DB_NAME = os.getenv('DB_NAME') or os.getenv('POSTGRES_DB', 'intern_pms_db')
+    DB_USER = os.getenv('DB_USER') or os.getenv('POSTGRES_USER', 'intern_pms_user')
+    DB_PASSWORD = os.getenv('DB_PASSWORD') or os.getenv('POSTGRES_PASSWORD', 'intern_pms_password')
+    DB_HOST = os.getenv('DB_HOST') or os.getenv('POSTGRES_HOST', 'localhost')
+    DB_PORT = os.getenv('DB_PORT') or os.getenv('POSTGRES_PORT', '5432')
 
     DATABASES = {
         'default': {

@@ -15,6 +15,7 @@ const ChartCard: React.FC<ChartCardProps> = ({ title, action, children }) => {
         borderRadius: 12,
         padding: "16px 18px",
         height: "100%",
+        minWidth: 0,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -23,7 +24,7 @@ const ChartCard: React.FC<ChartCardProps> = ({ title, action, children }) => {
         </p>
         {action && <div>{action}</div>}
       </div>
-      <div style={{ height: 300, width: "100%" }}>{children}</div>
+      <div style={{ height: 300, width: "100%", minWidth: 0, position: "relative" }}>{children}</div>
     </div>
   );
 };

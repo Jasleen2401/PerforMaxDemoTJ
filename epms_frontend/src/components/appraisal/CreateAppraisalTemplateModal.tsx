@@ -67,8 +67,9 @@ export const CreateAppraisalTemplateModal: React.FC<CreateAppraisalTemplateModal
       toast.success(data.message || "Appraisal template created successfully!");
       if (onSuccess) onSuccess();
       onClose();
-    } catch (err: any) {
-      toast.error(err.message || "Could not create appraisal template.");
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      toast.error(error?.message || "Could not create appraisal template.");
     } finally {
       setIsSubmitting(false);
     }

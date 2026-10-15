@@ -53,7 +53,7 @@ export const CustomDateInput: React.FC<CustomDateInputProps> = ({
         } else {
           nativeInputRef.current.focus();
         }
-      } catch (err) {
+      } catch {
         nativeInputRef.current.focus();
       }
     }

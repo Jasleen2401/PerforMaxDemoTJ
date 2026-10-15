@@ -1,31 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useCreateCycleMutation } from '../../features/appraisal/appraisalApi';
 
 const CycleForm: React.FC = () => {
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [frequency, setFrequency] = useState('ANNUAL');
-  const [endDate, setEndDate] = useState('');
 
   const [createCycle, { isLoading }] = useCreateCycleMutation();
 
-  useEffect(() => {
-    if (startDate) {
-      const date = new Date(startDate);
-      if (frequency === 'ANNUAL') {
-        date.setFullYear(date.getFullYear() + 1);
-      } else if (frequency === 'SEMI_ANNUAL') {
-        date.setMonth(date.getMonth() + 6);
-      }
-      
-      // Correctly format to YYYY-MM-DD avoiding timezone shifts
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      setEndDate(`${year}-${month}-${day}`);
-    } else {
-      setEndDate('');
+  const endDate = useMemo(() => {
+    if (!startDate) return '';
+    const date = new Date(startDate);
+    if (frequency === 'ANNUAL') {
+      date.setFullYear(date.getFullYear() + 1);
+    } else if (frequency === 'SEMI_ANNUAL') {
+      date.setMonth(date.getMonth() + 6);
     }
+    
+    // Correctly format to YYYY-MM-DD avoiding timezone shifts
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }, [startDate, frequency]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,8 +40,9 @@ const CycleForm: React.FC = () => {
       setName('');
       setStartDate('');
       setFrequency('ANNUAL');
-    } catch (err: any) {
-      const errMsg = err?.data?.message || 'Operation failed. Please try again.';
+    } catch (err: unknown) {
+      const error = err as { data?: { message?: string } };
+      const errMsg = error?.data?.message || 'Operation failed. Please try again.';
       alert(errMsg);
     }
   };

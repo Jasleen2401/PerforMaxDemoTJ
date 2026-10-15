@@ -43,9 +43,14 @@ const ProtectedRoute = ({
   }
 
   // Force first-time password rotation before allowing any other application functionality
+  type UserWithPasswordChange = typeof user & {
+    password_change_required?: boolean;
+    user?: { password_change_required?: boolean };
+  };
+  const authUser = user as unknown as UserWithPasswordChange;
   const requiresPasswordChange = Boolean(
-    (user as any)?.password_change_required ||
-    (user as any)?.user?.password_change_required
+    authUser?.password_change_required ||
+    authUser?.user?.password_change_required
   );
 
   if (requiresPasswordChange && location.pathname !== "/change-password") {

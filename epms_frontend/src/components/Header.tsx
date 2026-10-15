@@ -53,7 +53,7 @@ interface HeaderProps {
 const Header = ({ onMenuClick }: HeaderProps) => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { user, isAdmin, isHR, isManager } = useAuth();
+  const { isAdmin, isHR, isManager } = useAuth();
   const pageInfo = resolvePageInfo(pathname);
 
   const [searchQuery, setSearchQuery] = useState("");

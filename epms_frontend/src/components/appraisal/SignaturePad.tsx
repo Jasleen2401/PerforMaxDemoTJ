@@ -3,7 +3,9 @@ import SignatureCanvas from "react-signature-canvas";
 import { Eraser, PenLine } from "lucide-react";
 
 // Fix for Vite ESM/CJS interop issue with react-signature-canvas
-const SignatureCanvasComponent = (SignatureCanvas as any).default || SignatureCanvas;
+const SignatureCanvasComponent =
+  (SignatureCanvas as unknown as { default?: typeof SignatureCanvas }).default ||
+  SignatureCanvas;
 
 interface SignaturePadProps {
   /** Called when the user confirms — receives a PNG File ready to upload. */

@@ -78,7 +78,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ onClose }: SidebarProps) => {
-  const { logout, isAdmin, isHR, isManager, isIntern, user, hasPermission, hasRole } = useAuth();
+  const { logout, isAdmin, isHR, isManager, isIntern, user, hasPermission } = useAuth();
   const location = useLocation();
   const [mgmtOpen, setMgmtOpen] = useState(false);
   const [perfOpen, setPerfOpen] = useState(false);
@@ -388,7 +388,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
               </div>
               <div className="min-w-0">
                 <div className="text-[12.5px] font-semibold text-white truncate">
-                  {user?.staffName || (user as any)?.username || "Authorized User"}
+                  {user?.staffName || user?.email || "Authorized User"}
                 </div>
                 <div className="text-[10px] font-medium text-purple-200 uppercase tracking-wider truncate">
                   {isAdmin ? "Super Admin" : isHR ? "HR Partner" : isManager ? "Mentor" : "Intern"}

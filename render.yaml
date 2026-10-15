@@ -34,12 +34,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        fromService:
-          type: web
-          name: performax-backend
-          property: host
-        valuePrefix: "https://"
-        valueSuffix: "/api"
+        value: "https://performax-backend.onrender.com/api"
     routes:
       - type: rewrite
         source: /*

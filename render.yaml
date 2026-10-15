@@ -1,4 +1,7 @@
 services:
+  # =====================================================================
+  # 1. DJANGO BACKEND WEB SERVICE
+  # =====================================================================
   - type: web
     name: performax-backend
     runtime: python
@@ -19,3 +22,25 @@ services:
         value: "True"
       - key: SECRET_KEY
         generateValue: true
+
+  # =====================================================================
+  # 2. REACT FRONTEND STATIC SITE (AUTOMATICALLY CONNECTED TO BACKEND)
+  # =====================================================================
+  - type: web
+    name: performax-frontend
+    runtime: static
+    rootDir: epms_frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: performax-backend
+          property: host
+        valuePrefix: "https://"
+        valueSuffix: "/api"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -3,14 +3,19 @@ services:
     name: performax-backend
     runtime: python
     rootDir: backend
+    plan: free
     buildCommand: bash build.sh
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.12
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.development
+      - key: USE_SQLITE
+        value: "True"
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: ".onrender.com,localhost,127.0.0.1"
+        value: "*"
       - key: CORS_ALLOW_ALL_ORIGINS
         value: "True"
+      - key: SECRET_KEY
+        generateValue: true

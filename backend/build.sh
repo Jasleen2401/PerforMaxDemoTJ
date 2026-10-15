@@ -5,5 +5,6 @@ set -o errexit
 pip install -r requirements.txt
 python manage.py collectstatic --no-input
 python manage.py migrate
+python seed_intern_pms.py
 python seed_dailoqa_interns.py
 python seed_intern_portal_data.py

@@ -48,6 +48,9 @@ const LoginPage = () => {
 
     try {
       const response = await login({ email: email.trim(), password }).unwrap();
+      if (!response || !response.accessToken) {
+        throw new Error("Backend server unreachable or returned an invalid response. Please ensure your Django backend is deployed on Render and connected via VITE_API_BASE_URL.");
+      }
       dispatch(loginSuccess(response));
       navigate(from, { replace: true });
     } catch (err: any) {
@@ -67,6 +70,9 @@ const LoginPage = () => {
 
     try {
       const response = await login({ email: account.email.trim(), password: account.pass }).unwrap();
+      if (!response || !response.accessToken) {
+        throw new Error("Backend server unreachable or returned an invalid response. Please ensure your Django backend is deployed on Render and connected via VITE_API_BASE_URL.");
+      }
       dispatch(loginSuccess(response));
       navigate(from, { replace: true });
     } catch (err: any) {

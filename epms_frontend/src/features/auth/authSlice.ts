@@ -34,9 +34,10 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     loginSuccess: (state, action: PayloadAction<AuthResponse>) => {
-      state.accessToken = action.payload.accessToken;
-      state.refreshToken = action.payload.refreshToken;
-      state.isAuthenticated = true;
+      if (!action.payload) return;
+      state.accessToken = action.payload.accessToken || null;
+      state.refreshToken = action.payload.refreshToken || null;
+      state.isAuthenticated = Boolean(action.payload.accessToken);
 
       const pcr = Boolean(
         action.payload.password_change_required ||
@@ -50,15 +51,24 @@ const authSlice = createSlice({
         localStorage.setItem("user", JSON.stringify(action.payload.user));
       }
 
-      localStorage.setItem("accessToken", action.payload.accessToken);
-      localStorage.setItem("refreshToken", action.payload.refreshToken);
+      if (action.payload.accessToken) {
+        localStorage.setItem("accessToken", action.payload.accessToken);
+      }
+      if (action.payload.refreshToken) {
+        localStorage.setItem("refreshToken", action.payload.refreshToken);
+      }
     },
     setTokens: (state, action: PayloadAction<AuthResponse>) => {
-      state.accessToken = action.payload.accessToken;
-      state.refreshToken = action.payload.refreshToken;
+      if (!action.payload) return;
+      state.accessToken = action.payload.accessToken || null;
+      state.refreshToken = action.payload.refreshToken || null;
 
-      localStorage.setItem("accessToken", action.payload.accessToken);
-      localStorage.setItem("refreshToken", action.payload.refreshToken);
+      if (action.payload.accessToken) {
+        localStorage.setItem("accessToken", action.payload.accessToken);
+      }
+      if (action.payload.refreshToken) {
+        localStorage.setItem("refreshToken", action.payload.refreshToken);
+      }
     },
     setUser: (state, action: PayloadAction<EmployeeResponse>) => {
       state.user = action.payload;

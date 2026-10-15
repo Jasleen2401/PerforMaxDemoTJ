@@ -60,6 +60,13 @@ class ManagerGiveFeedbackView(APIView):
         if not target_user:
             return Response({'code': 404, 'message': 'Target intern user not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        reports = get_manager_reports_qs(request.user)
+        if request.user.role == UserRole.MANAGER and hasattr(target_user, 'profile') and not reports.filter(id=target_user.profile.id).exists():
+            return Response(
+                {'code': 403, 'message': 'You can only provide manager feedback to employees assigned to you.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         goal = Goal.objects.filter(id=goal_id).first() if goal_id else None
 
         fb = Feedback.objects.create(

@@ -4,7 +4,7 @@ export interface DepartmentRequest {
 }
 
 export interface DepartmentResponse {
-  id: number;
+  id: number | string;
   departmentCode: string;
   departmentName: string;
   isActive: boolean;
@@ -97,21 +97,27 @@ export interface TeamRequest {
 }
 
 export interface TeamResponse {
-  teamId: number;
+  teamId: number | string;
+  id?: number | string;
   teamName: string;
   departmentName: string;
-  departmentId: number;
+  departmentId: number | string;
+  managerName?: string | null;
+  managerId?: number | string | null;
+  memberCount?: number;
 }
 
 export interface TeamAssignmentRequest {
-  employeeId: number;
-  teamId: number;
+  employeeId: number | string;
+  teamId: number | string;
   isPrimary: boolean;
 }
 
 export interface TeamMemberResponse {
-  employeeId: number;
+  employeeId: number | string;
   staffName: string;
+  employeeCode?: string;
+  email?: string;
   positionName: string | null;
   isPrimary: boolean;
 }

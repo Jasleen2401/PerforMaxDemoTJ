@@ -1,6 +1,7 @@
 import { api } from "../../services/api";
 import type { ApiResponse } from "../../services/ApiResponse";
 import type { DepartmentRequest, DepartmentResponse } from "./orgTypes";
+import type { EmployeeResponse } from "../employee/employeeTypes";
 
 export const departmentApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -10,10 +11,16 @@ export const departmentApi = api.injectEndpoints({
       providesTags: ["Department"],
     }),
 
-    getDepartmentById: builder.query<DepartmentResponse, number>({
+    getDepartmentById: builder.query<DepartmentResponse, number | string>({
       query: (id) => `/org/departments/${id}`,
       transformResponse: (res: ApiResponse<DepartmentResponse>) => res.data,
       providesTags: (_result, _error, id) => [{ type: "Department", id }],
+    }),
+
+    getDepartmentMembers: builder.query<EmployeeResponse[], number | string>({
+      query: (id) => `/departments/${id}/members`,
+      transformResponse: (res: ApiResponse<EmployeeResponse[]>) => res.data,
+      providesTags: ["Employee"],
     }),
 
     createDepartment: builder.mutation<DepartmentResponse, DepartmentRequest>({
@@ -27,7 +34,7 @@ export const departmentApi = api.injectEndpoints({
 
     updateDepartment: builder.mutation<
       DepartmentResponse,
-      { id: number; body: DepartmentRequest }
+      { id: number | string; body: DepartmentRequest }
     >({
       query: ({ id, body }) => ({
         url: `/departments/${id}`,
@@ -40,7 +47,7 @@ export const departmentApi = api.injectEndpoints({
       ],
     }),
 
-    deleteDepartment: builder.mutation<void, number>({
+    deleteDepartment: builder.mutation<void, number | string>({
       query: (id) => ({
         url: `/departments/${id}`,
         method: "DELETE",
@@ -54,7 +61,7 @@ export const departmentApi = api.injectEndpoints({
       providesTags: ["Department"],
     }),
 
-    getDepartmentHeadcount: builder.query<number, number>({
+    getDepartmentHeadcount: builder.query<number, number | string>({
       query: (id) => `/departments/${id}/headcount`,
       transformResponse: (res: ApiResponse<number>) => res.data,
     }),
@@ -66,6 +73,7 @@ export const {
   useGetActiveDepartmentsQuery,
   useGetDepartmentHeadcountQuery,
   useGetDepartmentByIdQuery,
+  useGetDepartmentMembersQuery,
   useCreateDepartmentMutation,
   useUpdateDepartmentMutation,
   useDeleteDepartmentMutation,

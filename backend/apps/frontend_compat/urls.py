@@ -7,6 +7,10 @@ from apps.frontend_compat.views import (
     DepartmentCompatView,
     DepartmentMembersCompatView,
     DepartmentHeadcountCompatView,
+    TeamCompatView,
+    TeamMembersCompatView,
+    TeamAssignCompatView,
+    TeamEmployeeCompatView,
     EmployeeCompatView,
     EmployeeAllCompatView,
     EmployeeDirectReportsCompatView,
@@ -227,11 +231,18 @@ urlpatterns = [
     re_path(r'^competency.*$', Feedback360GenericCompatView.as_view(), name='compat_competency'),
     re_path(r'^calibration/.*$', Feedback360GenericCompatView.as_view(), name='compat_calibration'),
 
+    # Teams
+    re_path(r'^teams/assign/?$', TeamAssignCompatView.as_view(), name='compat_teams_assign'),
+    re_path(r'^teams/employee/(?P<employeeId>[^/]+)/?$', TeamEmployeeCompatView.as_view(), name='compat_teams_employee'),
+    re_path(r'^teams/(?P<pk>[^/]+)/members/(?P<employeeId>[^/]+)/?$', TeamMembersCompatView.as_view(), name='compat_teams_member_detail'),
+    re_path(r'^teams/(?P<pk>[^/]+)/members/?$', TeamMembersCompatView.as_view(), name='compat_teams_members'),
+    re_path(r'^teams/(?P<pk>[^/]+)/?$', TeamCompatView.as_view(), name='compat_teams_detail'),
+    re_path(r'^teams/?$', TeamCompatView.as_view(), name='compat_teams_list'),
+
     # Fallback configuration routes for other navigation items
     re_path(r'^job-levels.*$', GenericListCompatView.as_view()),
     re_path(r'^positions.*$', GenericListCompatView.as_view()),
     re_path(r'^roles.*$', GenericListCompatView.as_view()),
-    re_path(r'^teams.*$', GenericListCompatView.as_view()),
     re_path(r'^financial-years.*$', GenericListCompatView.as_view()),
     re_path(r'^performance-categories.*$', GenericListCompatView.as_view()),
     re_path(r'^categories.*$', GenericListCompatView.as_view()),

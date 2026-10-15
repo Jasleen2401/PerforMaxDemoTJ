@@ -25,17 +25,17 @@ export const teamApi = api.injectEndpoints({
       }),
       invalidatesTags: ["TeamMembers"],
     }),
-    getTeamMembers: builder.query<TeamMemberResponse[], number>({
+    getTeamMembers: builder.query<TeamMemberResponse[], number | string>({
       query: (teamId) => `/teams/${teamId}/members`,
       transformResponse: (res: ApiResponse<TeamMemberResponse[]>) => res.data,
       providesTags: ["TeamMembers"],
     }),
-    getEmployeeTeams: builder.query<TeamResponse[], number>({
+    getEmployeeTeams: builder.query<TeamResponse[], number | string>({
       query: (employeeId) => `/teams/employee/${employeeId}`,
       transformResponse: (res: ApiResponse<TeamResponse[]>) => res.data,
       providesTags: ["EmployeeTeams"],
     }),
-    updateTeam: builder.mutation<void, { id: number; body: TeamRequest }>({
+    updateTeam: builder.mutation<void, { id: number | string; body: TeamRequest }>({
       query: ({ id, body }) => ({
         url: `/teams/${id}`,
         method: "PUT",
@@ -43,14 +43,14 @@ export const teamApi = api.injectEndpoints({
       }),
       invalidatesTags: ["Teams"],
     }),
-    deleteTeam: builder.mutation<void, number>({
+    deleteTeam: builder.mutation<void, number | string>({
       query: (id) => ({
         url: `/teams/${id}`,
         method: "DELETE",
       }),
       invalidatesTags: ["Teams"],
     }),
-    removeTeamMember: builder.mutation<void, { teamId: number; employeeId: number }>({
+    removeTeamMember: builder.mutation<void, { teamId: number | string; employeeId: number | string }>({
       query: ({ teamId, employeeId }) => ({
         url: `/teams/${teamId}/members/${employeeId}`,
         method: "DELETE",

@@ -55,6 +55,18 @@ def error_response(message="An error occurred", status_code=status.HTTP_400_BAD_
     }, status=status_code)
 
 
+import uuid
+
+def is_valid_uuid(val):
+    if not val:
+        return False
+    try:
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 def map_employee(profile: EmployeeProfile) -> dict:
     user = profile.user
     dept_name = profile.department.name if profile.department else "Engineering"
@@ -523,7 +535,10 @@ class TeamCompatView(APIView):
         dept_id = request.query_params.get("departmentId") or request.query_params.get("department")
         qs = Team.objects.select_related('department', 'manager').prefetch_related('memberships').all()
         if dept_id:
-            qs = qs.filter(Q(department__id=dept_id) | Q(department__name__iexact=str(dept_id)))
+            if is_valid_uuid(dept_id):
+                qs = qs.filter(Q(department__id=dept_id) | Q(department__name__iexact=str(dept_id)))
+            else:
+                qs = qs.filter(department__name__iexact=str(dept_id))
         data = [map_team(t) for t in qs]
         return ok_response(data)
 
@@ -535,7 +550,9 @@ class TeamCompatView(APIView):
         if not name or not dept_id:
             return Response({"detail": "teamName and departmentId are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        dept = Department.objects.filter(id=dept_id).first() or Department.objects.filter(name__iexact=str(dept_id)).first()
+        dept = Department.objects.filter(id=dept_id).first() if is_valid_uuid(dept_id) else None
+        if not dept:
+            dept = Department.objects.filter(name__iexact=str(dept_id)).first()
         if not dept:
             return Response({"detail": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -547,7 +564,9 @@ class TeamCompatView(APIView):
         return ok_response(map_team(team), "Team created successfully")
 
     def put(self, request, pk=None):
-        team = Team.objects.filter(id=pk).first() or Team.objects.filter(name__iexact=str(pk)).first()
+        team = Team.objects.filter(id=pk).first() if is_valid_uuid(pk) else None
+        if not team:
+            team = Team.objects.filter(name__iexact=str(pk)).first()
         if not team:
             return Response({"detail": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -558,7 +577,9 @@ class TeamCompatView(APIView):
         if name:
             team.name = name
         if dept_id:
-            dept = Department.objects.filter(id=dept_id).first() or Department.objects.filter(name__iexact=str(dept_id)).first()
+            dept = Department.objects.filter(id=dept_id).first() if is_valid_uuid(dept_id) else None
+            if not dept:
+                dept = Department.objects.filter(name__iexact=str(dept_id)).first()
             if dept:
                 team.department = dept
         if mgr_id is not None:
@@ -568,7 +589,9 @@ class TeamCompatView(APIView):
         return ok_response(map_team(team), "Team updated successfully")
 
     def delete(self, request, pk=None):
-        team = Team.objects.filter(id=pk).first() or Team.objects.filter(name__iexact=str(pk)).first()
+        team = Team.objects.filter(id=pk).first() if is_valid_uuid(pk) else None
+        if not team:
+            team = Team.objects.filter(name__iexact=str(pk)).first()
         if not team:
             return Response({"detail": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
         team.delete()
@@ -579,19 +602,22 @@ class TeamMembersCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        team = Team.objects.filter(id=pk).first() or Team.objects.filter(name__iexact=str(pk)).first()
+        team = Team.objects.filter(id=pk).first() if is_valid_uuid(pk) else None
+        if not team:
+            team = Team.objects.filter(name__iexact=str(pk)).first()
         if not team:
             return ok_response([])
 
         memberships = TeamMembership.objects.filter(team=team).select_related(
-            "employee", "employee__user", "employee__position", "employee__department"
+            "employee", "employee__user", "employee__department"
         )
         data = [
             {
                 "employeeId": str(m.employee.id),
                 "staffName": m.employee.full_name or m.employee.user.username,
                 "employeeCode": m.employee.employee_code,
-                "positionName": m.employee.designation or (m.employee.position.position_name if m.employee.position else "Member"),
+                "positionName": m.employee.designation or "Member",
+                "email": m.employee.user.email if (m.employee and m.employee.user) else "",
                 "isPrimary": m.is_lead,
                 "joinedAt": str(m.joined_at),
             }

@@ -1,7 +1,7 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Briefcase, Eye, Info, Mail, Shield, Users } from "lucide-react";
 import { useSearchEmployeesQuery } from "../../features/employee/employeeapi";
-import { useGetDepartmentsQuery } from "../../features/org/departmentApi";
+import { useGetDepartmentsQuery, useGetDepartmentMembersQuery } from "../../features/org/departmentApi";
 import { useGetTeamsQuery, useGetTeamMembersQuery } from "../../features/org/teamApi";
 import type { TeamResponse } from "../../features/org/orgTypes";
 import type { EmployeeResponse } from "../../features/employee/employeeTypes";
@@ -15,33 +15,51 @@ const AVATAR_COLORS = [
 ];
 
 const isManagerRole = (emp: EmployeeResponse) =>
-  emp.roles.some((r) => r === "ROLE_MANAGER" || r === "MANAGER" || r.includes("MANAGER"));
+  emp.roles?.some((r) => r === "ROLE_MANAGER" || r === "MANAGER" || r.includes("MANAGER")) ||
+  emp.positionName?.toLowerCase().includes("manager");
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const DepartmentMembers = () => {
-  const { id } = useParams();
-  const departmentId = Number(id);
+  const { id } = useParams<{ id: string }>();
+  const departmentId = id ?? "";
   const navigate = useNavigate();
 
   const { data: departments, isLoading: isDeptLoading } = useGetDepartmentsQuery();
-  const department = departments?.find((d) => d.id === departmentId);
+  const department = departments?.find((d) => String(d.id) === String(departmentId));
 
   // Full employee data for everyone in this department
   const { data: membersResp, isLoading: isMembersLoading } = useSearchEmployeesQuery(
-    { departmentId: String(departmentId), page: 0, size: 200 },
+    { departmentId: departmentId, page: 0, size: 200 },
     { skip: !departmentId },
   );
-  const allMembers: EmployeeResponse[] = membersResp?.content ?? [];
+  const { data: deptMembersList, isLoading: isDeptMembersLoading } = useGetDepartmentMembersQuery(
+    departmentId,
+    { skip: !departmentId },
+  );
+
+  // Combine unique members
+  const memberMap = new Map<string, EmployeeResponse>();
+  (membersResp?.content ?? []).forEach((m) => memberMap.set(String(m.id), m));
+  (deptMembersList ?? []).forEach((m) => memberMap.set(String(m.id), m));
+  const allMembers: EmployeeResponse[] = Array.from(memberMap.values());
 
   // All teams — filter to ones belonging to this department
   const { data: allTeams, isLoading: isTeamsLoading } = useGetTeamsQuery();
-  const departmentTeams = allTeams?.filter((t) => t.departmentId === departmentId) ?? [];
+  const departmentTeams = allTeams?.filter((t) => String(t.departmentId) === String(departmentId)) ?? [];
   const hasTeams = departmentTeams.length > 0;
 
   const managers = allMembers.filter(isManagerRole);
   const nonManagers = allMembers.filter((e) => !isManagerRole(e));
 
-  if (isDeptLoading || isMembersLoading || isTeamsLoading) {
+  // Fallback managers if none directly in allMembers (e.g. assigned team managers or direct managers)
+  const reportingManagerNames = Array.from(
+    new Set([
+      ...departmentTeams.map((t) => t.managerName).filter(Boolean),
+      ...allMembers.map((m) => m.directManagerName).filter(Boolean),
+    ])
+  ) as string[];
+
+  if (isDeptLoading || isMembersLoading || isDeptMembersLoading || isTeamsLoading) {
     return (
       <div className="py-16 text-center" style={{ color: "#9EA3B0", fontSize: 13 }}>
         Loading department members...
@@ -71,7 +89,7 @@ const DepartmentMembers = () => {
           <span style={{ fontSize: 12, color: "#9EA3B0" }}>
             Code:{" "}
             <span style={{ fontFamily: "monospace", color: "#1A56DB" }}>
-              {department?.departmentCode}
+              {department?.departmentCode || department?.departmentName?.slice(0, 3).toUpperCase()}
             </span>
           </span>
           <span style={{ fontSize: 12, color: "#9EA3B0" }}>
@@ -107,7 +125,7 @@ const DepartmentMembers = () => {
       <SectionCard
         icon={<Shield size={15} style={{ color: "#1A56DB" }} />}
         title="Department Managers"
-        count={managers.length}
+        count={managers.length || reportingManagerNames.length}
         accentBg="#EEF3FD"
         accentText="#0C447C"
       >
@@ -115,6 +133,34 @@ const DepartmentMembers = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {managers.map((emp) => (
               <EmployeeCard key={emp.id} employee={emp} badgeLabel="Manager" />
+            ))}
+          </div>
+        ) : reportingManagerNames.length > 0 ? (
+          <div className="flex flex-wrap gap-3">
+            {reportingManagerNames.map((mgrName) => (
+              <div
+                key={mgrName}
+                style={{
+                  border: "0.5px solid #C8CCE0",
+                  borderRadius: 10,
+                  padding: "10px 16px",
+                  background: "#FAFBFF",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-xs"
+                  style={{ background: "#EEF3FD", color: "#0C447C" }}
+                >
+                  {mgrName?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: "#111827" }}>{mgrName}</p>
+                  <p style={{ fontSize: 11, color: "#5A6070" }}>Assigned Manager</p>
+                </div>
+              </div>
             ))}
           </div>
         ) : (
@@ -157,11 +203,6 @@ const DepartmentMembers = () => {
 };
 
 // ─── Team Section — has its own hook call per team ────────────────────────────
-/**
- * Fetches members for a specific team using `useGetTeamMembersQuery(teamId)`,
- * then cross-references with `allMembers` (full EmployeeResponse) to get complete info.
- * A manager who is also assigned to a team will appear in BOTH sections.
- */
 const TeamSection = ({
   team,
   allMembers,
@@ -172,9 +213,23 @@ const TeamSection = ({
   const { data: teamMemberList, isLoading } = useGetTeamMembersQuery(team.teamId);
 
   // Map TeamMemberResponse employeeIds → full EmployeeResponse objects
-  const teamEmployees: EmployeeResponse[] = (teamMemberList ?? [])
-    .map((tm) => allMembers.find((emp) => emp.id === tm.employeeId))
-    .filter((emp): emp is EmployeeResponse => emp !== undefined);
+  const teamEmployees: EmployeeResponse[] = (teamMemberList ?? []).map((tm) => {
+    const found = allMembers.find((emp) => String(emp.id) === String(tm.employeeId));
+    if (found) return found;
+    return {
+      id: String(tm.employeeId),
+      employeeCode: tm.employeeCode || `EMP-${tm.employeeId}`,
+      staffName: tm.staffName,
+      email: tm.email || "",
+      positionName: tm.positionName || "Member",
+      roles: ["EMPLOYEE"],
+      permissions: [],
+      status: "ACTIVE",
+      isActive: true,
+      currentDepartmentName: team.departmentName,
+      currentDepartmentId: String(team.departmentId),
+    } as unknown as EmployeeResponse;
+  });
 
   return (
     <SectionCard
@@ -276,9 +331,12 @@ const EmployeeCard = ({
         >
           {employee.profileImage && employee.profileImage !== "default.jpg" ? (
             <img
-              src={`http://localhost:8000${employee.profileImage}`}
+              src={employee.profileImage.startsWith("http") ? employee.profileImage : employee.profileImage}
               alt={employee.staffName}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = "none";
+              }}
             />
           ) : (
             employee.staffName?.charAt(0) ?? "?"

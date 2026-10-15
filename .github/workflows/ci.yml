@@ -12,8 +12,11 @@ permissions:
 
 jobs:
   verify:
+    name: Verify repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Verify workflow
-        run: echo "Performax CI started successfully"
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Confirm CI started
+        run: echo "Performax CI is running successfully."

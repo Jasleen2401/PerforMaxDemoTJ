@@ -135,7 +135,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     (user as any)?.first_name ||
     (user as any)?.name ||
     (user as any)?.username ||
-    (isManager ? 'Tech Manager' : isIntern ? 'Intern' : 'Team Member');
+    (isManager ? 'Mentor' : isIntern ? 'Intern' : 'Team Member');
 
   const computedScopeLabel =
     scopeLabel ||
@@ -144,7 +144,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
       : isHR
       ? 'HR Partner Scope'
       : isManager
-      ? 'Tech Manager Scope'
+      ? 'Mentor Scope'
       : isIntern
       ? 'Cohort Member Scope'
       : 'Employee Scope');

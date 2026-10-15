@@ -66,11 +66,6 @@ class FeedbackViewSet(viewsets.ModelViewSet):
                 Q(profile__employee_code__iexact=str(recipient_id))
             ).first()
 
-        user = self.request.user
-        if user.role == UserRole.MANAGER and not (user.is_hr or user.is_super_admin or user.is_staff):
-            if not recipient_user or not EmployeeProfile.objects.filter(user=recipient_user, manager=user).exists():
-                raise PermissionDenied('You can only provide feedback to employees assigned to you by HR or Super Admin.')
-
         feedback_type = self.request.data.get('feedback_type') or self.request.data.get('category') or 'POSITIVE'
         is_anon = bool(self.request.data.get('is_anonymous') or self.request.data.get('anonymous', False))
 

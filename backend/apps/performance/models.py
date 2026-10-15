@@ -4,11 +4,28 @@ from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 
+
+# ---------------------------------------------------------------------------
+# Cycle Status — full state machine per workflow document
+# ---------------------------------------------------------------------------
 class CycleStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'Draft'
+    VALIDATING = 'VALIDATING', 'Validating'
     ACTIVE = 'ACTIVE', 'Active'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
     REVIEW_PERIOD = 'REVIEW_PERIOD', 'Review Period'
+    READY_FOR_HR_REVIEW = 'READY_FOR_HR_REVIEW', 'Ready for HR Review'
+    FINALIZED = 'FINALIZED', 'Finalized'
+    PUBLISHED = 'PUBLISHED', 'Published'
     CLOSED = 'CLOSED', 'Closed'
+
+
+class MIRAIStage(models.TextChoices):
+    Q1 = 'Q1', 'Q1 – Baseline & Priorities'
+    Q2 = 'Q2', 'Q2 – Application & Progress'
+    Q3 = 'Q3', 'Q3 – Ownership & Initiative'
+    Q4 = 'Q4', 'Q4 – Professional Readiness'
+
 
 class PerformanceCycle(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -16,8 +33,15 @@ class PerformanceCycle(models.Model):
     description = models.TextField(blank=True, null=True)
     start_date = models.DateField()
     end_date = models.DateField()
+    mirai_stage = models.CharField(
+        max_length=10,
+        choices=MIRAIStage.choices,
+        blank=True,
+        null=True,
+        help_text='MIRAI program quarter this cycle covers'
+    )
     status = models.CharField(
-        max_length=20,
+        max_length=25,
         choices=CycleStatus.choices,
         default=CycleStatus.DRAFT,
         db_index=True
@@ -39,11 +63,33 @@ class PerformanceCycle(models.Model):
         blank=True,
         help_text='Cutoff date for deliverables and evidence submissions'
     )
+    evaluator_deadline = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Cutoff date for mentor and Japanese instructor evaluations'
+    )
+    japanese_evaluation_mandatory = models.BooleanField(
+        default=False,
+        help_text='If True, HR cannot finalize until the Japanese evaluation is submitted'
+    )
     current_phase = models.CharField(
         max_length=50,
         blank=True,
         default='Active Evaluation',
         help_text='Current cycle milestone phase label'
+    )
+    # Scoring weights (must sum to 100)
+    technical_weight = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('60.00'),
+        help_text='Weight % for Technical Capability (default: 60)'
+    )
+    behavioral_weight = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('40.00'),
+        help_text='Weight % for Behavioral Capability (default: 40)'
+    )
+    rating_scale_max = models.DecimalField(
+        max_digits=4, decimal_places=1, default=Decimal('5.0'),
+        help_text='Maximum rating value on the configured scale (default: 5)'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -61,6 +107,98 @@ class PerformanceCycle(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_status_display()})"
+
+
+# ---------------------------------------------------------------------------
+# CycleParticipant — which interns/employees are in scope for a cycle
+# ---------------------------------------------------------------------------
+class CycleParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cycle = models.ForeignKey(
+        PerformanceCycle,
+        on_delete=models.CASCADE,
+        related_name='participants'
+    )
+    employee = models.ForeignKey(
+        'employees.EmployeeProfile',
+        on_delete=models.CASCADE,
+        related_name='cycle_participations'
+    )
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='cycle_participant_additions'
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Cycle Participant'
+        verbose_name_plural = 'Cycle Participants'
+        unique_together = ('cycle', 'employee')
+        ordering = ['cycle', 'employee']
+
+    def __str__(self):
+        return f"{self.employee} in {self.cycle.name}"
+
+
+# ---------------------------------------------------------------------------
+# EvaluatorSection — category types for evaluator assignment
+# ---------------------------------------------------------------------------
+class EvaluatorSectionType(models.TextChoices):
+    TECHNICAL = 'TECHNICAL', 'Technical Capability'
+    BEHAVIORAL = 'BEHAVIORAL', 'Behavioral Capability'
+    JAPANESE = 'JAPANESE', 'Japanese Language'
+    HR_BEHAVIORAL = 'HR_BEHAVIORAL', 'HR Behavioral KPI'
+
+
+# ---------------------------------------------------------------------------
+# CycleEvaluatorAssignment — who evaluates which section for which intern
+# ---------------------------------------------------------------------------
+class CycleEvaluatorAssignment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cycle = models.ForeignKey(
+        PerformanceCycle,
+        on_delete=models.CASCADE,
+        related_name='evaluator_assignments'
+    )
+    participant = models.ForeignKey(
+        CycleParticipant,
+        on_delete=models.CASCADE,
+        related_name='evaluator_assignments'
+    )
+    evaluator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='assigned_evaluations'
+    )
+    section = models.CharField(
+        max_length=20,
+        choices=EvaluatorSectionType.choices,
+        help_text='Which assessment section this evaluator is responsible for'
+    )
+    is_mandatory = models.BooleanField(
+        default=True,
+        help_text='If True, this evaluation must be submitted before HR can finalize'
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evaluator_assignment_creations'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Cycle Evaluator Assignment'
+        verbose_name_plural = 'Cycle Evaluator Assignments'
+        unique_together = ('cycle', 'participant', 'section')
+        ordering = ['cycle', 'section']
+
+    def __str__(self):
+        return (f"{self.evaluator.username} → {self.get_section_display()} "
+                f"for {self.participant.employee} in {self.cycle.name}")
+
 
 class EvaluationCriterion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

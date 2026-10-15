@@ -15,7 +15,7 @@ import {
 const DEMO_ACCOUNTS = [
   { role: "Super Admin", email: "admin@company.com", pass: "Admin@123", badge: "Full Access" },
   { role: "HR Partner", email: "sarah.hr@company.com", pass: "SarahPassword123!", badge: "HR Ops" },
-  { role: "Tech Manager", email: "marcus.tech@company.com", pass: "MarcusPassword123!", badge: "Evaluator" },
+  { role: "Mentor", email: "marcus.tech@company.com", pass: "MarcusPassword123!", badge: "Evaluator" },
   { role: "Intern", email: "alex.dev@company.com", pass: "AlexPassword123!", badge: "Self-Review" },
 ];
 

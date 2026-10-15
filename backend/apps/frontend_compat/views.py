@@ -5134,19 +5134,6 @@ class FeedbacksCompatView(APIView):
                 Q(profile__employee_code__iexact=str(emp_id))
             ).first()
 
-        # Enforce: Tech Manager can only provide feedback to employees assigned by HR or Super Admin
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            is_assigned = False
-            if target_user:
-                is_assigned = EmployeeProfile.objects.filter(user=target_user, manager=request.user).exists()
-            if not is_assigned and emp_id:
-                is_assigned = EmployeeProfile.objects.filter(
-                    Q(id__iexact=str(emp_id)) | Q(user__id__iexact=str(emp_id)) | Q(employee_code__iexact=str(emp_id)),
-                    manager=request.user
-                ).exists()
-            if not is_assigned:
-                return error_response("You can only provide feedback to employees assigned to you by HR or Super Admin.", status_code=403)
-
         if not target_user:
             return error_response("Target employee not found.", status_code=404)
 

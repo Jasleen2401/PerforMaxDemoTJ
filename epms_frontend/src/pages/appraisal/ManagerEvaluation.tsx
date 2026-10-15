@@ -141,14 +141,14 @@ const ManagerEvaluation = () => {
         </div>
         <h2 className="text-lg font-bold text-slate-800">Review Access Restricted</h2>
         <p className="text-xs text-slate-600 leading-relaxed">
-          As a Tech Manager, you can only review employees and interns who have been assigned to you by HR or Super Admin.
+          As a Mentor, you can only review employees and interns who have been assigned to you by HR or Super Admin.
           <strong> {formData.employeeName || 'This employee'}</strong> is not currently assigned to you.
         </p>
         <button
           onClick={() => navigate('/manager')}
           className="px-4 py-2 bg-indigo-600 text-white font-semibold text-xs rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer"
         >
-          Return to Manager Hub
+          Return to Mentor Hub
         </button>
       </div>
     );

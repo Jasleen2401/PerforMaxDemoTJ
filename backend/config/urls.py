@@ -43,6 +43,8 @@ urlpatterns = [
     path('api/v1/reports/', include('apps.reports.urls')),
     path('reports/', include('apps.reports.urls')),
     path('api/audit/', include('apps.audit.urls')),
+    path('api/japanese/', include('apps.japanese.urls')),
+    path('api/mirai/', include('apps.mirai.urls')),
 
     # Persona-Dedicated Endpoints
     path('api/superadmin/', include('apps.superadmin.urls')),

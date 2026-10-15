@@ -12,7 +12,7 @@ import EmployeeDashboard from './EmployeeDashboard';
 
 const ManagerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'team' | 'personal'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'personal'>('personal');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [performanceFilter, setPerformanceFilter] = useState<'active' | 'top10' | 'all'>('active');
   const { data, isLoading, error, refetch } = useGetManagerDashboardQuery();
@@ -59,17 +59,6 @@ const ManagerDashboard: React.FC = () => {
       {/* Premium Tab Selector */}
       <div className="bg-white border border-gray-200/80 rounded-2xl p-1.5 flex gap-2 w-fit shadow-sm">
         <button
-          onClick={() => setActiveTab('team')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 cursor-pointer ${
-            activeTab === 'team'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-          }`}
-        >
-          <Layers size={14} />
-          Team Overview
-        </button>
-        <button
           onClick={() => setActiveTab('personal')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 cursor-pointer ${
             activeTab === 'personal'
@@ -80,12 +69,23 @@ const ManagerDashboard: React.FC = () => {
           <Briefcase size={14} />
           My Performance
         </button>
+        <button
+          onClick={() => setActiveTab('team')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold tracking-tight transition-all duration-300 cursor-pointer ${
+            activeTab === 'team'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <Layers size={14} />
+          Team Performance
+        </button>
       </div>
 
       {activeTab === 'personal' ? (
         <EmployeeDashboard
           onScopeSwitch={() => setActiveTab('team')}
-          scopeLabel="Tech Manager Scope"
+          scopeLabel="Mentor Scope"
           onRefreshParent={handleRefreshTeam}
         />
       ) : (
@@ -117,12 +117,12 @@ const ManagerDashboard: React.FC = () => {
               title="Click to switch to personal contributor scope"
             >
               <ShieldCheck size={13} className="text-[#6d3fea] group-hover:scale-110 transition-transform" />
-              <span>Tech Manager Scope</span>
+              <span>Mentor Scope</span>
             </button>
           </div>
         </div>
 
-      {/* Mentor & Manager Operations Hub Banner (M-01 to M-12) */}
+      {/* Mentor Operations Hub Banner (M-01 to M-12) */}
       <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-slate-50 border border-indigo-100/90 rounded-2xl p-4.5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-indigo-100">
@@ -130,7 +130,7 @@ const ManagerDashboard: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-extrabold text-sm text-indigo-950">Mentor & Manager Operations Center</h3>
+              <h3 className="font-extrabold text-sm text-indigo-950">Mentor Operations Center</h3>
               <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                 M-01 to M-12
               </span>

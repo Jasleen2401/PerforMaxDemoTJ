@@ -1,14 +1,14 @@
-# 👨‍💼 Manager Workspace (Tech & QA Leads)
+# 👨‍💼 Mentor Workspace (Technical Mentors & Team Leads)
 
-Welcome to the **Manager Workspace**. This folder contains everything you need to develop, test, and maintain the Manager & Team Lead features of PERFORMAX (EPMS).
+Welcome to the **Mentor Workspace**. This folder contains everything you need to develop, test, and maintain the Mentor features of PERFORMAX (EPMS).
 
 ---
 
 ## 🔑 Your Login Credentials
-- **Tech Manager Email:** `marcus.tech@company.com`
+- **Mentor Email:** `marcus.tech@company.com`
 - **Username:** `manager_marcus`
 - **Password:** `MarcusPassword123!`
-- **QA Manager Email:** `elena.qa@company.com`
+- **QA Mentor Email:** `elena.qa@company.com`
 - **Password:** `ElenaPassword123!`
 - **OTP Passcode:** `123456` *(or ⚡ 1-Click Auto-Fill)*
 - **Assigned Role:** `MANAGER`
@@ -57,4 +57,4 @@ python manage.py runserver 0.0.0.0:8000
 cd epms_frontend
 npm run dev
 ```
-Open **`http://localhost:5173/`** and sign in as Tech Manager.
+Open **`http://localhost:5173/`** and sign in as Mentor.

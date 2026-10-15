@@ -1,10 +1,10 @@
-# Tech Manager Functionalities, RBAC Security Architecture & Postman Verification Report
+# Mentor Functionalities, RBAC Security Architecture & Postman Verification Report
 
 ---
 
 ## 1. Executive Summary & Persona Profile
 
-The **Tech Manager / Mentor** role represents the operational leadership tier within PERFORMAX (Enterprise Performance Management System - EPMS). The role bridges high-level executive OKRs with daily technical execution, sprint delivery, and professional growth for assigned interns and software engineers.
+The **Mentor** role represents the operational leadership tier within PERFORMAX (Enterprise Performance Management System - EPMS). The role bridges high-level executive OKRs with daily technical execution, sprint delivery, and professional growth for assigned interns and software engineers.
 
 ### Persona Specification
 - **Designated Personas**: Elena Rostova (`elena.qa@company.com`), Marcus Vance (`marcus.tech@company.com`)
@@ -19,8 +19,8 @@ flowchart TD
         HR["HR Lead (Sarah Jenkins)"]
     end
 
-    subgraph TechManagement ["Tech Manager Boundary (Elena Rostova)"]
-        TM["Tech Manager (M-01 to M-12)"]
+    subgraph TechManagement ["Mentor Boundary (Elena Rostova)"]
+        TM["Mentor (M-01 to M-12)"]
         PARAM["Technical Parameters (M-04)"]
         TASK["Task Management (M-02, M-03)"]
         REV["Capability Reviews (M-05)"]
@@ -45,7 +45,7 @@ flowchart TD
 
 ---
 
-## 2. All 12 Tech Manager Functionalities (M-01 to M-12)
+## 2. All 12 Mentor Functionalities (M-01 to M-12)
 
 ### M-01: View Assigned Interns / Employees
 - **Purpose**: Provides real-time visibility into the manager's assigned direct reports portfolio. Displays intern avatars, employment status (`ACTIVE`, `PROBATION`, `COMPLETED`), sprint task progress counters, active appraisal cycle status, and direct action triggers.
@@ -146,7 +146,7 @@ PERFORMAX implements defense-in-depth Role-Based Access Control across 4 archite
 
 ### RBAC Permission Matrix
 
-| Capability / Resource | Intern (`INTERN`) | Tech Manager (`MANAGER`) | HR Manager (`HR`) | Super Admin (`SUPER_ADMIN`) |
+| Capability / Resource | Intern (`INTERN`) | Mentor (`MANAGER`) | HR Manager (`HR`) | Super Admin (`SUPER_ADMIN`) |
 | :--- | :---: | :---: | :---: | :---: |
 | **View Own Dashboard** | ✅ | ✅ | ✅ | ✅ |
 | **M-01: View Assigned Mentees** | ❌ (403) | ✅ (Direct Reports Only) | ✅ (All) | ✅ (Global Org Roster) |
@@ -235,7 +235,7 @@ To guarantee that external API clients (such as Postman, curl, or automated test
    `C:\Users\DELL\OneDrive\internship\Performax\postman\collections\PERFORMAX_Tech_Manager_RBAC_Verification.postman_collection.json`
 4. In the collection, click **Run Collection** (Collection Runner).
 5. Ensure the collection variable `baseUrl` is set to `http://localhost:8000`.
-6. Click **Run PERFORMAX - Tech Manager & RBAC Security Verification**. All 23 assertions will execute sequentially, validating token generation, unauthorized blocks, manager operations, and data scoping.
+6. Click **Run PERFORMAX - Mentor & RBAC Security Verification**. All 23 assertions will execute sequentially, validating token generation, unauthorized blocks, manager operations, and data scoping.
 
 ### Option B: Running via CLI Automated Test Runner
 From the repository root, run:

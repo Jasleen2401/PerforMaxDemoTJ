@@ -60,18 +60,6 @@ class ManagerGiveFeedbackView(APIView):
         if not target_user:
             return Response({'code': 404, 'message': 'Target intern user not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Enforce: Tech Manager can only provide feedback to employees assigned by HR or Super Admin
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            is_assigned = EmployeeProfile.objects.filter(
-                user=target_user,
-                manager=request.user
-            ).exists()
-            if not is_assigned:
-                return Response({
-                    'code': 403,
-                    'message': 'You can only provide feedback to employees assigned to you by HR or Super Admin.'
-                }, status=status.HTTP_403_FORBIDDEN)
-
         goal = Goal.objects.filter(id=goal_id).first() if goal_id else None
 
         fb = Feedback.objects.create(

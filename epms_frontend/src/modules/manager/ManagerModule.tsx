@@ -9,14 +9,14 @@ export const ManagerModule = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Target className="text-blue-600" size={28} />
-            Tech & QA Manager Workbench
+            Mentor Workbench
           </h1>
           <p className="text-sm text-slate-500 mt-1">
             Goal setting, measurable KPIs, code & evidence reviews, team evaluations, and 1-on-1 syncs.
           </p>
         </div>
         <span className="bg-blue-50 text-blue-700 font-bold text-xs uppercase px-3 py-1 rounded-full border border-blue-200">
-          Manager Scope
+          Mentor Scope
         </span>
       </div>
 

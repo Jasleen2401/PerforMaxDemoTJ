@@ -1,6 +1,6 @@
-# Tech Manager Module (`apps/manager`)
+# Mentor Module (`apps/manager`)
 
-This folder contains the complete, sorted implementation of the **Tech Manager & Mentor** persona capabilities for the PERFORMAX system.
+This folder contains the complete, sorted implementation of the **Mentor** persona capabilities for the PERFORMAX system.
 
 ---
 

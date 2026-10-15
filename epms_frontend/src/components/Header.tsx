@@ -82,7 +82,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     : isHR
     ? "HR Partner"
     : isManager
-    ? "Tech Manager"
+    ? "Mentor"
     : "Intern";
 
   return (

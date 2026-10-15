@@ -6,7 +6,7 @@ from django.utils import timezone
 class UserRole(models.TextChoices):
     SUPER_ADMIN = 'SUPER_ADMIN', 'Super Admin'
     HR = 'HR', 'HR'
-    MANAGER = 'MANAGER', 'Manager'
+    MANAGER = 'MANAGER', 'Mentor'
     INTERN = 'INTERN', 'Intern'
 
 class CustomUserManager(BaseUserManager):

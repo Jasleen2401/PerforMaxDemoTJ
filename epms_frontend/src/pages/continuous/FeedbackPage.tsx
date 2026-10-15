@@ -473,38 +473,17 @@ const FeedbackPage = () => {
     ...assignedMentees.map(m => String(m.employeeCode || '').toLowerCase()),
   ]);
 
-  const filteredEmployees = (isAdmin || isHR)
-    ? employees
-    : isManagerRole
-      ? employees?.filter(emp => {
-          if (String(emp.id) === String(user?.id)) return false;
-          const matchesDirectMgr = (
-            (emp.directManagerId && String(emp.directManagerId) === String(user?.id)) ||
-            (emp.directManagerName && String(emp.directManagerName).toLowerCase() === String(user?.username || '').toLowerCase()) ||
-            (emp.directManagerName && String(emp.directManagerName).toLowerCase() === String(user?.staffName || '').toLowerCase())
-          );
-          const matchesMentee = assignedIds.has(String(emp.id)) ||
-            assignedIds.has(String((emp as any).userId)) ||
-            (emp.employeeCode && assignedIds.has(String(emp.employeeCode).toLowerCase()));
-          return Boolean(matchesDirectMgr || matchesMentee);
-        })
-      : employees?.filter(emp =>
-          emp.currentDepartmentName && user?.currentDepartmentName &&
-          emp.currentDepartmentName === user?.currentDepartmentName &&
-          emp.id !== user?.id &&
-          (emp.levelRank === undefined || emp.levelRank === null || emp.levelRank !== minRankInDept) &&
-          (emp.levelRank === undefined || emp.levelRank === null || user?.levelRank === undefined || user?.levelRank === null || emp.levelRank >= user.levelRank)
-        );
+  const filteredEmployees = (isAdmin || isHR || isManagerRole)
+    ? employees?.filter(emp => String(emp.id) !== String(user?.id))
+    : employees?.filter(emp =>
+        emp.currentDepartmentName && user?.currentDepartmentName &&
+        emp.currentDepartmentName === user?.currentDepartmentName &&
+        emp.id !== user?.id &&
+        (emp.levelRank === undefined || emp.levelRank === null || emp.levelRank !== minRankInDept) &&
+        (emp.levelRank === undefined || emp.levelRank === null || user?.levelRank === undefined || user?.levelRank === null || emp.levelRank >= user.levelRank)
+      );
 
-  const availableEmployees = (isManagerRole && (!filteredEmployees || filteredEmployees.length === 0) && assignedMentees.length > 0)
-    ? assignedMentees.map(m => ({
-        id: m.userId || m.id,
-        staffName: m.fullName || `${m.firstName} ${m.lastName}`.trim(),
-        employeeCode: m.employeeCode,
-        currentDepartmentName: m.department,
-        positionName: m.designation,
-      }))
-    : (filteredEmployees || []);
+  const availableEmployees = filteredEmployees || [];
 
   const blankFeedback = { employeeId: "" as number | string, tagId: "" as number | "", feedbackType: FeedbackType.PRAISE, description: "" };
   const [showModal, setShowModal] = useState(false);
@@ -530,13 +509,6 @@ const FeedbackPage = () => {
       return;
     }
 
-    if (isManagerRole) {
-      const isValidRecipient = availableEmployees.some(e => String(e.id) === String(newFeedback.employeeId) || String(e.employeeCode) === String(newFeedback.employeeId));
-      if (!isValidRecipient) {
-        toast.error("You can only provide feedback to employees assigned to you by HR or Super Admin.");
-        return;
-      }
-    }
     try {
       const resolvedStatus = status || (editingId ? undefined : submitStatus);
       const body = {
@@ -946,14 +918,9 @@ const FeedbackPage = () => {
                     ) : (
                       <select required className="office-input" value={newFeedback.employeeId}
                         onChange={e => setNewFeedback({ ...newFeedback, employeeId: e.target.value })}>
-                        <option value="">{isManagerRole ? "Choose Assigned Employee" : "Choose Staff"}</option>
+                        <option value="">Choose Staff / Employee</option>
                         {availableEmployees?.map(emp => <option key={emp.id} value={emp.id}>{emp.staffName}</option>)}
                       </select>
-                    )}
-                    {isManagerRole && (
-                      <p style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, marginTop: 4 }}>
-                        Showing only employees assigned to you by HR or Super Admin.
-                      </p>
                     )}
                   </div>
                   <div>

@@ -35,7 +35,7 @@ This document defines the formal test cases to validate the functional, non-func
 * **Role Identifier:** `MANAGER`
 * **Assigned Personas:**
   * **Elena Vance:** QA Lead / Test Manager (`elena.qa@company.com` / `ElenaPassword123!`)
-  * **Marcus Vance:** Tech Manager (`marcus.tech@company.com` / `MarcusPassword123!`)
+  * **Marcus Vance:** Mentor (`marcus.tech@company.com` / `MarcusPassword123!`)
 * **Core Responsibilities:**
   * Supervising assigned QA / Engineering interns across their team.
   * Setting measurable, weighted KRAs, KPIs, and deliverables.

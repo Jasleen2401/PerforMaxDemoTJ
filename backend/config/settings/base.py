@@ -51,6 +51,8 @@ LOCAL_APPS = [
     'apps.hr',
     'apps.manager',
     'apps.intern',
+    'apps.japanese',
+    'apps.mirai',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -210,6 +212,12 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1', 't')
+
+# Allow custom headers sent by the frontend (including ngrok tunnel header)
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'ngrok-skip-browser-warning',
+]
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

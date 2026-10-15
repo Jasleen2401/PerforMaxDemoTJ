@@ -1,5 +1,5 @@
 """
-Tech Manager Module Views Facade
+Mentor Module Views Facade
 All views have been sorted and organized into the `apps.manager.views` package:
   - mentees_views.py              (M-01: View Assigned Interns/Employees)
   - tasks_views.py                (M-02: Assign Tasks, M-03: Manage Tasks & Goals)

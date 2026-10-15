@@ -3,6 +3,7 @@ import { X, ThumbsUp, ThumbsDown, Star, Award, Eye, MessageSquare, ChevronDown, 
 import { toast } from "react-toastify";
 import { useAuth } from "../../hooks/useAuth";
 import { useGetAssignedMenteesQuery } from "../../features/manager/managerApi";
+import { useGetEmployeesQuery } from "../../features/employee/employeeapi";
 
 interface EmployeeOption {
   id: string | number;
@@ -113,43 +114,31 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const { user } = useAuth();
-  const isManager = user?.role === 'MANAGER' || (user as any)?.isManager;
-  const { data: assignedMentees = [] } = useGetAssignedMenteesQuery(undefined, { skip: !isManager });
+  const { data: allEmployeesData } = useGetEmployeesQuery({ page: 0, size: 1000 }, { skip: employees.length > 0 });
 
-  const assignedIds = new Set([
-    ...assignedMentees.map((m) => String(m.id)),
-    ...assignedMentees.map((m) => String(m.userId)),
-    ...assignedMentees.map((m) => String(m.employeeCode).toLowerCase()),
-  ]);
+  const fetchedEmployees: EmployeeOption[] = React.useMemo(() => {
+    const list = Array.isArray(allEmployeesData)
+      ? allEmployeesData
+      : (allEmployeesData as any)?.data || (allEmployeesData as any)?.results || [];
+    return list
+      .filter((e: any) => String(e.id) !== String(user?.id))
+      .map((e: any) => ({
+        id: e.id,
+        employeeCode: e.employeeCode || `EMP-${e.id}`,
+        staffName: e.staffName || e.fullName || `${e.firstName || ''} ${e.lastName || ''}`.trim() || 'Employee',
+        designation: e.positionName || e.designation || 'Team Member',
+      }));
+  }, [allEmployeesData, user?.id]);
 
-  // For manager, strictly restrict candidate employees to assigned mentees
-  let candidateList: EmployeeOption[] = employees;
-  if (isManager && candidateList.length > 0) {
-    candidateList = candidateList.filter(
-      (e) => assignedIds.has(String(e.id)) || assignedIds.has(String(e.employeeCode).toLowerCase())
-    );
-  }
-
-  if (isManager && candidateList.length === 0 && assignedMentees.length > 0) {
-    candidateList = assignedMentees.map((m) => ({
-      id: m.userId || m.id,
-      employeeCode: m.employeeCode,
-      staffName: m.fullName || `${m.firstName} ${m.lastName}`.trim(),
-      designation: m.designation,
-    }));
-  }
-
-  // Fallback demo employee list if none passed (only for admin/HR)
-  const employeeList: EmployeeOption[] =
-    candidateList.length > 0
-      ? candidateList
-      : isManager
-      ? []
-      : [
-          { id: "ZY192", employeeCode: "ZY192", staffName: "Robert Johnson", designation: "Software Developer" },
-          { id: "INT-2025-001", employeeCode: "INT-2025-001", staffName: "Alex Chen", designation: "Backend Software Intern" },
-          { id: "713", employeeCode: "713", staffName: "Jothi S", designation: "Senior Software Engineer" },
-        ];
+  const employeeList: EmployeeOption[] = React.useMemo(() => {
+    if (employees && employees.length > 0) return employees;
+    if (fetchedEmployees && fetchedEmployees.length > 0) return fetchedEmployees;
+    return [
+      { id: "ZY192", employeeCode: "ZY192", staffName: "Robert Johnson", designation: "Software Developer" },
+      { id: "INT-2025-001", employeeCode: "INT-2025-001", staffName: "Alex Chen", designation: "Backend Software Intern" },
+      { id: "713", employeeCode: "713", staffName: "Jothi S", designation: "Senior Software Engineer" },
+    ];
+  }, [employees, fetchedEmployees]);
 
   useEffect(() => {
     if (editingFeedback) {
@@ -279,23 +268,10 @@ export const ProvideFeedbackModal: React.FC<ProvideFeedbackModalProps> = ({
                 Edit Mode
               </span>
             </div>
-          ) : isManager && employeeList.length === 0 ? (
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-800 text-xs">
-              <ShieldAlert size={20} className="shrink-0 mt-0.5 text-amber-600" />
-              <div>
-                <div className="font-bold text-amber-900 text-sm mb-0.5">Feedback Restricted</div>
-                As a Tech Manager, you can only provide feedback to employees assigned to you by HR or Super Admin. This employee is not currently assigned to you.
-              </div>
-            </div>
           ) : (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-semibold text-slate-700">Select Employee</label>
-                {isManager && (
-                  <span className="text-[11px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                    Assigned Direct Reports Only
-                  </span>
-                )}
               </div>
               <div className="relative">
               <button

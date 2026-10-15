@@ -1,5 +1,5 @@
 """
-Sorted Views Package for Tech Manager & Mentor Functionalities (M-01 to M-12)
+Sorted Views Package for Mentor Functionalities (M-01 to M-12)
 """
 
 from .base import IsManagerUser, get_manager_reports_qs

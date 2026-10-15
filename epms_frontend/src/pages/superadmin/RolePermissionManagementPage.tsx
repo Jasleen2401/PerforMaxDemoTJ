@@ -201,7 +201,7 @@ export const RolePermissionManagementPage: React.FC = () => {
   const rolesList = [
     { key: "SUPER_ADMIN", label: "Super Admin", color: "purple" },
     { key: "HR", label: "HR Partner", color: "blue" },
-    { key: "MANAGER", label: "Tech Manager", color: "teal" },
+    { key: "MANAGER", label: "Mentor", color: "teal" },
     { key: "INTERN", label: "Intern / Employee", color: "amber" },
   ];
 
@@ -342,7 +342,7 @@ export const RolePermissionManagementPage: React.FC = () => {
                 <option value="ALL">All Roles</option>
                 <option value="SUPER_ADMIN">Super Admin</option>
                 <option value="HR">HR Partner</option>
-                <option value="MANAGER">Tech Manager</option>
+                <option value="MANAGER">Mentor</option>
                 <option value="INTERN">Intern / Employee</option>
               </select>
 
@@ -467,7 +467,7 @@ export const RolePermissionManagementPage: React.FC = () => {
                                 : u.role === "HR"
                                 ? "HR Partner"
                                 : u.role === "MANAGER"
-                                ? "Tech Manager"
+                                ? "Mentor"
                                 : "Intern"}
                             </span>
                           </td>
@@ -493,7 +493,7 @@ export const RolePermissionManagementPage: React.FC = () => {
                               >
                                 <option value="SUPER_ADMIN">Super Admin</option>
                                 <option value="HR">HR Partner</option>
-                                <option value="MANAGER">Tech Manager</option>
+                                <option value="MANAGER">Mentor</option>
                                 <option value="INTERN">Intern / Employee</option>
                               </select>
                             </div>

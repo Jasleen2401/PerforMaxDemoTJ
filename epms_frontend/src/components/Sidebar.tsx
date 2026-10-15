@@ -391,7 +391,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
                   {user?.staffName || (user as any)?.username || "Authorized User"}
                 </div>
                 <div className="text-[10px] font-medium text-purple-200 uppercase tracking-wider truncate">
-                  {isAdmin ? "Super Admin" : isHR ? "HR Partner" : isManager ? "Tech Manager" : "Intern"}
+                  {isAdmin ? "Super Admin" : isHR ? "HR Partner" : isManager ? "Mentor" : "Intern"}
                 </div>
               </div>
             </div>

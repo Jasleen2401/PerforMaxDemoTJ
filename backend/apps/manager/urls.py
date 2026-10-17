@@ -9,7 +9,11 @@ urlpatterns = [
     path('mentees/', views.ManagerMenteesView.as_view(), name='mentees'),
     path('interns/', views.ManagerMenteesView.as_view(), name='interns'),
 
-    # M-02 & M-03: Assign & Manage Tasks & Goals
+    # TM-02: Multi-Project & Milestone Definition
+    path('projects/', views.ManagerProjectsView.as_view(), name='projects'),
+    path('projects/<str:pk>/', views.ManagerProjectsView.as_view(), name='project_detail'),
+
+    # TM-03: Assign & Manage Tasks & Goals
     path('tasks/', views.ManagerTasksView.as_view(), name='tasks'),
     path('tasks/assign/', views.ManagerTasksView.as_view(), name='tasks_assign'),
     path('tasks/<str:pk>/', views.ManagerTaskDetailView.as_view(), name='task_detail'),
@@ -35,13 +39,17 @@ urlpatterns = [
     path('employee-feedbacks/', views.ManagerEmployeeFeedbacksView.as_view(), name='employee_feedbacks'),
     path('employee-feedbacks/<str:pk>/comment/', views.ManagerEmployeeFeedbacksView.as_view(), name='employee_feedback_comment'),
 
-    # M-09, M-10, M-11: Conduct, Save, and Submit Performance Review
+    # TM-09, TM-10, TM-11: Conduct, Save, Self-Assessment Inspection, and Submit Review
     path('appraisals/', views.ManagerAppraisalSubmissionsView.as_view(), name='appraisals'),
     path('appraisals/submissions/', views.ManagerAppraisalSubmissionsView.as_view(), name='appraisals_submissions'),
+    path('appraisals/<str:pk>/self/', views.ManagerSelfAssessmentInspectionView.as_view(), name='appraisal_self_inspection'),
     path('appraisals/<str:pk>/save-draft/', views.ManagerSaveAppraisalDraftView.as_view(), name='appraisal_save_draft'),
     path('appraisals/<str:pk>/submit/', views.ManagerSubmitAppraisalView.as_view(), name='appraisal_submit'),
 
-    # M-12: View Previous Reviews & History
+    # TM-12: View Previous Reviews, Talent Radar & PPO Verdict
     path('historical-reviews/', views.ManagerHistoricalReviewsView.as_view(), name='historical_reviews'),
     path('history/', views.ManagerHistoricalReviewsView.as_view(), name='history'),
+    path('talent-radar/', views.ManagerTalentRadarPPOView.as_view(), name='talent_radar'),
+    path('verdict/', views.ManagerTalentRadarPPOView.as_view(), name='career_verdict'),
 ]
+

@@ -5496,55 +5496,165 @@ DEFAULT_MEETINGS = [
 ]
 
 class MeetingsCompatView(APIView):
+    """
+    TM-07 Relational 1-on-1 Sync Meetings View
+    Backed 100% by relational models (SyncMeeting, ActionItem, MeetingComment).
+    Zero mock/ephemeral RAM arrays.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, pk=None):
-        if pk is not None:
-            for m in DEFAULT_MEETINGS:
-                if str(m["meetingId"]) == str(pk):
-                    return ok_response(m)
-            return ok_response(DEFAULT_MEETINGS[0])
+    def _serialize_meeting(self, m, request_user):
+        from apps.performance.models import SyncMeeting
+        can_view_confidential = (
+            request_user.is_superuser or
+            request_user.is_staff or
+            request_user.role in ['MANAGER', 'HR', 'SUPER_ADMIN'] or
+            request_user == m.manager
+        )
+        return {
+            "meetingId": m.id,
+            "employeeId": str(m.employee.id),
+            "employeeName": m.employee.full_name,
+            "managerId": str(m.manager.id),
+            "managerName": (m.manager.profile.full_name if hasattr(m.manager, 'profile') else m.manager.username) if m.manager else 'Manager',
+            "meetingTitle": m.meeting_title,
+            "meetingDate": str(m.meeting_date),
+            "meetingTime": m.meeting_time or "10:00",
+            "discussionPoints": m.discussion_points or "",
+            "keyIssues": m.key_issues or "",
+            "confidentialNotes": m.confidential_notes if can_view_confidential else None,
+            "actionItems": [
+                {
+                    "id": ai.id,
+                    "content": ai.content,
+                    "assignedTo": ai.assigned_to.id if ai.assigned_to else None,
+                    "assignedToName": ai.assigned_to.username if ai.assigned_to else None,
+                    "dueDate": str(ai.due_date) if ai.due_date else None,
+                    "status": ai.status
+                } for ai in m.action_items.all()
+            ],
+            "status": m.status,
+            "createdBy": m.created_by.id if m.created_by else None,
+            "commentCount": m.comments.count(),
+            "createdAt": m.created_at.isoformat() if m.created_at else timezone.now().isoformat(),
+            "publishedAt": m.published_at.isoformat() if m.published_at else None
+        }
 
+    def get(self, request, pk=None):
+        from apps.performance.models import SyncMeeting
+        if pk is not None:
+            m = SyncMeeting.objects.filter(id=pk).prefetch_related('action_items', 'comments').first()
+            if m:
+                return ok_response(self._serialize_meeting(m, request.user))
+            return error_response("Meeting not found", status=404)
+
+        qs = SyncMeeting.objects.select_related('employee__user', 'manager', 'created_by').prefetch_related('action_items', 'comments').all()
+
+        emp_filter = request.query_params.get("employeeId") or request.query_params.get("employee_id")
+        mgr_filter = request.query_params.get("managerId") or request.query_params.get("manager_id")
+        status_filter = request.query_params.get("status")
+
+        if emp_filter:
+            qs = qs.filter(Q(employee__id=str(emp_filter)) | Q(employee__user__id=str(emp_filter)))
+        if mgr_filter:
+            qs = qs.filter(manager__id=str(mgr_filter))
+        if status_filter:
+            qs = qs.filter(status=status_filter.upper())
+
+        # If standard intern, scope to self
+        if request.user.role == 'INTERN' and hasattr(request.user, 'profile'):
+            qs = qs.filter(employee=request.user.profile)
+
+        meetings_list = [self._serialize_meeting(m, request.user) for m in qs]
         page = int(request.query_params.get("page", 0))
-        size = int(request.query_params.get("size", 10))
-        total = len(DEFAULT_MEETINGS)
+        size = int(request.query_params.get("size", 20))
+        total = len(meetings_list)
 
         return ok_response({
-            "content": DEFAULT_MEETINGS,
+            "content": meetings_list,
             "page": page,
             "size": size,
             "totalElements": total,
-            "totalPages": 1,
+            "totalPages": 1 if total <= size else (total // size) + 1,
             "last": True
         })
 
     def post(self, request):
+        from apps.performance.models import SyncMeeting, ActionItem, MeetingStatus, ActionItemStatus
+        from apps.employees.models import EmployeeProfile
         data = request.data
-        new_m = {
-            "meetingId": len(DEFAULT_MEETINGS) + 1,
-            "employeeId": data.get("employeeId", 1),
-            "employeeName": request.user.username,
-            "managerId": data.get("managerId", 2),
-            "managerName": "Executive Leadership",
-            "meetingTitle": data.get("meetingTitle", "1-on-1 Sync Meeting"),
-            "meetingDate": data.get("meetingDate", "2026-09-25"),
-            "meetingTime": data.get("meetingTime", "11:00"),
-            "discussionPoints": data.get("discussionPoints", "General performance review"),
-            "keyIssues": data.get("keyIssues", "None"),
-            "actionItems": data.get("actionItems", []),
-            "status": data.get("status", "PUBLISHED"),
-            "createdBy": 1,
-            "commentCount": 0,
-            "createdAt": "2026-09-20T22:30:00Z",
-            "publishedAt": "2026-09-20T22:30:00Z"
-        }
-        DEFAULT_MEETINGS.insert(0, new_m)
-        return ok_response(new_m)
+
+        emp_id = data.get("employeeId") or data.get("employee_id")
+        emp_profile = None
+        if emp_id:
+            emp_profile = EmployeeProfile.objects.filter(
+                Q(id=str(emp_id)) | Q(user__id=str(emp_id))
+            ).first()
+
+        if not emp_profile:
+            emp_profile = EmployeeProfile.objects.first()
+
+        mgr_user = request.user
+        title = data.get("meetingTitle") or "1-on-1 Sync Meeting"
+        m_date = data.get("meetingDate") or str(timezone.localdate())
+        m_time = data.get("meetingTime") or "10:00"
+        disc = data.get("discussionPoints") or ""
+        issues = data.get("keyIssues") or ""
+        conf = data.get("confidentialNotes") or ""
+        m_status = data.get("status") or MeetingStatus.PUBLISHED
+
+        meeting = SyncMeeting.objects.create(
+            employee=emp_profile,
+            manager=mgr_user,
+            meeting_title=title,
+            meeting_date=m_date,
+            meeting_time=m_time,
+            discussion_points=disc,
+            key_issues=issues,
+            confidential_notes=conf,
+            status=m_status,
+            created_by=request.user,
+            published_at=timezone.now() if m_status == MeetingStatus.PUBLISHED else None
+        )
+
+        for item in data.get("actionItems", []):
+            content = item.get("content") or item.get("title") or ""
+            if content:
+                ActionItem.objects.create(
+                    meeting=meeting,
+                    content=content,
+                    assigned_to=emp_profile.user if emp_profile else None,
+                    due_date=item.get("dueDate") or None,
+                    status=ActionItemStatus.PENDING
+                )
+
+        serialized = self._serialize_meeting(meeting, request.user)
+        return ok_response(serialized)
 
     def put(self, request, pk=None):
-        return ok_response(DEFAULT_MEETINGS[0])
+        from apps.performance.models import SyncMeeting
+        m = SyncMeeting.objects.filter(id=pk).first()
+        if not m:
+            return error_response("Meeting not found", status=404)
+
+        data = request.data
+        if "meetingTitle" in data:
+            m.meeting_title = data["meetingTitle"]
+        if "discussionPoints" in data:
+            m.discussion_points = data["discussionPoints"]
+        if "keyIssues" in data:
+            m.key_issues = data["keyIssues"]
+        if "confidentialNotes" in data:
+            m.confidential_notes = data["confidentialNotes"]
+        if "status" in data:
+            m.status = data["status"]
+        m.save()
+
+        return ok_response(self._serialize_meeting(m, request.user))
 
     def delete(self, request, pk=None):
+        from apps.performance.models import SyncMeeting
+        SyncMeeting.objects.filter(id=pk).delete()
         return ok_response({"success": True})
 
 
@@ -5552,9 +5662,12 @@ class MeetingsManagerStatsCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, manager_id=None):
+        from apps.performance.models import SyncMeeting, MeetingStatus
+        total_pub = SyncMeeting.objects.filter(status=MeetingStatus.PUBLISHED).count()
+        total_draft = SyncMeeting.objects.filter(status=MeetingStatus.SCHEDULED).count()
         return ok_response({
-            "totalPublished": len(DEFAULT_MEETINGS),
-            "totalDraft": 0
+            "totalPublished": total_pub,
+            "totalDraft": total_draft
         })
 
 
@@ -5562,8 +5675,13 @@ class MeetingsEmployeeStatsCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, employee_id=None):
+        from apps.performance.models import SyncMeeting, MeetingStatus
+        total_pub = SyncMeeting.objects.filter(
+            Q(employee__id=str(employee_id)) | Q(employee__user__id=str(employee_id)),
+            status=MeetingStatus.PUBLISHED
+        ).count()
         return ok_response({
-            "totalPublished": len(DEFAULT_MEETINGS),
+            "totalPublished": total_pub,
             "totalDraft": 0
         })
 
@@ -5572,26 +5690,39 @@ class MeetingsCommentsCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk=None):
-        return ok_response([
+        from apps.performance.models import MeetingComment
+        comments = MeetingComment.objects.filter(meeting_id=pk).select_related('author').order_by('created_at')
+        data = [
             {
-                "id": 1,
-                "meetingId": int(pk) if str(pk).isdigit() else 1,
-                "employeeName": request.user.username,
-                "comment": "All agenda items discussed and action steps aligned.",
-                "commentType": "MANAGER",
-                "createdAt": "2026-09-20T11:00:00Z"
-            }
-        ])
+                "id": c.id,
+                "meetingId": c.meeting_id,
+                "employeeName": c.author.username,
+                "comment": c.comment,
+                "commentType": "MANAGER" if c.author.role == 'MANAGER' else "INTERN",
+                "createdAt": c.created_at.isoformat()
+            } for c in comments
+        ]
+        return ok_response(data)
 
     def post(self, request, pk=None):
-        comment = request.data.get("comment", "Meeting discussion recorded")
+        from apps.performance.models import MeetingComment, SyncMeeting
+        meeting = SyncMeeting.objects.filter(id=pk).first()
+        comment_text = request.data.get("comment", "").strip()
+        if not comment_text or not meeting:
+            return error_response("Meeting and non-empty comment are required.", status=400)
+
+        c = MeetingComment.objects.create(
+            meeting=meeting,
+            author=request.user,
+            comment=comment_text
+        )
         return ok_response({
-            "id": 2,
-            "meetingId": int(pk) if str(pk).isdigit() else 1,
+            "id": c.id,
+            "meetingId": c.meeting_id,
             "employeeName": request.user.username,
-            "comment": comment,
-            "commentType": request.data.get("commentType", "MANAGER"),
-            "createdAt": "2026-09-20T22:30:00Z"
+            "comment": c.comment,
+            "commentType": "MANAGER" if request.user.role == 'MANAGER' else "INTERN",
+            "createdAt": c.created_at.isoformat()
         })
 
 
@@ -5599,14 +5730,30 @@ class MeetingsActionItemCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request, pk=None, item_id=None):
-        return ok_response({"success": True})
+        from apps.performance.models import ActionItem, ActionItemStatus
+        item = ActionItem.objects.filter(id=item_id).first()
+        if not item:
+            return error_response("Action item not found", status=404)
+
+        new_status = request.data.get("status", ActionItemStatus.COMPLETED)
+        item.status = new_status
+        item.save()
+        return ok_response({"success": True, "status": item.status})
 
 
 class MeetingsPublishCompatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, pk=None):
-        return ok_response({"meetingId": pk, "status": "PUBLISHED"})
+        from apps.performance.models import SyncMeeting, MeetingStatus
+        m = SyncMeeting.objects.filter(id=pk).first()
+        if m:
+            m.status = MeetingStatus.PUBLISHED
+            m.published_at = timezone.now()
+            m.save()
+            return ok_response({"meetingId": m.id, "status": m.status})
+        return error_response("Meeting not found", status=404)
+
 
 
 # ==========================================

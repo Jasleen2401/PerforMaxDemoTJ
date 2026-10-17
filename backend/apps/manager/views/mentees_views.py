@@ -99,6 +99,8 @@ class ManagerMenteesView(APIView):
                 'joiningDate': emp.joining_date.strftime('%Y-%m-%d') if emp.joining_date else None,
                 'skills': emp.skills or [],
                 'competencies': emp.competencies or [],
+                'academicHistory': emp.academic_history or {},
+                'universityCohort': emp.university_cohort or 'MIRAI Cohort 2026',
                 'metrics': {
                     'totalGoals': total_goals,
                     'completedGoals': completed_goals,

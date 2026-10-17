@@ -23,8 +23,49 @@ class KPIMeasurementType(models.TextChoices):
     CURRENCY = 'CURRENCY', 'Currency'
     BOOLEAN = 'BOOLEAN', 'Boolean'
 
+
+class ProjectStatus(models.TextChoices):
+    PLANNING = 'PLANNING', 'Planning'
+    ACTIVE = 'ACTIVE', 'Active'
+    COMPLETED = 'COMPLETED', 'Completed'
+    ARCHIVED = 'ARCHIVED', 'Archived'
+
+
+class Project(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    description = models.TextField(blank=True, default='')
+    tech_stack = models.JSONField(default=list, blank=True)
+    target_cohort = models.CharField(max_length=100, blank=True, default='MIRAI Cohort 2026')
+    status = models.CharField(max_length=20, choices=ProjectStatus.choices, default=ProjectStatus.ACTIVE, db_index=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='owned_projects')
+    department = models.ForeignKey('organization.Department', on_delete=models.SET_NULL, null=True, blank=True, related_name='projects')
+    milestones = models.JSONField(default=list, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Project'
+        verbose_name_plural = 'Projects'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.code}) [{self.get_status_display()}]"
+
+
 class Goal(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tasks',
+        db_index=True
+    )
     employee = models.ForeignKey(
         'employees.EmployeeProfile',
         on_delete=models.CASCADE,
@@ -64,6 +105,18 @@ class Goal(models.Model):
         default=Decimal('0.00'),
         validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('100.00'))]
     )
+    expected_evidence_type = models.CharField(
+        max_length=50,
+        default='CODE_PR',
+        blank=True
+    )
+    linked_competency = models.CharField(
+        max_length=150,
+        blank=True,
+        default=''
+    )
+    is_blocked = models.BooleanField(default=False)
+    blocked_reason = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

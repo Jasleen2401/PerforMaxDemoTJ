@@ -487,7 +487,7 @@ class TechnicalCapabilityReview(models.Model):
         max_digits=4,
         decimal_places=2,
         default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('5.00'))]
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('10.00'))]
     )
     mentor_assessment = models.TextField(blank=True, default='')
     evidence_url = models.URLField(max_length=500, blank=True, default='')
@@ -506,6 +506,99 @@ class TechnicalCapabilityReview(models.Model):
         ordering = ['parameter__name']
 
     def __str__(self):
-        return f"{self.employee.full_name} - {self.parameter.name}: {self.score}/5"
+        return f"{self.employee.full_name} - {self.parameter.name}: {self.score}/10"
+
+
+# ==============================================================================
+# TM-07: RELATIONAL 1-ON-1 SYNC MEETINGS & ACTION ITEMS
+# ==============================================================================
+
+class MeetingStatus(models.TextChoices):
+    SCHEDULED = 'SCHEDULED', 'Scheduled'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    COMPLETED = 'COMPLETED', 'Completed'
+    ACTION_ITEMS_PENDING = 'ACTION_ITEMS_PENDING', 'Action Items Pending'
+    RESOLVED = 'RESOLVED', 'Resolved'
+    PUBLISHED = 'PUBLISHED', 'Published'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
+class ActionItemStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    DONE = 'DONE', 'Done'
+    COMPLETED = 'COMPLETED', 'Completed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
+class SyncMeeting(models.Model):
+    id = models.AutoField(primary_key=True)
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    employee = models.ForeignKey(
+        'employees.EmployeeProfile',
+        on_delete=models.CASCADE,
+        related_name='sync_meetings',
+        db_index=True
+    )
+    manager = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='conducted_meetings',
+        db_index=True
+    )
+    meeting_title = models.CharField(max_length=255)
+    meeting_date = models.DateField()
+    meeting_time = models.CharField(max_length=20, default='10:00')
+    discussion_points = models.TextField(blank=True, default='')
+    key_issues = models.TextField(blank=True, default='')
+    confidential_notes = models.TextField(blank=True, default='', help_text='Manager-only confidential notes visible to HR during calibration')
+    status = models.CharField(max_length=30, choices=MeetingStatus.choices, default=MeetingStatus.PUBLISHED, db_index=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_meetings')
+    published_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Sync Meeting'
+        verbose_name_plural = 'Sync Meetings'
+        ordering = ['-meeting_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.meeting_title} ({self.employee.full_name} & {self.manager.username})"
+
+
+class ActionItem(models.Model):
+    id = models.AutoField(primary_key=True)
+    meeting = models.ForeignKey(SyncMeeting, on_delete=models.CASCADE, related_name='action_items')
+    content = models.CharField(max_length=500)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='meeting_action_items')
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=ActionItemStatus.choices, default=ActionItemStatus.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Action Item'
+        verbose_name_plural = 'Action Items'
+        ordering = ['due_date', 'id']
+
+    def __str__(self):
+        return f"{self.content} [{self.status}]"
+
+
+class MeetingComment(models.Model):
+    id = models.AutoField(primary_key=True)
+    meeting = models.ForeignKey(SyncMeeting, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='meeting_comments')
+    comment = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Meeting Comment'
+        verbose_name_plural = 'Meeting Comments'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Comment by {self.author.username} on meeting #{self.meeting_id}"
 
 

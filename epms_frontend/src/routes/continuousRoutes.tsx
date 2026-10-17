@@ -6,6 +6,7 @@ import PerformanceHistoryManagerPage from "../pages/continuous/PerformanceHistor
 export const continuousRoutes = [
   { path: "/continuous-feedback", element: <FeedbackPage /> },
   { path: "/meetings", element: <MeetingPage /> },
+  { path: "/continuous/meetings", element: <MeetingPage /> },
   { path: "/performance-history/admin", element: <PerformanceHistoryAdminPage /> },
   { path: "/performance-history/manager", element: <PerformanceHistoryManagerPage /> },
 ];

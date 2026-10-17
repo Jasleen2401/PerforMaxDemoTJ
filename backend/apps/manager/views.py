@@ -18,6 +18,7 @@ from .views import (
     ManagerMenteesView,
     ManagerTasksView,
     ManagerTaskDetailView,
+    ManagerProjectsView,
     ManagerTechnicalParametersView,
     ManagerTechnicalParameterDetailView,
     ManagerTechnicalReviewsView,
@@ -28,7 +29,9 @@ from .views import (
     ManagerAppraisalSubmissionsView,
     ManagerSaveAppraisalDraftView,
     ManagerSubmitAppraisalView,
+    ManagerSelfAssessmentInspectionView,
     ManagerHistoricalReviewsView,
+    ManagerTalentRadarPPOView,
     ManagerDashboardView,
 )
 
@@ -38,6 +41,7 @@ __all__ = [
     'ManagerMenteesView',
     'ManagerTasksView',
     'ManagerTaskDetailView',
+    'ManagerProjectsView',
     'ManagerTechnicalParametersView',
     'ManagerTechnicalParameterDetailView',
     'ManagerTechnicalReviewsView',
@@ -48,6 +52,8 @@ __all__ = [
     'ManagerAppraisalSubmissionsView',
     'ManagerSaveAppraisalDraftView',
     'ManagerSubmitAppraisalView',
+    'ManagerSelfAssessmentInspectionView',
     'ManagerHistoricalReviewsView',
+    'ManagerTalentRadarPPOView',
     'ManagerDashboardView',
 ]

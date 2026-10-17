@@ -32,8 +32,38 @@ export interface MenteeItem {
   joiningDate: string | null;
   skills: string[];
   competencies: Array<{ name: string; rating: number; category?: string }>;
+  academicHistory?: {
+    university?: string;
+    degree?: string;
+    graduation_year?: string;
+    gpa?: string;
+    relevant_coursework?: string[];
+    cohort?: string;
+  };
+  universityCohort?: string;
   metrics: MenteeMetrics;
   activeAppraisal: MenteeAppraisalSummary | null;
+}
+
+export interface ProjectItem {
+  id: string;
+  title: string;
+  code: string;
+  description: string;
+  techStack: string[];
+  targetCohort: string;
+  status: string;
+  statusDisplay: string;
+  ownerName: string;
+  departmentName: string;
+  milestones: Array<{ title: string; status: string; due?: string }>;
+  startDate: string | null;
+  endDate: string | null;
+  totalTasks: number;
+  completedTasks: number;
+  blockedTasks: number;
+  completionRate: number;
+  createdAt: string;
 }
 
 export interface ManagerTaskItem {
@@ -42,8 +72,16 @@ export interface ManagerTaskItem {
   employeeName: string;
   employeeCode: string;
   employeeEmail: string;
+  projectId?: string | null;
+  projectTitle?: string;
+  projectCode?: string;
   title: string;
   description: string;
+  expectedEvidenceType?: string;
+  linkedCompetency?: string;
+  isBlocked?: boolean;
+  blockedReason?: string;
+  isOverdue?: boolean;
   dueDate: string | null;
   status: string;
   statusDisplay: string;
@@ -362,17 +400,84 @@ export const managerApi = api.injectEndpoints({
       invalidatesTags: ["Manager"],
     }),
 
-    // M-12: View Previous Reviews
-    getHistoricalReviews: builder.query<
-      HistoricalReviewItem[],
-      string | undefined
-    >({
-      query: (employeeId) => ({
-        url: "manager/historical-reviews/",
-        params: employeeId ? { employee_id: employeeId } : {},
+    // TM-02: Multi-Project Management
+    getProjects: builder.query<ProjectItem[], { cohort?: string; status?: string } | void>({
+      query: (params) => ({
+        url: "manager/projects/",
+        params: params || {},
       }),
       transformResponse: (res: any) => res?.data || [],
       providesTags: ["Manager"],
+    }),
+
+    createProject: builder.mutation<any, Partial<ProjectItem>>({
+      query: (body) => ({
+        url: "manager/projects/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Manager"],
+    }),
+
+    updateProject: builder.mutation<any, { id: string; status?: string; milestones?: any }>({
+      query: ({ id, ...body }) => ({
+        url: `manager/projects/${id}/`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Manager"],
+    }),
+
+    // TM-09: Goal Progress & KPI Achievement Auditing
+    verifyGoal: builder.mutation<
+      any,
+      { goalId: string; is_validated: boolean; verified_percentage?: number; discrepancy_note?: string }
+    >({
+      query: ({ goalId, ...body }) => ({
+        url: `goals/${goalId}/verify/`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Manager", "Goal"],
+    }),
+
+    // TM-10: Pre-Appraisal Self-Assessment Inspection
+    getPreAppraisalInspection: builder.query<any, string>({
+      query: (appraisalId) => ({
+        url: `manager/appraisals/${appraisalId}/self/`,
+      }),
+      transformResponse: (res: any) => res?.data,
+      providesTags: ["Manager"],
+    }),
+
+    // TM-12: Talent Radar & PPO Verdict
+    getTalentRadar: builder.query<any, string | undefined>({
+      query: (employeeId) => ({
+        url: "manager/talent-radar/",
+        params: employeeId ? { employee_id: employeeId } : {},
+      }),
+      transformResponse: (res: any) => res?.data,
+      providesTags: ["Manager"],
+    }),
+
+    submitPpoVerdict: builder.mutation<
+      any,
+      {
+        employee_id: string;
+        verdict: "RECOMMEND_PPO" | "EXTEND_INTERNSHIP" | "STANDARD_COMPLETION";
+        recommended_track?: string;
+        salary_tier?: string;
+        tech_stack?: string;
+        rationale: string;
+        coaching_extension_days?: number;
+      }
+    >({
+      query: (body) => ({
+        url: "manager/verdict/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Manager"],
     }),
   }),
 });
@@ -382,6 +487,13 @@ export const {
   useGetManagerTasksQuery,
   useAssignTaskMutation,
   useUpdateTaskStatusMutation,
+  useGetProjectsQuery,
+  useCreateProjectMutation,
+  useUpdateProjectMutation,
+  useVerifyGoalMutation,
+  useGetPreAppraisalInspectionQuery,
+  useGetTalentRadarQuery,
+  useSubmitPpoVerdictMutation,
   useGetTechnicalParametersQuery,
   useCreateTechnicalParameterMutation,
   useGetTechnicalReviewsQuery,

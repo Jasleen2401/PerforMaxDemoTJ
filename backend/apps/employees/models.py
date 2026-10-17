@@ -45,6 +45,8 @@ class EmployeeProfile(models.Model):
     skills = models.JSONField(default=list, blank=True)
     experience = models.JSONField(default=list, blank=True)
     competencies = models.JSONField(default=list, blank=True)
+    academic_history = models.JSONField(default=dict, blank=True)
+    university_cohort = models.CharField(max_length=150, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

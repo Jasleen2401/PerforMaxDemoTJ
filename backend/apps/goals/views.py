@@ -230,6 +230,63 @@ class GoalViewSet(viewsets.ModelViewSet):
             'data': nodes
         })
 
+    @action(detail=True, methods=['patch', 'post'], url_path='verify')
+    def verify_goal(self, request, pk=None):
+        """
+        TM-09: Goal Progress & KPI Achievement Auditing
+        Validate or dispute reported milestone progress.
+        If validated, confirms achievement ratio. If disputed, enters discrepancy note and reverts.
+        """
+        goal = self.get_object()
+        is_validated = request.data.get('is_validated', True)
+        discrepancy_note = request.data.get('discrepancy_note', '').strip()
+        verified_pct = request.data.get('verified_percentage')
+
+        if is_validated:
+            if verified_pct is not None:
+                goal.completion_percentage = Decimal(str(verified_pct))
+            goal.is_blocked = False
+            goal.save()
+            GoalProgress.objects.create(
+                goal=goal,
+                updated_by=request.user,
+                progress_percentage=goal.completion_percentage,
+                comment=f"[Mentor Audit - Validated] KPI milestone confirmed. {discrepancy_note}".strip()
+            )
+            return Response({
+                'code': 200,
+                'message': f'Goal "{goal.title}" progress verified and audited.',
+                'data': {
+                    'id': str(goal.id),
+                    'status': goal.status,
+                    'completionPercentage': float(goal.completion_percentage),
+                    'isValidated': True
+                }
+            })
+        else:
+            previous_pct = goal.completion_percentage
+            revert_pct = Decimal(str(request.data.get('revert_percentage', '50.00')))
+            goal.completion_percentage = revert_pct
+            goal.save()
+            GoalProgress.objects.create(
+                goal=goal,
+                updated_by=request.user,
+                progress_percentage=revert_pct,
+                comment=f"[Mentor Audit - Disputed] Progress reverted from {previous_pct}% to {revert_pct}%. Discrepancy Note: {discrepancy_note}".strip()
+            )
+            return Response({
+                'code': 200,
+                'message': f'Goal "{goal.title}" progress disputed. Reverted to {revert_pct}%.',
+                'data': {
+                    'id': str(goal.id),
+                    'status': goal.status,
+                    'completionPercentage': float(goal.completion_percentage),
+                    'isValidated': False,
+                    'discrepancyNote': discrepancy_note
+                }
+            })
+
+
 
 
 

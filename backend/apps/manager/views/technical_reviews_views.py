@@ -92,9 +92,15 @@ class ManagerTechnicalReviewsView(APIView):
         })
 
     def post(self, request):
-        """Save or submit technical capability review for an intern."""
+        """
+        TM-05: Save Draft vs. Finalize Ratings
+        - Save Draft: stores to DB, allows later edits.
+        - Finalize (LOCKED_FOR_APPRAISAL): Validates all 8 criteria scored (1.0-10.0) with evidence citations,
+          computes 60% Weighted Technical Score, locks matrix.
+        - If any score < 6.0: prompts IDP coaching pipeline recommendation.
+        """
         emp_id = request.data.get('employee_id') or request.data.get('employeeId')
-        review_status = request.data.get('status', 'DRAFT').upper()
+        raw_status = request.data.get('status', 'DRAFT').upper()
         reviews_list = request.data.get('reviews', [])
         if not reviews_list and ('parameter_id' in request.data or 'parameterId' in request.data):
             reviews_list = [request.data]
@@ -123,10 +129,52 @@ class ManagerTechnicalReviewsView(APIView):
 
         active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
 
+        is_finalizing = raw_status in ['FINALIZE', 'FINALIZED', 'LOCKED_FOR_APPRAISAL', 'SUBMITTED']
+        stored_status = 'LOCKED_FOR_APPRAISAL' if is_finalizing else 'SAVED_DRAFT'
+
+        all_params = list(TechnicalCapabilityParameter.objects.filter(is_active=True))
+        all_param_ids = {str(p.id) for p in all_params}
+
+        # Validate mandatory evidence/justification and numerical range (1.0 - 10.0)
+        submitted_param_ids = set()
+        low_score_detected = False
+        total_weighted_points = Decimal('0.00')
+        total_weights = Decimal('0.00')
+
+        for item in reviews_list:
+            pid = str(item.get('parameter_id') or item.get('parameterId') or '')
+            score_val = float(item.get('score') or 0.0)
+            assessment = (item.get('mentor_assessment') or item.get('mentorAssessment') or item.get('notes') or '').strip()
+            evidence_url = (item.get('evidence_url') or item.get('evidenceUrl') or '').strip()
+
+            if is_finalizing and score_val <= 0:
+                return Response({
+                    'code': 400,
+                    'message': f'System blocks finalization: All parameters must be assigned a score between 1.0 and 10.0.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if score_val > 0 and not assessment and not evidence_url:
+                return Response({
+                    'code': 400,
+                    'message': 'Security & Integrity Rule: Numerical scores cannot be entered without at least one linked evidence reference or justification comment.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if score_val < 6.0 and score_val > 0:
+                low_score_detected = True
+
+            submitted_param_ids.add(pid)
+
+        if is_finalizing and len(all_param_ids) > 0 and not all_param_ids.issubset(submitted_param_ids):
+            missing_count = len(all_param_ids - submitted_param_ids)
+            return Response({
+                'code': 400,
+                'message': f'System blocks finalization: {missing_count} mandatory criteria lack rating. All 8 core competencies must be scored before locking matrix.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         saved_count = 0
         for item in reviews_list:
             param_id = item.get('parameter_id') or item.get('parameterId')
-            score = item.get('score', 0)
+            score = Decimal(str(min(10.0, max(0.0, float(item.get('score', 0))))))
             assessment = item.get('mentor_assessment') or item.get('mentorAssessment') or item.get('notes', '')
             evidence_url = item.get('evidence_url') or item.get('evidenceUrl', '')
 
@@ -140,21 +188,31 @@ class ManagerTechnicalReviewsView(APIView):
                 cycle=active_cycle,
                 defaults={
                     'reviewer': request.user,
-                    'score': Decimal(str(score)),
+                    'score': score,
                     'mentor_assessment': assessment,
                     'evidence_url': evidence_url,
-                    'status': review_status,
+                    'status': stored_status,
                 }
             )
             saved_count += 1
+            weight = param.weight or Decimal('12.50')
+            total_weighted_points += (score / Decimal('10.00')) * weight
+            total_weights += weight
 
-        action_word = "submitted" if review_status == 'SUBMITTED' else "saved as draft"
+        # 60% Weighted Technical Score calculation
+        weighted_60_tech_score = round(float(total_weighted_points * Decimal('0.60')), 2) if total_weights > 0 else 0.0
+
+        action_word = "finalized and locked for appraisal" if is_finalizing else "saved as draft"
         return Response({
             'code': 200,
-            'message': f'Technical capability assessment successfully {action_word} for {profile.full_name} ({saved_count} parameters).',
+            'message': f'Technical capability assessment successfully {action_word} for {profile.full_name} ({saved_count} criteria scored).',
             'data': {
                 'employeeId': str(profile.id),
-                'status': review_status,
-                'savedParametersCount': saved_count
+                'status': stored_status,
+                'savedParametersCount': saved_count,
+                'weighted60Score': weighted_60_tech_score,
+                'suggestIdpPipeline': low_score_detected,
+                'idpPrompt': 'Score < 6.0 detected on core competency. Initiate Support & Coaching Pipeline (IDP)?' if low_score_detected else None
             }
         })
+

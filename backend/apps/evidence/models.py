@@ -4,9 +4,13 @@ from django.conf import settings
 
 class EvidenceReviewStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending Review'
+    SUBMITTED = 'SUBMITTED', 'Submitted'
     APPROVED = 'APPROVED', 'Approved'
+    VERIFIED = 'VERIFIED', 'Verified'
     REJECTED = 'REJECTED', 'Rejected'
+    CHANGES_REQUESTED = 'CHANGES_REQUESTED', 'Changes Requested'
     REVISION_REQUESTED = 'REVISION_REQUESTED', 'Revision Requested'
+    INVALID_ARTIFACT = 'INVALID_ARTIFACT', 'Invalid Artifact'
 
 class EvidenceSubmission(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -26,6 +30,8 @@ class EvidenceSubmission(models.Model):
     description = models.TextField()
     file_attachment = models.FileField(upload_to='evidence/', null=True, blank=True)
     external_url = models.URLField(max_length=500, null=True, blank=True)
+    version = models.IntegerField(default=1)
+    is_locked_for_appraisal = models.BooleanField(default=False)
     review_status = models.CharField(
         max_length=20,
         choices=EvidenceReviewStatus.choices,

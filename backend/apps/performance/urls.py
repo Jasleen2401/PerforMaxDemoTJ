@@ -15,6 +15,11 @@ router.register(r'appraisals', AppraisalViewSet, basename='appraisal')
 router.register(r'pips', PerformanceImprovementPlanViewSet, basename='pip')
 router.register(r'rewards', RecognitionRewardViewSet, basename='recognitionreward')
 
+from apps.manager.views import ManagerTalentRadarPPOView, ManagerTechnicalReviewsView
+
 urlpatterns = [
+    path('verdict/', ManagerTalentRadarPPOView.as_view(), name='performance_verdict'),
+    path('ratings/', ManagerTechnicalReviewsView.as_view(), name='performance_ratings'),
     path('', include(router.urls)),
 ]
+

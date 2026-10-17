@@ -7,16 +7,38 @@ import {
   useSaveManagerEvaluationAnswersMutation,
   useSubmitManagerEvaluationMutation,
 } from '../../features/appraisal/appraisalApi';
+import { useGetPreAppraisalInspectionQuery } from '../../features/manager/managerApi';
 import { useDownloadReportMutation } from '../../features/report/reportApi';
-import { UserCheck, ChevronLeft, Target, CheckCircle2, Download, ShieldAlert } from 'lucide-react';
+import { 
+  UserCheck, 
+  ChevronLeft, 
+  Target, 
+  CheckCircle2, 
+  Download, 
+  ShieldAlert, 
+  FileCheck, 
+  Lock, 
+  Sparkles, 
+  AlertTriangle,
+  FolderOpen,
+  BookOpen
+} from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
+// Standard 1-5 scale and 1-10 MIRAI Rubric Anchor scale
 const RATING_SCALE = [
   { v: 1, label: 'Unsatisfactory', color: '#791F1F' },
   { v: 2, label: 'Needs improvement', color: '#633806' },
   { v: 3, label: 'Meet requirement', color: '#444441' },
   { v: 4, label: 'Good', color: '#27500A' },
   { v: 5, label: 'Outstanding',    color: '#0C447C' },
+];
+
+const RUBRIC_ANCHORS = [
+  { range: '1.0 - 3.0', label: 'Unsatisfactory', desc: 'Frequent regressions, missing deliverables, lacks architecture adherence', color: '#991B1B', bg: '#FEF2F2' },
+  { range: '4.0 - 6.0', label: 'Progressing', desc: 'Requires mentor supervision, meets basic specs with revisions needed', color: '#9A3412', bg: '#FFF7ED' },
+  { range: '7.0 - 8.0', label: 'Proficient', desc: 'Independent delivery, clean PRs, robust test coverage & documentation', color: '#166534', bg: '#F0FDF4' },
+  { range: '9.0 - 10.0', label: 'Outstanding', desc: 'Exemplary architectural depth, proactive blocker resolution, mentors peers', color: '#1E40AF', bg: '#EFF6FF' },
 ];
 
 const inputStyle: React.CSSProperties = {
@@ -26,7 +48,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 const RatingButton: React.FC<{ value: number; selected: boolean; disabled: boolean; onClick: () => void }> = ({ value, selected, disabled, onClick }) => {
-  const scale = RATING_SCALE.find(s => s.v === value)!;
+  const scale = RATING_SCALE.find(s => s.v === value) || { label: `Score ${value}`, color: '#1A56DB' };
   return (
     <button type="button" disabled={disabled} onClick={onClick} title={scale.label}
       style={{
@@ -50,6 +72,8 @@ const ManagerEvaluation = () => {
   const { user, isHR, isAdmin } = useAuth();
 
   const { data: formData, isLoading } = useGetManagerEvaluationFormQuery(id || '', { skip: !id });
+  const { data: inspectionData, isLoading: isInspectionLoading } = useGetPreAppraisalInspectionQuery(id || '', { skip: !id });
+  const [showSideBySide, setShowSideBySide] = useState(true);
   const [saveAnswers, { isLoading: isSaving }] = useSaveManagerEvaluationAnswersMutation();
   const [saveManagerDraft, { isLoading: isDrafting }] = useSaveManagerDraftMutation();
   const [submitEvaluation, { isLoading: isSubmitting }] = useSubmitManagerEvaluationMutation();
@@ -227,12 +251,144 @@ const ManagerEvaluation = () => {
         </div>
       </div>
 
+      {/* Confidentiality Gate & 60% Technical Weight Authority Banner (TM-11) */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md border border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 shrink-0">
+            <Lock size={16} />
+          </div>
+          <div>
+            <div className="text-xs font-bold flex items-center gap-2">
+              <span>Confidentiality Gate Enforced (TM-11)</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">Private Evaluation</span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              Manager evaluation package and private remarks remain strictly hidden from intern until HR publishes the calibrated scorecard.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-mono font-bold bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-indigo-300 shrink-0">
+          <span>60% Tech Authority / 40% HR Weight</span>
+        </div>
+      </div>
+
       {!formData.isSelfSubmitted && (
         <div style={{ background: '#F0F5FF', border: '0.5px solid #C8D8FA', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#1E40AF', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3B82F6', flexShrink: 0 }} />
           <span>Employee self-assessment is currently in progress. As the assigned manager, you can evaluate criteria, save draft notes, or submit your manager evaluation at any time.</span>
         </div>
       )}
+
+      {/* TM-10: Intern Self-Assessment & Verified Evidence Audit Side-by-Side Drawer */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="flex items-center justify-between p-4 bg-slate-50/70 border-b border-slate-200">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <FileCheck size={15} />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900">Pre-Appraisal Audit & Side-by-Side Review (TM-10)</h3>
+              <p className="text-[11px] text-slate-500">Cross-reference verified PRs, code artifacts, and intern self-reflection before scoring.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSideBySide(!showSideBySide)}
+            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-all cursor-pointer"
+          >
+            {showSideBySide ? 'Collapse Audit View ▲' : 'Expand Audit View ▼'}
+          </button>
+        </div>
+
+        {showSideBySide && (
+          <div className="p-4 bg-white grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* 1. Intern Self-Reflection (Read-Only) */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                <BookOpen size={14} className="text-indigo-600" />
+                <span>Intern Self-Reflection</span>
+                <span className="text-[10px] font-normal text-slate-400">(Read-Only)</span>
+              </div>
+              <div className="text-xs text-slate-600 space-y-2">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Self Summary:</span>
+                  <p className="italic text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.summary || 'No written summary submitted yet.'}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Perceived Strengths:</span>
+                  <p className="text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.strengths || 'None specified'}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Reported Challenges:</span>
+                  <p className="text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.challenges || 'None specified'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Verified Deliverables & Evidence on Record */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                <FolderOpen size={14} className="text-emerald-600" />
+                <span>Verified Deliverables on Record</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                  {inspectionData?.verifiedEvidence?.length || 0} Verified
+                </span>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {inspectionData?.verifiedEvidence?.length ? (
+                  inspectionData.verifiedEvidence.map((ev: any) => (
+                    <div key={ev.id} className="p-2 rounded-lg bg-white border border-slate-200 text-xs">
+                      <div className="font-semibold text-slate-800 truncate">{ev.title}</div>
+                      <div className="text-[11px] text-slate-500 truncate">Task: {ev.goalTitle}</div>
+                      {ev.externalUrl && (
+                        <a
+                          href={ev.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-indigo-600 hover:underline flex items-center gap-1 mt-1 font-semibold"
+                        >
+                          View External PR / Artifact ↗
+                        </a>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No verified deliverables linked to appraisal package.</p>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Perception Gaps & Cohort Context */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                <Sparkles size={14} className="text-amber-600" />
+                <span>Cohort & Divergence Audit</span>
+              </div>
+              <div className="text-xs text-slate-600 space-y-2">
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Academic Cohort:</div>
+                  <div className="font-semibold text-slate-800 mt-0.5">{inspectionData?.employee?.cohort || 'MIRAI Engineering Cohort'}</div>
+                  <div className="text-[11px] text-slate-500">{inspectionData?.employee?.designation || 'Software Engineering Intern'}</div>
+                </div>
+                {inspectionData?.perceptionGaps?.length ? (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">
+                      <AlertTriangle size={11} /> Perception Gaps Detected:
+                    </span>
+                    {inspectionData.perceptionGaps.map((gap: any, idx: number) => (
+                      <div key={idx} className="p-1.5 rounded-md bg-amber-100/60 text-amber-900 text-[11px]">
+                        <strong>{gap.criterion}:</strong> Self: {gap.internRating} vs Mgr: {gap.managerRating} (Δ {gap.divergence})
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 italic">No critical perception gaps (&gt;3.0 score delta) detected.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Progress bar */}
       <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '12px 18px' }}>
@@ -269,15 +425,29 @@ const ManagerEvaluation = () => {
         </div>
       </div>
 
-      {/* Rating scale reference */}
-      <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '12px 18px' }}>
-        <p style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Rating Scale</p>
-        <div className="flex flex-wrap gap-2">
-          {RATING_SCALE.map(({ v, label, color }) => (
-            <div key={v} className="flex items-center gap-2"
-              style={{ background: '#F5F6F8', border: '0.5px solid #E0E2E8', borderRadius: 6, padding: '4px 10px' }}>
-              <div style={{ width: 20, height: 20, borderRadius: 4, background: color, color: '#FFFFFF', fontSize: 11, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{v}</div>
-              <span style={{ fontSize: 11, color: '#5A6070' }}>{label}</span>
+      {/* Anchor Rubrics Reference (TM-05 / TM-11) */}
+      <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '14px 18px' }}>
+        <div className="flex items-center justify-between mb-2">
+          <p style={{ fontSize: 10, fontWeight: 600, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Core MIRAI Anchor Rubrics (1.0 – 10.0 Evaluation Scale)
+          </p>
+          <span className="text-[11px] font-semibold text-indigo-600">60% Tech Capability Authority</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {RUBRIC_ANCHORS.map((anchor) => (
+            <div
+              key={anchor.range}
+              style={{ background: anchor.bg, border: `1px solid ${anchor.color}33`, borderRadius: 8, padding: '8px 10px' }}
+            >
+              <div className="flex items-center justify-between">
+                <span style={{ fontSize: 11, fontWeight: 700, color: anchor.color }}>{anchor.label}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: anchor.color, background: '#FFFFFF', padding: '1px 5px', borderRadius: 4 }}>
+                  {anchor.range}
+                </span>
+              </div>
+              <p style={{ fontSize: 10, color: anchor.color, marginTop: 4, lineHeight: '1.3' }}>
+                {anchor.desc}
+              </p>
             </div>
           ))}
         </div>
@@ -331,6 +501,14 @@ const ManagerEvaluation = () => {
                             <span style={{ fontSize: 10, color: '#9EA3B0', fontWeight: 500 }}>Employee rated: </span>
                             <span style={{ fontSize: 10, color: '#1A56DB', fontWeight: 500, marginRight: 6 }}>{q.employeeRatingValue || 'N/A'}</span>
                             {q.employeeComment && <span style={{ fontSize: 10, color: '#5A6070', fontStyle: 'italic' }}>"{q.employeeComment}"</span>}
+                          </div>
+                        )}
+
+                        {/* Perception Gap Notice (TM-10) */}
+                        {formData.isSelfSubmitted && q.employeeRatingValue && selected > 0 && Math.abs(selected - q.employeeRatingValue) >= 3 && (
+                          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#92400E', fontSize: 11 }}>
+                            <AlertTriangle size={13} style={{ color: '#D97706', flexShrink: 0 }} />
+                            <span><strong>Perception Gap (TM-10):</strong> Divergence of {Math.abs(selected - q.employeeRatingValue)} points from intern self-score. Please provide explanatory remarks.</span>
                           </div>
                         )}
 

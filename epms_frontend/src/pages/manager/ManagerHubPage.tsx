@@ -39,8 +39,21 @@ import {
   useGetEmployeeFeedbacksQuery,
   useCommentOnEmployeeFeedbackMutation,
   useGetHistoricalReviewsQuery,
+  useGetProjectsQuery,
 } from '../../features/manager/managerApi';
-import type { MenteeItem } from '../../features/manager/managerApi';
+import type { MenteeItem, ProjectItem } from '../../features/manager/managerApi';
+import { MenteeProfileDrawer } from './MenteeProfileDrawer';
+import { ProjectManagementSection } from './ProjectManagementSection';
+import { GoalAuditingSection } from './GoalAuditingSection';
+import { TalentRadarSection } from './TalentRadarSection';
+import { LearningTrackSection } from './LearningTrackSection';
+import { 
+  FolderGit2, 
+  BookOpen, 
+  AlertTriangle, 
+  GraduationCap, 
+  CheckCircle2 
+} from 'lucide-react';
 
 const isImageFile = (fileNameOrUrl?: string | null): boolean => {
   if (!fileNameOrUrl) return false;
@@ -63,7 +76,10 @@ export const ManagerHubPage: React.FC = () => {
 
   const getTabFromLocation = (): string => {
     if (location.pathname === '/manager/technical-capabilities') return 'capabilities';
-    if (location.pathname === '/manager/tasks') return 'tasks';
+    if (location.pathname === '/manager/tasks') {
+      if (searchParams.get('view') === 'projects') return 'projects';
+      return 'tasks';
+    }
     if (location.pathname === '/manager/evidence') return 'evidence';
     if (location.pathname === '/manager/mentees') return 'mentees';
     return searchParams.get('tab') || 'mentees';
@@ -94,6 +110,7 @@ export const ManagerHubPage: React.FC = () => {
 
   // Selected Mentee for detail or action
   const [selectedMentee, setSelectedMentee] = useState<MenteeItem | null>(null);
+  const [selectedMenteeForDrawer, setSelectedMenteeForDrawer] = useState<MenteeItem | null>(null);
 
   // Modals state
   const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
@@ -103,18 +120,21 @@ export const ManagerHubPage: React.FC = () => {
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
 
-  // Assign Task Form State
+  // Assign Task Form State (TM-03: requires parent project & expected evidence type)
   const [taskForm, setTaskForm] = useState({
     employee_id: '',
+    project_id: '',
     title: '',
     description: '',
     priority: 'MEDIUM',
+    expected_evidence_type: 'CODE_PR',
+    linked_competency: 'Problem Solving',
     due_date: '',
     target_value: 100,
     unit: '%',
   });
 
-  // Give Feedback Form State
+  // Give Feedback Form State (TM-08)
   const [feedbackForm, setFeedbackForm] = useState({
     employee_id: '',
     feedback_type: 'POSITIVE',
@@ -131,9 +151,9 @@ export const ManagerHubPage: React.FC = () => {
     weight: 20.0,
   });
 
-  // Evidence Review Form State
+  // Evidence Review Form State (TM-04: Three-Way Decision & Lock)
   const [evidenceDecision, setEvidenceDecision] = useState({
-    status: 'APPROVED' as 'APPROVED' | 'REJECTED' | 'REVISION_REQUESTED',
+    status: 'VERIFIED' as 'VERIFIED' | 'CHANGES_REQUESTED' | 'REJECTED' | 'INVALID_ARTIFACT' | 'APPROVED' | 'REVISION_REQUESTED',
     remarks: '',
   });
 
@@ -144,6 +164,7 @@ export const ManagerHubPage: React.FC = () => {
   });
 
   const { data: tasks = [], isLoading: tasksLoading, refetch: refetchTasks } = useGetManagerTasksQuery();
+  const { data: projects = [], refetch: refetchProjects } = useGetProjectsQuery();
   const { refetch: refetchParams } = useGetTechnicalParametersQuery();
   const { data: evidenceList = [], refetch: refetchEvidence } = useGetManagerEvidenceQuery();
   const { data: employeeFeedbacks = [], refetch: refetchFeedbacks } = useGetEmployeeFeedbacksQuery(undefined);
@@ -178,6 +199,8 @@ export const ManagerHubPage: React.FC = () => {
       navigate('/manager/evidence');
     } else if (tabKey === 'mentees') {
       navigate('/manager/mentees');
+    } else if (tabKey === 'projects') {
+      navigate('/manager/tasks?view=projects');
     } else {
       navigate(`/manager/hub?tab=${tabKey}`);
     }
@@ -205,15 +228,22 @@ export const ManagerHubPage: React.FC = () => {
       toast.warning('Please select an intern and enter a task title.');
       return;
     }
+    const effectiveProjectId = taskForm.project_id || (projects.length > 0 ? projects[0].id : undefined);
     try {
-      await assignTask(taskForm).unwrap();
-      toast.success('Task successfully assigned to intern!');
+      await assignTask({
+        ...taskForm,
+        project_id: effectiveProjectId,
+      }).unwrap();
+      toast.success('Sprint deliverable linked to project and assigned to intern!');
       setIsAssignTaskOpen(false);
       setTaskForm({
         employee_id: '',
+        project_id: '',
         title: '',
         description: '',
         priority: 'MEDIUM',
+        expected_evidence_type: 'CODE_PR',
+        linked_competency: 'Problem Solving',
         due_date: '',
         target_value: 100,
         unit: '%',
@@ -270,8 +300,19 @@ export const ManagerHubPage: React.FC = () => {
     }
   };
 
-  const handleSaveTechReviews = async (reviewStatus: 'DRAFT' | 'SUBMITTED') => {
+  const handleSaveTechReviews = async (reviewStatus: 'DRAFT' | 'SUBMITTED' | 'FINALIZED') => {
     if (!activeTechMenteeId) return;
+
+    if (reviewStatus === 'FINALIZED' || reviewStatus === 'SUBMITTED') {
+      const allScored = techDossier?.parameters?.every(
+        (p) => techScores[p.parameterId] && techScores[p.parameterId].score >= 1.0
+      );
+      if (!allScored) {
+        toast.warning('All 8 Core Competencies must be rated before finalization.');
+        return;
+      }
+    }
+
     const reviewsPayload = Object.entries(techScores).map(([paramId, data]) => ({
       parameter_id: paramId,
       score: data.score,
@@ -282,18 +323,18 @@ export const ManagerHubPage: React.FC = () => {
     try {
       await saveTechnicalReviews({
         employee_id: activeTechMenteeId,
-        status: reviewStatus,
+        status: reviewStatus === 'FINALIZED' ? 'FINALIZED' : reviewStatus,
         reviews: reviewsPayload,
       }).unwrap();
       toast.success(
-        reviewStatus === 'SUBMITTED'
-          ? 'Technical capability review finalized and submitted!'
+        reviewStatus === 'FINALIZED' || reviewStatus === 'SUBMITTED'
+          ? '60% Weighted Technical Capability Package finalized and locked!'
           : 'Technical evaluation draft saved!'
       );
       refetchTechReviews();
       refetchMentees();
     } catch (err: any) {
-      toast.error(err?.data?.message || 'Failed to save technical review.');
+      toast.error(err?.data?.message || err?.data?.error || 'Failed to save technical review.');
     }
   };
 
@@ -308,9 +349,10 @@ export const ManagerHubPage: React.FC = () => {
       toast.success(`Evidence marked as ${evidenceDecision.status.toLowerCase().replace('_', ' ')}.`);
       setIsReviewEvidenceOpen(false);
       setSelectedEvidenceId(null);
-      setEvidenceDecision({ status: 'APPROVED', remarks: '' });
+      setEvidenceDecision({ status: 'VERIFIED', remarks: '' });
       refetchEvidence();
       refetchMentees();
+      refetchTasks();
     } catch (err: any) {
       toast.error(err?.data?.message || 'Failed to submit evidence decision.');
     }
@@ -509,15 +551,19 @@ export const ManagerHubPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation Tabs (M-01 to M-12) */}
+      {/* Navigation Tabs (TM-01 to TM-12) */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200">
         {[
-          { key: 'mentees', label: 'Assigned Students (M-01)', icon: Users },
-          { key: 'tasks', label: 'Tasks & Goals (M-02, M-03)', icon: Target },
-          { key: 'capabilities', label: 'Technical Capabilities (M-04, M-05)', icon: Sparkles },
-          { key: 'evidence', label: 'Evidence Review (M-06)', icon: FolderOpen },
-          { key: 'feedback', label: 'Feedback & Reflections (M-07, M-08)', icon: MessageSquare },
-          { key: 'history', label: 'Previous Reviews (M-12)', icon: Calendar },
+          { key: 'mentees', label: 'Assigned Mentees (TM-01)', icon: Users },
+          { key: 'projects', label: 'Projects & Sprints (TM-02)', icon: FolderGit2 },
+          { key: 'tasks', label: 'Tasks & Backlog (TM-03)', icon: Target },
+          { key: 'evidence', label: 'Evidence Audit (TM-04)', icon: FolderOpen },
+          { key: 'capabilities', label: 'Technical Capabilities (TM-05)', icon: Sparkles },
+          { key: 'learning', label: 'Learning Tracks (TM-06)', icon: BookOpen },
+          { key: 'goals', label: 'Goal Auditing (TM-09)', icon: CheckCircle2 },
+          { key: 'radar', label: 'Talent Radar & PPO (TM-12)', icon: Award },
+          { key: 'feedback', label: 'Continuous Feedback (TM-08)', icon: MessageSquare },
+          { key: 'history', label: 'Review Archive', icon: Calendar },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -615,17 +661,28 @@ export const ManagerHubPage: React.FC = () => {
           {menteesLoading ? (
             <div className="py-20 text-center text-xs text-slate-400">Loading assigned students...</div>
           ) : filteredMentees.length === 0 ? (
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
-              <Users size={36} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No Students Found</h3>
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
+              <Users size={38} className="mx-auto text-slate-300 mb-3" />
+              <h3 className="text-base font-bold text-slate-800">
+                {mentees.length === 0 ? 'No Mentees Assigned (TM-01)' : 'No Matching Students'}
+              </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                {appraisalFilter === 'PENDING'
-                  ? 'No students currently have pending appraisals awaiting scoring.'
-                  : 'No students match your current search filters or are assigned under your manager portfolio.'}
+                {mentees.length === 0
+                  ? 'Zero mock governance enforced: You currently have 0 mentees bound to your relational database supervisory domain. Unassigned interns appear in the Unassigned Pool.'
+                  : 'No students match your current search or status filters.'}
               </p>
-              {appraisalFilter !== 'ALL' && (
+              {mentees.length === 0 ? (
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <a
+                    href="mailto:hr@mirai.org?subject=Mentee%20Pod%20Assignment%20Request"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-md shadow-indigo-100 cursor-pointer"
+                  >
+                    Contact HR Partner for Pod Assignment
+                  </a>
+                </div>
+              ) : (
                 <button
-                  onClick={() => setAppraisalFilter('ALL')}
+                  onClick={() => { setAppraisalFilter('ALL'); setMenteeSearch(''); }}
                   className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 cursor-pointer"
                 >
                   Show All Students
@@ -638,40 +695,55 @@ export const ManagerHubPage: React.FC = () => {
               {pagedMentees.map((mentee) => (
                 <div
                   key={mentee.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 transition-all p-5 shadow-xs flex flex-col justify-between"
+                  className="bg-white rounded-3xl border border-slate-200/90 hover:border-indigo-300 transition-all p-5 shadow-xs flex flex-col justify-between group"
                 >
                   <div>
-                    {/* Top Row: Avatar & Status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-sm shrink-0">
-                          {mentee.firstName?.[0]}
-                          {mentee.lastName?.[0]}
+                    {/* Top Row: Avatar & Status & Profile Drawer Trigger */}
+                    <div 
+                      onClick={() => setSelectedMenteeForDrawer(mentee)}
+                      className="cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-sm shrink-0 group-hover:scale-105 transition-transform">
+                            {mentee.firstName?.[0]}
+                            {mentee.lastName?.[0]}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">{mentee.fullName}</h3>
+                            </div>
+                            <div className="text-slate-400 text-[11px] font-mono">{mentee.employeeCode}</div>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-bold text-sm text-slate-900">{mentee.fullName}</h3>
-                          <div className="text-slate-400 text-[11px] font-mono">{mentee.employeeCode}</div>
-                        </div>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            mentee.employmentStatus === 'ACTIVE'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {mentee.employmentStatus}
+                        </span>
                       </div>
 
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          mentee.employmentStatus === 'ACTIVE'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {mentee.employmentStatus}
-                      </span>
-                    </div>
+                      {/* University Cohort Pill (TM-01) */}
+                      {mentee.universityCohort && (
+                        <div className="mt-2.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200">
+                          <GraduationCap size={12} className="text-indigo-600" />
+                          <span>{mentee.universityCohort}</span>
+                        </div>
+                      )}
 
-                    {/* Department & Email */}
-                    <div className="mt-3 text-xs text-slate-500 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Layers size={13} className="text-slate-400" />
-                        <span>{mentee.designation} • {mentee.department}</span>
+                      {/* Department & Email */}
+                      <div className="mt-2 text-xs text-slate-500 space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Layers size={13} className="text-slate-400" />
+                          <span>{mentee.designation} • {mentee.department}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">{mentee.email}</div>
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate">{mentee.email}</div>
                     </div>
 
                     {/* Performance Telemetry Mini-Strip */}
@@ -685,7 +757,7 @@ export const ManagerHubPage: React.FC = () => {
                       <div className="bg-slate-50 rounded-xl p-2">
                         <div className="text-[10px] font-medium text-slate-400">Tech Score</div>
                         <div className="text-xs font-bold text-indigo-700 mt-0.5">
-                          {mentee.metrics.technicalCapabilityAvg ? `${mentee.metrics.technicalCapabilityAvg}/5` : 'N/A'}
+                          {mentee.metrics.technicalCapabilityAvg ? `${mentee.metrics.technicalCapabilityAvg}/10` : 'N/A'}
                         </div>
                       </div>
                       <div className="bg-slate-50 rounded-xl p-2">
@@ -717,24 +789,21 @@ export const ManagerHubPage: React.FC = () => {
                   </div>
 
                   {/* Quick Action Matrix */}
-                  <div className="mt-5 pt-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
+                  <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
                     <button
-                      onClick={() => {
-                        setTaskForm((prev) => ({ ...prev, employee_id: mentee.id }));
-                        setIsAssignTaskOpen(true);
-                      }}
-                      className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all text-center"
+                      onClick={() => setSelectedMenteeForDrawer(mentee)}
+                      className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all text-center cursor-pointer"
                     >
-                      Assign Task
+                      Profile (TM-01)
                     </button>
                     <button
                       onClick={() => {
                         setTechReviewMenteeId(mentee.id);
                         handleTabChange('capabilities');
                       }}
-                      className="px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition-all text-center"
+                      className="px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition-all text-center cursor-pointer"
                     >
-                      Rate Tech
+                      Rate (TM-05)
                     </button>
                     <button
                       onClick={() => {
@@ -784,26 +853,78 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: TASKS & GOALS MANAGEMENT (M-02, M-03) */}
+      {/* TAB: PROJECTS & SPRINTS (TM-02) */}
+      {/* ========================================================================= */}
+      {activeTab === 'projects' && (
+        <ProjectManagementSection
+          onAssignTaskForProject={(projectId) => {
+            setTaskForm((prev) => ({ ...prev, project_id: projectId, employee_id: mentees[0]?.id || '' }));
+            setIsAssignTaskOpen(true);
+          }}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 2: TASKS & GOALS MANAGEMENT (TM-02, TM-03) */}
       {/* ========================================================================= */}
       {activeTab === 'tasks' && (
         <div className="space-y-4">
+          {/* Urgent Blocker Stream Banner (TM-03) */}
+          {tasks.filter((t) => t.isBlocked).length > 0 && (
+            <div className="bg-rose-50 border border-rose-200 rounded-3xl p-5 text-rose-900 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 font-bold">
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-rose-950">
+                      Urgent Blocker Stream ({tasks.filter((t) => t.isBlocked).length} Deliverables Blocked)
+                    </h3>
+                    <p className="text-[11px] text-rose-700">Immediate mentor resolution or access unlock requested.</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-bold text-[10px] uppercase tracking-wider">
+                  Action Required (TM-03)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+                {tasks.filter((t) => t.isBlocked).map((bt) => (
+                  <div key={bt.id} className="p-3 bg-white rounded-2xl border border-rose-200 text-xs space-y-1 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 truncate">{bt.title}</span>
+                      <span className="text-[10px] font-mono font-bold text-slate-500">{bt.employeeName}</span>
+                    </div>
+                    <p className="text-[11px] text-rose-800 italic">
+                      "{bt.blockedReason || 'Blocked by upstream dependency or access barrier'}"
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Assigned Tasks & Sprint Goals</h2>
+              <h2 className="text-base font-bold text-slate-900">Assigned Tasks & Sprint Goals (TM-03)</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Create new tasks, adjust milestone completion, and track student/intern progress.
+                Create new tasks linked to parent projects, track blocker statuses, and inspect deliverables.
               </p>
             </div>
             <button
               onClick={() => {
-                setTaskForm((prev) => ({ ...prev, employee_id: mentees[0]?.id || '' }));
+                setTaskForm((prev) => ({ 
+                  ...prev, 
+                  employee_id: mentees[0]?.id || '',
+                  project_id: projects[0]?.id || '' 
+                }));
                 setIsAssignTaskOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer shadow-md shadow-indigo-100"
             >
               <Plus size={16} />
-              Assign New Task
+              Assign New Task (TM-03)
             </button>
           </div>
 
@@ -1006,15 +1127,21 @@ export const ManagerHubPage: React.FC = () => {
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
                 <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100 mb-1">
+                    <span>60% Technical Weight Authority (TM-05)</span>
+                  </div>
                   <h3 className="font-extrabold text-lg text-slate-900">
                     {techDossier.employeeName}
                   </h3>
-                  <span className="text-xs text-slate-400">
-                    Code: {techDossier.employeeCode} • Average Capability Score:
-                    <strong className="text-indigo-600 ml-1 font-bold text-sm">
-                      {techDossier.averageScore ? `${techDossier.averageScore} / 5.0` : 'Pending evaluation'}
-                    </strong>
-                  </span>
+                  <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
+                    <span>Code: <strong className="text-slate-700 font-mono">{techDossier.employeeCode}</strong></span>
+                    <span>•</span>
+                    <span>Capability Average: <strong className="text-indigo-600 font-bold text-sm">{techDossier.averageScore ? `${Number(techDossier.averageScore).toFixed(1)} / 10.0` : 'Pending'}</strong></span>
+                    <span>•</span>
+                    <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      Weighted 60% Tech Share: {techDossier.averageScore ? `${(Number(techDossier.averageScore) * 6.0).toFixed(1)}%` : '0.0%'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1023,26 +1150,28 @@ export const ManagerHubPage: React.FC = () => {
                     onClick={() => handleSaveTechReviews('DRAFT')}
                     className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
                   >
-                    Save Draft (M-10)
+                    Save Draft (TM-05)
                   </button>
                   <button
                     disabled={isSavingTechReview}
-                    onClick={() => handleSaveTechReviews('SUBMITTED')}
+                    onClick={() => handleSaveTechReviews('FINALIZED')}
                     className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-100 cursor-pointer"
                   >
-                    Submit Review (M-05)
+                    Finalize 60% Matrix (TM-05)
                   </button>
                 </div>
               </div>
 
-              {/* Parameter Rows */}
+              {/* Parameter Rows (1 to 10 Scale) */}
               <div className="space-y-4">
                 {techDossier.parameters.map((param) => {
                   const current = techScores[param.parameterId] || {
-                    score: param.review.score || 4.0,
+                    score: param.review.score || 7.0,
                     assessment: param.review.mentorAssessment || '',
                     evidenceUrl: param.review.evidenceUrl || '',
                   };
+
+                  const isIdpCandidate = current.score < 6.0 && current.score > 0;
 
                   return (
                     <div
@@ -1061,39 +1190,73 @@ export const ManagerHubPage: React.FC = () => {
                           <p className="text-xs text-slate-500">{param.description}</p>
                         </div>
 
-                        {/* Rating Buttons (1 to 5) */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {[1, 2, 3, 4, 5].map((val) => (
-                            <button
-                              key={val}
-                              type="button"
-                              onClick={() => {
-                                setTechScores((prev) => ({
-                                  ...prev,
-                                  [param.parameterId]: { ...current, score: val },
-                                }));
-                              }}
-                              className={`w-9 h-9 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                                Math.round(current.score) === val
-                                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 scale-105'
-                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                              }`}
-                            >
-                              {val}
-                            </button>
-                          ))}
+                        {/* Rating Buttons (1 to 10) */}
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => {
+                              const isSelected = Math.round(current.score) === val;
+                              return (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  onClick={() => {
+                                    setTechScores((prev) => ({
+                                      ...prev,
+                                      [param.parameterId]: { ...current, score: val },
+                                    }));
+                                  }}
+                                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                                    isSelected
+                                      ? val >= 9
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : val >= 7
+                                        ? 'bg-emerald-600 text-white shadow-md'
+                                        : val >= 4
+                                        ? 'bg-amber-600 text-white shadow-md'
+                                        : 'bg-rose-600 text-white shadow-md'
+                                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                  title={`Score ${val}/10`}
+                                >
+                                  {val}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500 mt-0.5">
+                            {current.score <= 3 ? '🔴 Unsatisfactory' : current.score <= 6 ? '🟠 Progressing' : current.score <= 8 ? '🟢 Proficient' : '🔵 Outstanding'} ({current.score}/10)
+                          </span>
                         </div>
                       </div>
 
-                      {/* Mentor Remarks & Evidence Input */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                      {/* Score < 6.0 IDP Prompt (TM-05) */}
+                      {isIdpCandidate && (
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                            <span>
+                              <strong>Score &lt; 6.0:</strong> System prompts mentor: Initiate Support & Coaching Pipeline (IDP)?
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigate('/idp')}
+                            className="px-2.5 py-1 rounded-lg bg-amber-600 text-white font-bold text-[10px] hover:bg-amber-700 transition-colors cursor-pointer"
+                          >
+                            Open IDP Pipeline
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Mentor Remarks & Mandatory Evidence Input */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                            Mentor Assessment & Observations
+                            Mentor Technical Assessment & Observations *
                           </label>
                           <textarea
                             rows={2}
-                            placeholder="Observations regarding code quality, velocity, and design adherence..."
+                            placeholder="Detail engineering depth, problem solving speed, and architectural adherence..."
                             value={current.assessment}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -1108,11 +1271,11 @@ export const ManagerHubPage: React.FC = () => {
 
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                            Supporting Evidence URL / Artifact
+                            Supporting Evidence PR / Artifact Link (Mandatory TM-05) *
                           </label>
                           <input
                             type="url"
-                            placeholder="https://github.com/... or PR link"
+                            placeholder="e.g. PR #42 link or git commit hash"
                             value={current.evidenceUrl}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -1516,13 +1679,37 @@ export const ManagerHubPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ASSIGN TASK (M-02) */}
+      {/* TAB: LEARNING TRACKS (TM-06) */}
+      {/* ========================================================================= */}
+      {activeTab === 'learning' && (
+        <LearningTrackSection mentees={mentees} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: GOAL AUDITING (TM-09) */}
+      {/* ========================================================================= */}
+      {activeTab === 'goals' && (
+        <GoalAuditingSection onRefetchData={() => { refetchTasks(); refetchMentees(); }} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: TALENT RADAR & PPO (TM-12) */}
+      {/* ========================================================================= */}
+      {activeTab === 'radar' && (
+        <TalentRadarSection mentees={mentees} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ASSIGN TASK (TM-02, TM-03) */}
       {/* ========================================================================= */}
       {isAssignTaskOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Assign New Task (M-02)</h3>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">Assign Project Deliverable (TM-03)</h3>
+                <p className="text-xs text-slate-500">Tasks must strictly link to a parent engineering project.</p>
+              </div>
               <button onClick={() => setIsAssignTaskOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
@@ -1530,14 +1717,31 @@ export const ManagerHubPage: React.FC = () => {
 
             <form onSubmit={handleAssignTaskSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Select Student / Intern *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Parent Project (TM-02) *</label>
+                <select
+                  required
+                  value={taskForm.project_id}
+                  onChange={(e) => setTaskForm({ ...taskForm, project_id: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                >
+                  <option value="">-- Choose Parent Project --</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code}: {p.title} ({p.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Assignee Mentee *</label>
                 <select
                   required
                   value={taskForm.employee_id}
                   onChange={(e) => setTaskForm({ ...taskForm, employee_id: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
                 >
-                  <option value="">-- Choose Student / Intern --</option>
+                  <option value="">-- Choose Mentee --</option>
                   {mentees.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.fullName} ({m.employeeCode}) {m.department ? `• ${m.department}` : ''}
@@ -1558,10 +1762,44 @@ export const ManagerHubPage: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Expected Evidence Proof *</label>
+                  <select
+                    value={taskForm.expected_evidence_type}
+                    onChange={(e) => setTaskForm({ ...taskForm, expected_evidence_type: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                  >
+                    <option value="CODE_PR">Code Pull Request (CODE_PR)</option>
+                    <option value="ARCH_DOC">Architecture Doc (ARCH_DOC)</option>
+                    <option value="TEST_SUITE">Test Suite (TEST_SUITE)</option>
+                    <option value="DEMO">Demo Recording (DEMO)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Linked Competency *</label>
+                  <select
+                    value={taskForm.linked_competency}
+                    onChange={(e) => setTaskForm({ ...taskForm, linked_competency: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                  >
+                    <option value="Problem Solving">Problem Solving</option>
+                    <option value="Code Quality">Code Quality</option>
+                    <option value="System Architecture">System Architecture</option>
+                    <option value="Testing & QA Automation">Testing & QA Automation</option>
+                    <option value="Delivery Velocity">Delivery Velocity</option>
+                    <option value="Technical Documentation">Technical Documentation</option>
+                    <option value="Engineering Agility">Engineering Agility</option>
+                    <option value="Collaboration">Collaboration</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Description & Deliverables</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   placeholder="Detailed instructions, acceptance criteria, or target repository..."
                   value={taskForm.description}
                   onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
@@ -1887,7 +2125,7 @@ export const ManagerHubPage: React.FC = () => {
               })()}
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Decision</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Three-Way Decision (TM-04) *</label>
                 <select
                   value={evidenceDecision.status}
                   onChange={(e) =>
@@ -1898,16 +2136,18 @@ export const ManagerHubPage: React.FC = () => {
                   }
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
                 >
-                  <option value="APPROVED">Approve Evidence</option>
-                  <option value="REVISION_REQUESTED">Request Revision</option>
-                  <option value="REJECTED">Reject Evidence</option>
+                  <option value="VERIFIED">Accept & Verify (Locks in Appraisal Package & Completes Task)</option>
+                  <option value="CHANGES_REQUESTED">Request Changes (Reopens Task for Mentee)</option>
+                  <option value="REJECTED">Reject Evidence (Enters Failure Rationale)</option>
+                  <option value="INVALID_ARTIFACT">Invalid / Corrupt Artifact (Blocks Task Completion)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Mentor Remarks / Feedback</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mentor Remarks / Feedback *</label>
                 <textarea
                   rows={3}
+                  required
                   placeholder="Notes on code coverage, test quality, or required fixes..."
                   value={evidenceDecision.remarks}
                   onChange={(e) => setEvidenceDecision({ ...evidenceDecision, remarks: e.target.value })}
@@ -1929,7 +2169,7 @@ export const ManagerHubPage: React.FC = () => {
                   onClick={handleReviewEvidenceSubmit}
                   className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md"
                 >
-                  {isReviewingEvidence ? 'Saving...' : 'Submit Decision'}
+                  {isReviewingEvidence ? 'Saving...' : 'Submit Decision (TM-04)'}
                 </button>
               </div>
             </div>
@@ -1982,6 +2222,24 @@ export const ManagerHubPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* TM-01: Mentee Slide-out Profile Drawer */}
+      <MenteeProfileDrawer
+        mentee={selectedMenteeForDrawer}
+        onClose={() => setSelectedMenteeForDrawer(null)}
+        onAssignTask={(menteeId) => {
+          setTaskForm((prev) => ({
+            ...prev,
+            employee_id: menteeId,
+            project_id: projects[0]?.id || '',
+          }));
+          setIsAssignTaskOpen(true);
+        }}
+        onRateTech={(menteeId) => {
+          setTechReviewMenteeId(menteeId);
+          handleTabChange('capabilities');
+        }}
+      />
     </div>
   );
 };

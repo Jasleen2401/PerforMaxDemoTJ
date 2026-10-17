@@ -1445,7 +1445,8 @@ class EmployeeCompatView(APIView):
             }
         )
         if created:
-            user.set_password(first_name.lower() or "Pass1234")
+            user.set_password("Dailoqa")
+            user.password_change_required = True
             user.save()
 
         # Department resolution

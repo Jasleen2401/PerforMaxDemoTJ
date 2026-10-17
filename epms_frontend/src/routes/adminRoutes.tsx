@@ -15,6 +15,7 @@ import RoleLevelPermissionManager from "../pages/admin/org/RoleLevelPermissionMa
 import FinancialYearManagement from "../pages/appraisal/FinancialYearManagement";
 import PerformanceCategoryManagement from "../pages/appraisal/PerformanceCategoryManagement";
 import AnalyticsDashboard from "../pages/admin/AnalyticsDashboard";
+import SystemRecordsPage from "../pages/admin/SystemRecordsPage";
 
 export const adminRoutes = [
   { path: "/hr", element: <HRDashboard /> },
@@ -37,5 +38,8 @@ export const adminRoutes = [
   { path: "/superadmin/notifications", element: <SuperadminNotificationPage /> },
   { path: "/financial-years", element: <FinancialYearManagement /> },
   { path: "/performance-categories", element: <PerformanceCategoryManagement /> },
-  { path: "/analytics", element: <AnalyticsDashboard /> }
+  { path: "/analytics", element: <AnalyticsDashboard /> },
+  { path: "/admin/records", element: <SystemRecordsPage /> },
+  { path: "/record-management", element: <SystemRecordsPage /> },
+  { path: "/records", element: <SystemRecordsPage /> }
 ];

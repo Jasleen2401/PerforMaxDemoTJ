@@ -28,7 +28,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 class CreateEmployeeSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     username = serializers.CharField(max_length=150, required=True)
-    password = serializers.CharField(write_only=True, required=True, min_length=8)
+    password = serializers.CharField(write_only=True, required=False, default="Dailoqa", allow_blank=True)
     role = serializers.ChoiceField(choices=UserRole.choices, default=UserRole.INTERN)
     employee_code = serializers.CharField(max_length=50, required=True)
     first_name = serializers.CharField(max_length=100, required=True)
@@ -60,7 +60,7 @@ class CreateEmployeeSerializer(serializers.Serializer):
     def create(self, validated_data):
         email = validated_data.pop('email')
         username = validated_data.pop('username')
-        password = validated_data.pop('password')
+        password = validated_data.pop('password', None) or "Dailoqa"
         role = validated_data.pop('role')
 
         dept_id = validated_data.pop('department_id', None)
@@ -84,7 +84,8 @@ class CreateEmployeeSerializer(serializers.Serializer):
             email=email,
             username=username,
             password=password,
-            role=role
+            role=role,
+            password_change_required=True
         )
 
         profile = EmployeeProfile.objects.create(

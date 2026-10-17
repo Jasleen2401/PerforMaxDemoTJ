@@ -23,6 +23,7 @@ const PAGE_MAP: Record<string, PageInfo> = {
   "/permissions":          { section: "Access Security", title: "Permission Sets" },
   "/permissions/matrix":   { section: "Access Security", title: "RBAC Matrix" },
   "/permissions/assign":   { section: "Access Security", title: "Direct Permissions" },
+  "/admin/records":        { section: "Org Governance", title: "Record Management" },
   "/financial-years":      { section: "Cycles", title: "Financial Quarters" },
   "/performance-categories": { section: "Cycles", title: "Performance Categories" },
   "/pip":                  { title: "Performance Recovery (PIP)" },

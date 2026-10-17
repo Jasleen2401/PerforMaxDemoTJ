@@ -131,6 +131,13 @@ const EmployeeForm = () => {
         </p>
       </div>
 
+      {!isEdit && (
+        <div className="bg-indigo-50 border border-indigo-200/80 rounded-xl p-3.5 flex items-center gap-3 text-xs text-indigo-900 shadow-2xs">
+          <span className="font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md text-[11px] uppercase tracking-wider">Default Credential</span>
+          <span>The employee will automatically receive default password <strong className="bg-white px-2 py-0.5 rounded border border-indigo-300 font-mono font-bold text-indigo-950">Dailoqa</strong> (first-time password change will be enforced).</span>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
 
         {/* Basic Information */}

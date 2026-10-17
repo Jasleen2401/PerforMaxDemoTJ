@@ -479,6 +479,16 @@ export const managerApi = api.injectEndpoints({
       }),
       invalidatesTags: ["Manager"],
     }),
+
+    // Historical Reviews
+    getHistoricalReviews: builder.query<any[], string | undefined>({
+      query: (employeeId) => ({
+        url: "manager/historical-reviews/",
+        params: employeeId ? { employee_id: employeeId } : {},
+      }),
+      transformResponse: (res: any) => res?.data || [],
+      providesTags: ["Manager"],
+    }),
   }),
 });
 

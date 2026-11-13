@@ -14,8 +14,7 @@ import {
   useDeleteAppraisalFormMutation,
   useDeleteFormSetMutation,
   useDeleteCycleMutation,
-  useSendCycleRemindersMutation,
-  usePublishAppraisalMutation
+  useSendCycleRemindersMutation
 } from '../../features/appraisal/appraisalApi';
 import { useGetDepartmentsQuery } from '../../features/org/departmentApi';
 import { format } from 'date-fns';
@@ -34,10 +33,11 @@ import {
   Mail,
   Trash2,
   Calculator,
-  Send
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../components/Can';
+import EvaluationAttentionQueue from '../../components/appraisal/EvaluationAttentionQueue';
 
 const panelStyle: React.CSSProperties = {
   background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12,
@@ -45,9 +45,7 @@ const panelStyle: React.CSSProperties = {
 
 const STATUS_STYLE: Record<string, { bg: string; text: string; border: string }> = {
   FINALIZED:    { bg: '#EAF3DE', text: '#27500A', border: '#B8DCA0' },
-  PUBLISHED:    { bg: '#EAF3DE', text: '#27500A', border: '#B8DCA0' },
   PENDING:      { bg: '#FAEEDA', text: '#633806', border: '#F0D4A4' },
-  SUBMITTED:    { bg: '#EEF3FD', text: '#0C447C', border: '#B5D4F4' },
   SELF_ASSESSED:{ bg: '#EEF3FD', text: '#0C447C', border: '#B5D4F4' },
   EVALUATED:    { bg: '#EEF3FD', text: '#0C447C', border: '#B5D4F4' },
   HR_APPROVED:  { bg: '#F1EFE8', text: '#444441', border: '#DDDBD2' },
@@ -59,10 +57,8 @@ const getStatusStyle = (status: string) =>
 const APPRAISAL_STATUS_OPTIONS = [
   'PENDING',
   'SELF_ASSESSED',
-  'SUBMITTED',
   'EVALUATED',
   'HR_APPROVED',
-  'PUBLISHED',
   'FINALIZED',
   'ARCHIVED',
 ];
@@ -73,9 +69,18 @@ const AppraisalList: React.FC = () => {
   const { isAdmin, isHR, isManager } = useAuth();
   const isPrivileged = isAdmin || isHR;
 
-  const [activeTab, setActiveTab] = React.useState<'appraisals' | 'team' | 'cycles' | 'forms'>(
-    location.state?.activeTab || (isPrivileged ? 'cycles' : (isManager ? 'team' : 'appraisals'))
+  const [activeTab, setActiveTab] = React.useState<'appraisals' | 'team' | 'cycles' | 'forms' | 'queue'>(
+    location.state?.activeTab || (isPrivileged ? 'queue' : (isManager ? 'team' : 'appraisals'))
   );
+
+  React.useEffect(() => {
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+    } else if (isPrivileged && (activeTab === 'appraisals' || activeTab === 'forms')) {
+      setActiveTab('queue');
+    }
+  }, [location.state?.activeTab, isPrivileged]);
+
   const [selectedCycleId, setSelectedCycleId] = React.useState<number | null>(null);
   const [expandedCycle, setExpandedCycle] = React.useState<string | null>(location.state?.expandedCycle || null);
   const [expandedSet, setExpandedSet] = React.useState<string | null>(location.state?.expandedSet || null);
@@ -83,7 +88,7 @@ const AppraisalList: React.FC = () => {
   const [newSetName, setNewSetName] = React.useState('');
   const [searchTerm, setSearchTerm] = React.useState('');
   const [departmentFilter, setDepartmentFilter] = React.useState('ALL');
-  const [statusFilter, setStatusFilter] = React.useState('ALL');
+  const [statusFilter, setStatusFilter] = React.useState(location.state?.statusFilter || 'ALL');
   const [participantPage, setParticipantPage] = React.useState(1);
   const participantPageSize = 10;
 
@@ -111,18 +116,18 @@ const AppraisalList: React.FC = () => {
   const [deleteForm] = useDeleteAppraisalFormMutation();
   const [deleteCycle] = useDeleteCycleMutation();
   const [sendReminders, { isLoading: isSendingReminders }] = useSendCycleRemindersMutation();
-  const [publishAppraisal] = usePublishAppraisalMutation();
 
   const { data: formSets = [] } = useGetAppraisalFormSetsQuery(undefined, { skip: !isPrivileged });
 
-  const isTabLoading =
-    activeTab === 'appraisals'
-      ? loadingAppraisals
-      : activeTab === 'team'
-      ? loadingTeam
-      : activeTab === 'cycles'
-      ? loadingCycles || (!!selectedCycleId && loadingCycleData)
-      : loadingForms;
+  const isLoading = loadingAppraisals || loadingTeam || (isPrivileged && (loadingCycles || loadingForms || (!!selectedCycleId && loadingCycleData)));
+
+  if (isLoading) return <div className="py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>Loading…</div>;
+
+  if (errorAppraisals && !isPrivileged && activeTab === 'appraisals') return (
+    <div className="py-8 text-center" style={{ color: '#791F1F', fontSize: 13, background: '#FCEBEB', border: '0.5px solid #F5C2C2', borderRadius: 12, padding: '16px 18px' }}>
+      No assessments are assigned.
+    </div>
+  );
 
   const safeFormatDate = (dateString: string | null | undefined) => {
     if (!dateString) return 'N/A';
@@ -143,74 +148,9 @@ const AppraisalList: React.FC = () => {
   const canDeleteCycle = (cycle: any) =>
     isPrivileged && !cycle?.isAssigned && !cycle?.isActive && cycle?.status === 'PLANNING' && !isArchivedCycle(cycle);
 
-  const renderAppraisals = () => {
-    if (isTabLoading) {
-      return <div className="col-span-full py-16 text-center text-slate-400 text-xs">Loading assessments…</div>;
-    }
-
-    if (errorAppraisals) {
-      return (
-        <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-slate-50 border border-slate-200 rounded-2xl p-6">
-          No personal assessments currently assigned to your profile.
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {appraisals.length > 0 ? appraisals.map((appraisal: any) => {
-          const s = getStatusStyle(appraisal.status);
-          return (
-            <div key={appraisal.appraisalId} style={{ ...panelStyle, padding: '16px 18px', cursor: 'pointer' }}
-              className="hover:border-[#1A56DB] transition-colors"
-              onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}>
-              <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-                <span style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{appraisal.cycleName}</span>
-                <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
-                  {appraisal.status.replace('_', ' ')}
-                </span>
-              </div>
-              <p style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginBottom: 4 }}>{appraisal.employeeName}</p>
-              <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>Performance Assessment</p>
-              <div className="flex items-center justify-between" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6', marginTop: 10 }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/appraisal/${appraisal.appraisalId}/self-assessment`);
-                  }}
-                  style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  className="hover:underline flex items-center gap-1 font-semibold cursor-pointer"
-                >
-                  <ClipboardList size={12} /> Self Assessment
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/appraisal/${appraisal.appraisalId}/score`);
-                  }}
-                  style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  className="hover:underline flex items-center gap-1 font-medium cursor-pointer"
-                >
-                  <Calculator size={12} /> Preview Score
-                </button>
-              </div>
-            </div>
-          );
-        }) : (
-          <div className="col-span-full py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>No assessments assigned.</div>
-        )}
-      </div>
-    );
-  };
-
-  const renderTeamEvaluations = () => {
-    if (loadingTeam) {
-      return <div className="col-span-full py-16 text-center text-slate-400 text-xs">Loading team evaluations…</div>;
-    }
-
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {teamEvaluations.length > 0 ? teamEvaluations.map((appraisal: any) => {
+  const renderAppraisals = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {appraisals.length > 0 ? appraisals.map((appraisal: any) => {
         const s = getStatusStyle(appraisal.status);
         return (
           <div key={appraisal.appraisalId} style={{ ...panelStyle, padding: '16px 18px', cursor: 'pointer' }}
@@ -218,61 +158,61 @@ const AppraisalList: React.FC = () => {
             onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}>
             <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
               <span style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{appraisal.cycleName}</span>
-              <div className="flex items-center gap-1.5">
-                {(appraisal.overallScore != null || appraisal.finalScore != null) && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', borderRadius: 20, padding: '2px 8px' }}>
-                    {Number(appraisal.overallScore ?? appraisal.finalScore).toFixed(1)}%
-                  </span>
-                )}
-                <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
-                  {appraisal.status.replace('_', ' ')}
-                </span>
-              </div>
+              <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
+                {appraisal.status.replace('_', ' ')}
+              </span>
             </div>
             <p style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginBottom: 4 }}>{appraisal.employeeName}</p>
-            <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>
-              {appraisal.departmentName ? `${appraisal.departmentName} · ` : ''}{appraisal.positionName || 'Team Performance Evaluation'}
-            </p>
-            <div className="flex items-center justify-between gap-2" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6' }}>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/appraisal/${appraisal.appraisalId}/manager-evaluation`);
-                  }}
-                  style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  className="hover:underline flex items-center gap-1 font-semibold"
-                >
-                  <ClipboardList size={12} /> Evaluate Form
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/appraisal/${appraisal.appraisalId}/score`);
-                  }}
-                  style={{ fontSize: 12, color: '#5A6070', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  className="hover:underline flex items-center gap-1 font-medium"
-                >
-                  <Calculator size={12} /> Preview
-                </button>
-              </div>
-              {(appraisal.status === 'SUBMITTED' || appraisal.status === 'HR_APPROVED') && (
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    try {
-                      await publishAppraisal({ appraisalId: appraisal.appraisalId, publish: true }).unwrap();
-                      toast.success(`Published evaluation for ${appraisal.employeeName}!`);
-                    } catch {
-                      toast.error('Failed to publish appraisal.');
-                    }
-                  }}
-                  style={{ fontSize: 11, color: '#047857', background: '#ECFDF5', border: '0.5px solid #A7F3D0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}
-                  className="hover:bg-emerald-100 flex items-center gap-1 font-semibold"
-                >
-                  <Send size={11} /> Publish
-                </button>
-              )}
+            <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>Performance Assessment</p>
+            <div className="flex items-center justify-between" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6', marginTop: 10 }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                }}
+                style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                className="hover:underline flex items-center gap-1 font-medium"
+              >
+                <Calculator size={12} /> Preview Score
+              </button>
+              <ChevronRight size={14} style={{ color: '#9EA3B0' }} />
+            </div>
+          </div>
+        );
+      }) : (
+        <div className="col-span-full py-16 text-center" style={{ color: '#9EA3B0', fontSize: 13 }}>No assessments assigned.</div>
+      )}
+    </div>
+  );
+
+  const renderTeamEvaluations = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {teamEvaluations.length > 0 ? teamEvaluations.map((appraisal: any) => {
+        const s = getStatusStyle(appraisal.status);
+        return (
+          <div key={appraisal.appraisalId} style={{ ...panelStyle, padding: '16px 18px', cursor: 'pointer' }}
+            className="hover:border-[#1A56DB] transition-colors"
+            onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#9EA3B0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{appraisal.cycleName}</span>
+              <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.text, border: `0.5px solid ${s.border}`, borderRadius: 20, padding: '2px 8px' }}>
+                {appraisal.status.replace('_', ' ')}
+              </span>
+            </div>
+            <p style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginBottom: 4 }}>{appraisal.employeeName}</p>
+            <p style={{ fontSize: 12, color: '#9EA3B0', marginBottom: 12 }}>Team Performance Evaluation</p>
+            <div className="flex items-center justify-between" style={{ paddingTop: 10, borderTop: '0.5px solid #F0F2F6' }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/appraisal/${appraisal.appraisalId}/score`);
+                }}
+                style={{ fontSize: 12, color: '#1A56DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                className="hover:underline flex items-center gap-1 font-medium"
+              >
+                <Calculator size={12} /> Preview Score
+              </button>
+              <ChevronRight size={14} style={{ color: '#9EA3B0' }} />
             </div>
           </div>
         );
@@ -281,7 +221,6 @@ const AppraisalList: React.FC = () => {
       )}
     </div>
   );
-};
 
   const renderCycles = () => {
     const getDaysRemaining = (endDate: string) => {
@@ -567,28 +506,11 @@ const AppraisalList: React.FC = () => {
                         <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
                           {appraisal.finalScore != null ? `${Number(appraisal.finalScore).toFixed(1)}%` : '—'}
                         </td>
-                        <td style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <td style={{ padding: '10px 16px', display: 'flex', gap: 12 }}>
                           <button onClick={() => navigate(`/appraisal/${appraisal.appraisalId}`)}
                             style={{ fontSize: 12, color: '#1A56DB' }} className="hover:underline font-medium">Detail</button>
                           <button onClick={() => navigate(`/appraisal/${appraisal.appraisalId}/score`)}
                             style={{ fontSize: 12, color: '#0C447C' }} className="hover:underline font-medium">Preview</button>
-                          {isPrivileged && (appraisal.status === 'SUBMITTED' || appraisal.status === 'HR_APPROVED') && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  await publishAppraisal({ appraisalId: appraisal.appraisalId, publish: true }).unwrap();
-                                  toast.success(`Published evaluation for ${appraisal.employeeName}!`);
-                                } catch {
-                                  toast.error('Failed to publish appraisal.');
-                                }
-                              }}
-                              style={{ fontSize: 11, color: '#047857', background: '#ECFDF5', border: '0.5px solid #A7F3D0', borderRadius: 6, padding: '2px 6px', cursor: 'pointer' }}
-                              className="hover:bg-emerald-100 flex items-center gap-1 font-semibold"
-                            >
-                              <Send size={11} /> Publish
-                            </button>
-                          )}
                         </td>
                       </tr>
                     );
@@ -953,21 +875,27 @@ const AppraisalList: React.FC = () => {
   return (
     <div className="space-y-4 pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 500, color: '#111827' }}>Appraisal Hub</h1>
-          <p style={{ fontSize: 13, color: '#9EA3B0', marginTop: 2 }}>Organisation performance & evaluation management</p>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Performance Appraisals</h1>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">Review submissions, manage evaluations, and publish performance outcomes.</p>
         </div>
         <Can permission="APPRAISAL_CYCLE_MANAGE">
           {isPrivileged && (
-            <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-              <button onClick={() => navigate('/appraisal/create-cycle')} className="inline-flex items-center gap-2 transition-colors"
-                style={{ background: '#FFFFFF', color: '#111827', border: '0.5px solid #E4E6EC', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 500 }}>
-                <Calendar size={14} style={{ color: '#1A56DB' }} /> New Cycle
+            <div className="flex flex-wrap gap-2.5 self-start sm:self-auto items-center">
+              <button
+                onClick={() => navigate('/appraisal/create-cycle')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200/90 rounded-xl hover:bg-purple-50/50 hover:text-purple-700 hover:border-purple-200 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Calendar size={14} className="text-purple-600" />
+                <span>New Cycle</span>
               </button>
-              <button onClick={() => navigate('/appraisal/assign')} className="inline-flex items-center gap-2 transition-colors"
-                style={{ background: '#1A56DB', color: '#FFFFFF', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 500, border: 'none' }}>
-                <Plus size={14} /> Bulk Assign
+              <button
+                onClick={() => navigate('/appraisal/assign')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-purple-700 hover:bg-purple-800 rounded-xl transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus size={14} />
+                <span>Bulk Assign</span>
               </button>
             </div>
           )}
@@ -976,21 +904,30 @@ const AppraisalList: React.FC = () => {
 
       {/* Tab navigation */}
       {(isPrivileged || isManager) && (
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '4px', display: 'inline-flex', flexWrap: 'wrap', gap: 2 }}>
+        <div className="inline-flex p-1 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
           {[
-            { id: 'appraisals', label: 'My Assessments', icon: ClipboardList },
-            ...(isManager ? [{ id: 'team', label: 'Team', icon: Users }] : []),
+            ...(isPrivileged ? [
+              { id: 'queue', label: 'Evaluation & Publishing Queue', icon: AlertCircle },
+            ] : []),
+            ...(isManager && !isPrivileged ? [{ id: 'team', label: 'Team', icon: Users }] : []),
             ...(isPrivileged ? [
               { id: 'cycles', label: 'Cycles', icon: Target },
-              { id: 'forms', label: 'Form Templates', icon: Layers },
             ] : []),
           ].map((tab) => {
             const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
             return (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id as any); setSelectedCycleId(null); setExpandedCycle(null); setExpandedSet(null); resetParticipantFilters(); }}
-                className="flex items-center gap-2 transition-colors"
-                style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', background: activeTab === tab.id ? '#EEF3FD' : 'transparent', color: activeTab === tab.id ? '#1A56DB' : '#5A6070' }}>
-                <Icon size={13} /> {tab.label}
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id as any); setSelectedCycleId(null); setExpandedCycle(null); setExpandedSet(null); resetParticipantFilters(); }}
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-purple-50 text-purple-700 shadow-2xs border border-purple-200/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
+                }`}
+              >
+                <Icon size={14} className={isActive ? 'text-purple-700' : 'text-slate-400'} />
+                <span>{tab.label}</span>
               </button>
             );
           })}
@@ -998,6 +935,9 @@ const AppraisalList: React.FC = () => {
       )}
 
       {/* Content */}
+      {activeTab === 'queue' && isPrivileged && (
+        <EvaluationAttentionQueue initialFilter={location.state?.initialFilter} />
+      )}
       {activeTab === 'appraisals' && renderAppraisals()}
       {activeTab === 'team' && renderTeamEvaluations()}
       {activeTab === 'cycles' && renderCycles()}

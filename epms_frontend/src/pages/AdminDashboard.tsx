@@ -90,7 +90,7 @@ const AdminDashboard: React.FC = () => {
     },
     {
       id: '5',
-      label: 'Strategic Analytics',
+      label: 'Performance Analytics',
       icon: <BarChart3 size={18} />,
       onClick: () => navigate('/analytics'),
       color: 'bg-amber-100 text-amber-700',
@@ -315,8 +315,7 @@ const AdminDashboard: React.FC = () => {
             value={data?.failedLoginsLast24h ?? 0}
             icon={<Activity size={15} />}
             color="red"
-            subtitle="Review security access →"
-            onClick={() => navigate('/superadmin/roles-permissions')}
+            subtitle="Perimeter security status"
           />
           <DashboardStatCard
             title="Accounts created (this month)"

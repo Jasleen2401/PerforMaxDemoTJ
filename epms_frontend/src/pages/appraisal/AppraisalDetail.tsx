@@ -41,7 +41,7 @@ const STATUS_INFO: Record<string, { label: string; bg: string; text: string; bor
 const AppraisalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, isAdmin, isHR } = useAuth();
+  const { user, isAdmin, isHR, isManager: authIsManager } = useAuth();
 
   const { data: appraisal, isLoading } = useGetEmployeeAssessmentQuery(id || '', { skip: !id });
   const [calculateScore, { isLoading: isCalculating }] = useCalculateScoreMutation();
@@ -62,16 +62,25 @@ const AppraisalDetail: React.FC = () => {
     </div>
   );
 
-  const isEmployee = String(user?.id).toLowerCase() === String(appraisal.employeeId).toLowerCase() ||
-    String(user?.email || '').toLowerCase() === String(appraisal.employeeEmail || '').toLowerCase();
-  const isManager = Boolean((appraisal as any).isAssignedManager) ||
-    String(user?.id).toLowerCase() === String(appraisal.managerId).toLowerCase() ||
-    String(user?.email || '').toLowerCase() === String(appraisal.managerEmail || '').toLowerCase() ||
-    (user?.staffName && appraisal.managerName && String(user.staffName).toLowerCase() === String(appraisal.managerName).toLowerCase()) ||
-    ((user as any)?.username && appraisal.managerName && String((user as any).username).toLowerCase() === String(appraisal.managerName).toLowerCase());
+  const isEmployee = Boolean(
+    user && (
+      String(user.id) === String(appraisal.employeeId) ||
+      (user.profile && String(user.profile.id) === String(appraisal.employeeId)) ||
+      ((user as any).profileId && String((user as any).profileId) === String(appraisal.employeeId)) ||
+      ((user as any).employeeId && String((user as any).employeeId) === String(appraisal.employeeId))
+    )
+  );
+  const isAssignedManager = Boolean(
+    user && appraisal.managerId && (
+      String(user.id) === String(appraisal.managerId) ||
+      (user.profile && String(user.profile.id) === String(appraisal.managerId)) ||
+      ((user as any).profileId && String((user as any).profileId) === String(appraisal.managerId))
+    )
+  );
+  const isManager = isAssignedManager || authIsManager;
   const isPrivileged = isAdmin || isHR;
   const canViewSelfAssessment = isEmployee || isManager || isPrivileged;
-  const canViewManagerEvaluation = isManager || isPrivileged || (isEmployee && !!appraisal.managerSubmittedAt);
+  const canViewManagerEvaluation = isManager || isPrivileged || (isEmployee && appraisal.status === 'PUBLISHED');
 
   // Signature gate for finalize
   const hasEmployeeSigned = !!appraisal.employeeSignedAt;

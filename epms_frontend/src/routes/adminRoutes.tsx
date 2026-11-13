@@ -16,12 +16,14 @@ import FinancialYearManagement from "../pages/appraisal/FinancialYearManagement"
 import PerformanceCategoryManagement from "../pages/appraisal/PerformanceCategoryManagement";
 import AnalyticsDashboard from "../pages/admin/AnalyticsDashboard";
 import SystemRecordsPage from "../pages/admin/SystemRecordsPage";
+import AuditLogPage from "../pages/admin/AuditLogPage";
 
 export const adminRoutes = [
   { path: "/hr", element: <HRDashboard /> },
   { path: "/employees", element: <EmployeeList /> },
   { path: "/employees/new", element: <EmployeeForm /> },
   { path: "/employees/edit/:id", element: <EmployeeForm /> },
+  { path: "/employees/:id", element: <EmployeeProfileView /> },
   { path: "/employees/:id/profile", element: <EmployeeProfileView /> },
   { path: "/employees/:id/departments", element: <EmployeeDepartmentHistory /> },
   { path: "/departments", element: <DepartmentList /> },
@@ -39,6 +41,7 @@ export const adminRoutes = [
   { path: "/financial-years", element: <FinancialYearManagement /> },
   { path: "/performance-categories", element: <PerformanceCategoryManagement /> },
   { path: "/analytics", element: <AnalyticsDashboard /> },
+  { path: "/audit-logs", element: <AuditLogPage /> },
   { path: "/admin/records", element: <SystemRecordsPage /> },
   { path: "/record-management", element: <SystemRecordsPage /> },
   { path: "/records", element: <SystemRecordsPage /> }

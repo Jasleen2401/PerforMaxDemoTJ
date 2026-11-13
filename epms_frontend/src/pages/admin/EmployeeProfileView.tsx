@@ -27,8 +27,7 @@ import {
   ShieldCheck,
   UserX,
   RotateCcw,
-  Edit2,
-  Trash2,
+  Compass,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useGetEmployeeByIdQuery } from "../../features/employee/employeeapi";
@@ -43,8 +42,7 @@ import { useGetGoalSetByEmployeeQuery } from "../../services/kpiApi";
 import type { GoalItemResponse } from "../../features/kpi/kpiTypes";
 import ProvideFeedbackModal from "../../components/feedback/ProvideFeedbackModal";
 import ChooseKraWeightageModal from "../../components/kpi/ChooseKraWeightageModal";
-import { useAuth } from "../../hooks/useAuth";
-import { useGetAssignedMenteesQuery } from "../../features/manager/managerApi";
+import { ProfileMiraiJourneySection } from "../../components/intern/ProfileMiraiJourneySection";
 
 type ProfileGoalItem = GoalItemResponse & {
   kpiName?: string;
@@ -71,7 +69,7 @@ interface FeedbackItem {
   }>;
 }
 
-const TABS = [
+const BASE_TABS = [
   "Key Accountability",
   "Goals",
   "KRA vs Goals",
@@ -81,7 +79,8 @@ const TABS = [
   "Appraisal Data",
 ] as const;
 
-type TabType = typeof TABS[number];
+type BaseTabType = typeof BASE_TABS[number];
+type TabType = BaseTabType | "MIRAI Journey";
 
 const AVATAR_COLORS = [
   { bg: "#EEF3FD", text: "#0C447C" },
@@ -136,7 +135,6 @@ const EmployeeProfileView = () => {
 
   // Feedbacks state
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
-  const [editingFeedback, setEditingFeedback] = useState<FeedbackItem | null>(null);
   const [feedbackStats, setFeedbackStats] = useState({
     all: 0,
     positive: 0,
@@ -153,32 +151,6 @@ const EmployeeProfileView = () => {
 
   const { data: employee, isLoading: isEmployeeLoading, error: employeeError, refetch: refetchEmployee } =
     useGetEmployeeByIdQuery(employeeId, { skip: !employeeId });
-  const { user: currentUser } = useAuth();
-  const isManager = currentUser?.role === 'MANAGER' || (currentUser as any)?.isManager;
-  const { data: assignedMentees = [] } = useGetAssignedMenteesQuery(undefined, { skip: !isManager });
-
-  const isAssignedReport = useMemo(() => {
-    if (!isManager) return true;
-    const targetId = String(employeeId || '').toLowerCase();
-    const empObjId = String(employee?.id || '').toLowerCase();
-    const empCode = String(employee?.employeeCode || '').toLowerCase();
-
-    const isMentee = assignedMentees.some(
-      (m) =>
-        String(m.id).toLowerCase() === targetId ||
-        String(m.id).toLowerCase() === empObjId ||
-        String(m.userId).toLowerCase() === targetId ||
-        String(m.userId).toLowerCase() === empObjId ||
-        String(m.employeeCode).toLowerCase() === targetId ||
-        String(m.employeeCode).toLowerCase() === empCode
-    );
-    if (isMentee) return true;
-
-    if (employee?.directManagerId && String(employee.directManagerId) === String(currentUser?.id)) return true;
-    if (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.username || '').toLowerCase()) return true;
-    if (employee?.directManagerName && String(employee.directManagerName).toLowerCase() === String(currentUser?.staffName || '').toLowerCase()) return true;
-    return false;
-  }, [isManager, assignedMentees, employeeId, employee, currentUser]);
   const { data: activeCycle } = useGetActiveCycleQuery();
   const { data: allCycles = [] } = useGetCyclesQuery();
 
@@ -200,6 +172,30 @@ const EmployeeProfileView = () => {
       }
     }
   }, [activeCycle?.cycleId, selectedCycleId, sortedCycles]);
+
+  const isIntern = useMemo(() => {
+    if (!employee) return false;
+    const roles = employee.roles || [];
+    const isInternRole = roles.some((r: any) => String(r).toUpperCase().includes("INTERN"));
+    const isInternPosition = (employee.positionName || "").toLowerCase().includes("intern");
+    return isInternRole || isInternPosition;
+  }, [employee]);
+
+  const availableTabs = useMemo(() => {
+    if (isIntern) {
+      return ["MIRAI Journey", ...BASE_TABS] as TabType[];
+    }
+    return [...BASE_TABS] as TabType[];
+  }, [isIntern]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "journey" && isIntern) {
+      setActiveTab("MIRAI Journey");
+    } else if (isIntern && activeTab === "Feedback") {
+      setActiveTab("MIRAI Journey");
+    }
+  }, [isIntern]);
 
   const selectedCycle = sortedCycles.find((c) => c.cycleId === selectedCycleId);
   const isActiveCycle = selectedCycleId === activeCycle?.cycleId;
@@ -276,13 +272,7 @@ const EmployeeProfileView = () => {
       if (feedRes.ok) {
         const feedData = await feedRes.json();
         const results = feedData.results || feedData.data || feedData;
-        if (Array.isArray(results)) {
-          setFeedbacks(results);
-        } else if (results && Array.isArray(results.content)) {
-          setFeedbacks(results.content);
-        } else {
-          setFeedbacks([]);
-        }
+        setFeedbacks(Array.isArray(results) ? results : []);
       }
     } catch {
       // Ignore or log
@@ -294,27 +284,6 @@ const EmployeeProfileView = () => {
   useEffect(() => {
     fetchFeedbacks();
   }, [fetchFeedbacks]);
-
-  // Delete feedback handler
-  const handleDeleteFeedback = async (fbId: string) => {
-    if (!window.confirm("Are you sure you want to delete this feedback?")) return;
-    try {
-      const token = localStorage.getItem("accessToken") || "";
-      const res = await fetch(`/api/feedbacks/${fbId}/`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        toast.success("Feedback deleted successfully!");
-        fetchFeedbacks();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.message || "Failed to delete feedback.");
-      }
-    } catch {
-      toast.error("Network error deleting feedback.");
-    }
-  };
 
   // Post comment handler
   const handleAddComment = async (feedbackId: string) => {
@@ -507,10 +476,22 @@ const EmployeeProfileView = () => {
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Action Controls for Admin/HR */}
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleToggleAccountStatus}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+              employee.employmentStatus === "TERMINATED"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+            }`}
+          >
+            <UserX size={13} />
+            {employee.employmentStatus === "TERMINATED" ? "Reactivate Account" : "Deactivate Account"}
+          </button>
           <Link
-            to={`/employees/edit/${employee.id || employeeId}`}
+            to={`/employees/edit/${employee.id}`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
           >
             <UserRound size={13} />
@@ -519,11 +500,12 @@ const EmployeeProfileView = () => {
         </div>
       </div>
 
-      {/* 8 Sub-navigation Tabs matching media_1789919618455.png */}
+      {/* Sub-navigation Tabs */}
       <div className="border-b border-slate-200 bg-white px-3 pt-2 rounded-t-xl overflow-x-auto shadow-xs">
         <nav className="flex space-x-6 min-w-max">
-          {TABS.map((tab) => {
+          {availableTabs.map((tab) => {
             const isActive = activeTab === tab;
+            const isJourneyTab = tab === "MIRAI Journey";
             return (
               <button
                 key={tab}
@@ -531,16 +513,40 @@ const EmployeeProfileView = () => {
                 onClick={() => setActiveTab(tab)}
                 className={`py-3 px-1 text-sm font-semibold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
                   isActive
-                    ? "border-indigo-600 text-indigo-600 font-bold"
+                    ? isJourneyTab
+                      ? "border-purple-600 text-purple-700 font-bold"
+                      : "border-indigo-600 text-indigo-600 font-bold"
+                    : isJourneyTab
+                    ? "border-transparent text-purple-600/80 hover:text-purple-700 hover:border-purple-300 font-medium"
                     : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
                 }`}
               >
-                {tab}
+                {isJourneyTab ? (
+                  <span className="flex items-center gap-1.5">
+                    <Compass className="w-4 h-4 text-purple-600" />
+                    <span>MIRAI Journey</span>
+                    <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold rounded-full border border-purple-200">
+                      Cohort 1
+                    </span>
+                  </span>
+                ) : (
+                  tab
+                )}
               </button>
             );
           })}
         </nav>
       </div>
+
+      {/* ========================================================================= */}
+      {/* TAB: MIRAI JOURNEY TAB (Intern Four-Quarter Progression)                  */}
+      {/* ========================================================================= */}
+      {activeTab === "MIRAI Journey" && isIntern && (
+        <ProfileMiraiJourneySection
+          employeeId={String(employee?.id || employeeId)}
+          employeeName={employee?.staffName || "Intern"}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: FEEDBACK TAB matching media_1789919618455.png */}
@@ -597,27 +603,15 @@ const EmployeeProfileView = () => {
                 />
               </div>
 
-              {isManager && !isAssignedReport ? (
-                <div
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-400 text-xs font-semibold rounded-xl cursor-not-allowed border border-slate-200"
-                  title="Feedback is restricted to your assigned mentees/direct reports."
-                >
-                  Feedback Restricted
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingFeedback(null);
-                    setIsFeedbackModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all"
-                  style={{ backgroundColor: "#4338CA" }}
-                >
-                  <Plus size={14} strokeWidth={2.5} />
-                  Provide Feedback
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsFeedbackModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all"
+                style={{ backgroundColor: "#4338CA" }}
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                Provide Feedback
+              </button>
 
               <button
                 type="button"
@@ -807,29 +801,12 @@ const EmployeeProfileView = () => {
                             {isPositive ? <ThumbsUp size={12} /> : <Star size={12} />}
                             {fb.category || fb.feedback_type}
                           </span>
-                          {(isManager || fb.sender_name?.toLowerCase() === currentUser?.username?.toLowerCase() || fb.sender_name?.toLowerCase() === currentUser?.staffName?.toLowerCase()) && (
-                            <div className="flex items-center gap-1 ml-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingFeedback(fb);
-                                  setIsFeedbackModalOpen(true);
-                                }}
-                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                                title="Edit Feedback"
-                              >
-                                <Edit2 size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteFeedback(fb.id)}
-                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                                title="Delete Feedback"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            className="p-1 text-slate-400 hover:text-slate-600 rounded-md"
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
                         </div>
                       </div>
 
@@ -1188,13 +1165,9 @@ const EmployeeProfileView = () => {
       {/* Modal 1: Provide Feedback Modal matching media_1789919618447.png */}
       <ProvideFeedbackModal
         isOpen={isFeedbackModalOpen}
-        onClose={() => {
-          setIsFeedbackModalOpen(false);
-          setEditingFeedback(null);
-        }}
+        onClose={() => setIsFeedbackModalOpen(false)}
         onSuccess={fetchFeedbacks}
         defaultEmployeeId={employee?.id}
-        editingFeedback={editingFeedback}
         employees={[
           {
             id: employee?.id || 1,

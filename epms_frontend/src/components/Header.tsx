@@ -11,32 +11,35 @@ interface PageInfo {
 
 const PAGE_MAP: Record<string, PageInfo> = {
   "/dashboard":            { title: "Executive Dashboard" },
-  "/appraisal":            { section: "Performance Cycles", title: "Appraisal Assessments" },
+  "/appraisal":              { section: "Performance Cycles", title: "Appraisal Assessments" },
+  "/appraisal/design-form":  { section: "Appraisal Configuration", title: "Dynamic Form Builder" },
+  "/appraisal/create-cycle": { section: "Appraisal Configuration", title: "Release Appraisal Form" },
   "/profile":              { title: "Employee Profile Hub" },
   "/notifications":        { title: "Notification Feed" },
-  "/employees":            { section: "Org Governance", title: "Employee Directory" },
-  "/departments":          { section: "Org Governance", title: "Departments" },
+  "/employees":            { section: "Organization Hub", title: "Employee Directory" },
+  "/departments":          { section: "Organization Hub", title: "Departments" },
   "/roles":                { section: "Access Security", title: "Role Architecture" },
-  "/job-levels":           { section: "Org Governance", title: "Job Bands & Levels" },
-  "/positions":            { section: "Org Governance", title: "Tracks & Positions" },
-  "/teams":                { section: "Org Governance", title: "Team Pods" },
+  "/job-levels":           { section: "Organization Hub", title: "Job Bands & Levels" },
+  "/positions":            { section: "Organization Hub", title: "Tracks & Positions" },
+  "/teams":                { section: "Organization Hub", title: "Organizational Teams" },
   "/permissions":          { section: "Access Security", title: "Permission Sets" },
   "/permissions/matrix":   { section: "Access Security", title: "RBAC Matrix" },
   "/permissions/assign":   { section: "Access Security", title: "Direct Permissions" },
-  "/admin/records":        { section: "Org Governance", title: "Record Management" },
   "/financial-years":      { section: "Cycles", title: "Financial Quarters" },
-  "/performance-categories": { section: "Cycles", title: "Performance Categories" },
+  "/performance-categories": { section: "Organization Hub", title: "Evaluation Criteria" },
   "/pip":                  { title: "Performance Recovery (PIP)" },
-  "/analytics":            { section: "Executive Insights", title: "Strategic Analytics" },
-  "/kpi":                  { section: "Objectives & KRAs", title: "KPI Intelligence Hub" },
-  "/kpi/my":               { section: "Objectives & KRAs", title: "My Goals & Targets" },
-  "/kpi/team":             { section: "Objectives & KRAs", title: "Team Performance Pulse" },
-  "/kpi/manage":           { section: "Objectives & KRAs", title: "Goal Management" },
-  "/kpi/library":          { section: "Objectives & KRAs", title: "KRA Library" },
-  "/kpi/categories":       { section: "Objectives & KRAs", title: "KRA Categories" },
+  "/analytics":            { section: "Executive Insights", title: "Performance Analytics" },
+  "/kpi":                  { section: "Goals & KPI Management", title: "KPI Intelligence Hub" },
+  "/kpi/my":               { section: "Goals & KPI Management", title: "My Goals & KRAs" },
+  "/kpi/team":             { section: "Goals & KPI Management", title: "Team Performance" },
+  "/kpi/manage":           { section: "Goals & KPI Management", title: "Goal Management" },
+  "/kpi/library":          { section: "Goals & KPI Management", title: "KPI Library" },
+  "/kpi/categories":       { section: "Goals & KPI Management", title: "KPI Categories" },
+  "/kpi/org-history":      { section: "Goals & KPI Management", title: "Performance History" },
   "/meetings":             { title: "1-on-1 Sync Sessions" },
   "/continuous-feedback":  { title: "Continuous Feedback Stream" },
   "/performance-history":  { title: "Performance Pulse" },
+  "/audit-logs":           { section: "Organization Hub", title: "System Audit Logs" },
 };
 
 function resolvePageInfo(pathname: string): PageInfo {
@@ -54,7 +57,7 @@ interface HeaderProps {
 const Header = ({ onMenuClick }: HeaderProps) => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { isAdmin, isHR, isManager } = useAuth();
+  const { user, isAdmin, isHR, isManager } = useAuth();
   const pageInfo = resolvePageInfo(pathname);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -83,8 +86,11 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     : isHR
     ? "HR Partner"
     : isManager
-    ? "Mentor"
+    ? "Tech Manager"
     : "Intern";
+
+  const isInternUser = !isAdmin && !isHR && !isManager;
+  const displayTitle = (pathname === "/dashboard" && isInternUser) ? "Intern Dashboard" : pageInfo.title;
 
   return (
     <header className="flex items-center justify-between app-header sticky top-0 z-30 shrink-0 px-6 h-14 select-none">
@@ -107,12 +113,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
               </span>
               <ChevronRight size={12} className="hidden sm:block text-purple-300" aria-hidden="true" />
               <span className="text-sm font-semibold text-slate-900 tracking-tight">
-                {pageInfo.title}
+                {displayTitle}
               </span>
             </>
           ) : (
             <span className="text-sm font-semibold text-slate-900 tracking-tight">
-              {pageInfo.title}
+              {displayTitle}
             </span>
           )}
         </nav>

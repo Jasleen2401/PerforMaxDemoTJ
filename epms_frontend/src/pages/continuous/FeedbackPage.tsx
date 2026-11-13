@@ -20,7 +20,6 @@ import {
   useGetFeedbacksByManagerQuery,
 } from "../../features/continuous/continuousApi";
 import { useGetEmployeesQuery } from "../../features/employee/employeeapi";
-import { useGetAssignedMenteesQuery } from "../../features/manager/managerApi";
 import { FeedbackType, ContinuousStatus } from "../../features/continuous/continuousTypes";
 import { format } from "date-fns";
 import { formatRelativeTime } from "../../utils/timeUtils";
@@ -36,41 +35,32 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5,
 };
 const panelStyle: React.CSSProperties = {
-  background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 20, padding: '20px 24px',
-  boxShadow: '0 4px 20px -2px rgba(148, 163, 184, 0.08), 0 2px 8px -1px rgba(148, 163, 184, 0.04)',
+  background: '#FFFFFF', border: '1px solid #EDE9FE', borderRadius: 20, padding: '20px 24px',
+  boxShadow: '0 4px 20px -2px rgba(124, 58, 237, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.03)',
 };
 
 const FEEDBACK_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
   [FeedbackType.PRAISE]:      { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
-  'POSITIVE':                 { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
-  'REWARDS':                  { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
   [FeedbackType.IMPROVEMENT]: { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  'CONSTRUCTIVE':             { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  'COACHING':                 { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  'OBSERVATION':              { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  'PROGRESS':                 { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  'SATISFACTORY':             { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
-  'SUGGESTION':               { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
   [FeedbackType.WARNING]:     { bg: '#FFF5F5', text: '#B91C1C', border: '#FECACA' },
-  'NEGATIVE':                 { bg: '#FFF5F5', text: '#B91C1C', border: '#FECACA' },
 };
 
 const officeStyles = `
   .office-panel {
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    border: 1px solid #EDE9FE;
     border-radius: 20px;
     padding: 20px 24px;
-    box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.08), 0 2px 8px -1px rgba(148, 163, 184, 0.04);
+    box-shadow: 0 4px 20px -2px rgba(124, 58, 237, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.03);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-panel:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 30px -4px rgba(99, 102, 241, 0.08), 0 4px 12px -2px rgba(99, 102, 241, 0.04);
-    border-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 12px 30px -4px rgba(124, 58, 237, 0.08), 0 4px 12px -2px rgba(124, 58, 237, 0.04);
+    border-color: rgba(124, 58, 237, 0.25);
   }
   .office-input {
-    background: #F8FAFC;
+    background: #FAFAFD;
     border: 1px solid #E2E8F0;
     border-radius: 12px;
     padding: 8px 14px;
@@ -84,15 +74,15 @@ const officeStyles = `
   }
   .office-input:focus {
     background: #FFFFFF;
-    border-color: #6366F1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    border-color: #7C3AED;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
   }
   .office-button-primary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    background: #6366F1;
+    background: linear-gradient(135deg, #7C3AED 0%, #6366F1 100%);
     color: #FFFFFF;
     border: none;
     border-radius: 12px;
@@ -100,13 +90,13 @@ const officeStyles = `
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-button-primary:hover {
-    background: #4F46E5;
+    background: linear-gradient(135deg, #6D28D9 0%, #4F46E5 100%);
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25);
+    box-shadow: 0 6px 16px rgba(124, 58, 237, 0.3);
   }
   .office-button-primary:active {
     transform: translateY(0);
@@ -132,16 +122,16 @@ const officeStyles = `
     border-color: #CBD5E1;
   }
   .office-tag-badge {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 10px;
+    font-family: inherit;
+    font-size: 11px;
     font-weight: 600;
-    background: #F1F5F9;
-    color: #475569;
-    border: 1px solid #E2E8F0;
-    border-radius: 6px;
+    background: #F5F3FF;
+    color: #7C3AED;
+    border: 1px solid #DDD6FE;
+    border-radius: 8px;
     padding: 2px 8px;
     display: inline-block;
-    letter-spacing: -0.2px;
+    letter-spacing: -0.1px;
   }
   .office-avatar-circle {
     width: 32px;
@@ -170,23 +160,23 @@ const officeStyles = `
     bottom: 0;
     left: 27px;
     width: 2px;
-    background: #E2E8F0;
+    background: #EDE9FE;
     z-index: 0;
   }
   .office-feed-card {
     position: relative;
     z-index: 1;
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    border: 1px solid #EDE9FE;
     border-radius: 20px;
     padding: 20px 24px;
-    box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.08), 0 2px 8px -1px rgba(148, 163, 184, 0.04);
+    box-shadow: 0 4px 20px -2px rgba(124, 58, 237, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.03);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-feed-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 30px -4px rgba(99, 102, 241, 0.08), 0 4px 12px -2px rgba(99, 102, 241, 0.04);
-    border-color: rgba(99, 102, 241, 0.25);
+    box-shadow: 0 12px 30px -4px rgba(124, 58, 237, 0.08), 0 4px 12px -2px rgba(124, 58, 237, 0.04);
+    border-color: rgba(124, 58, 237, 0.25);
   }
   .office-snapshot-bar {
     height: 8px;
@@ -201,9 +191,9 @@ const officeStyles = `
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .office-tab-active {
-    background: #6366F1 !important;
+    background: linear-gradient(135deg, #7C3AED 0%, #9333EA 100%) !important;
     color: #FFFFFF !important;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25) !important;
   }
   .office-pill-filter {
     padding: 5px 14px;
@@ -220,9 +210,6 @@ const officeStyles = `
 `;
 
 const FeedbackSnapshot = ({ stats }: { stats: { praise: number; improvement: number; correction: number } }) => {
-  const { isManager, isAdmin, isHR } = useAuth();
-  const showTips = isManager || isAdmin || isHR;
-
   const bars = [
     { label: 'Praise', val: stats.praise, bar: '#10B981', text: '#059669' },
     { label: 'Improvement', val: stats.improvement, bar: '#F59E0B', text: '#D97706' },
@@ -231,12 +218,18 @@ const FeedbackSnapshot = ({ stats }: { stats: { praise: number; improvement: num
 
   return (
     <div style={panelStyle} className="space-y-4">
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Feedback Snapshot</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Feedback Snapshot</p>
+        <span style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED', background: '#F5F3FF', padding: '2px 8px', borderRadius: 999, border: '1px solid #DDD6FE' }}>Distribution</span>
+      </div>
       <div className="space-y-3">
         {bars.map(b => (
           <div key={b.label} className="space-y-1">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>{b.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: b.bar }} />
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>{b.label}</span>
+              </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: b.text }}>{b.val}%</span>
             </div>
             <div className="office-snapshot-bar">
@@ -245,26 +238,6 @@ const FeedbackSnapshot = ({ stats }: { stats: { praise: number; improvement: num
           </div>
         ))}
       </div>
-
-      {showTips && (
-        <div style={{ background: '#4F46E5', borderRadius: 16, padding: '16px', marginTop: 4 }} className="space-y-3 shadow-xl shadow-indigo-200">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <svg style={{ width: 16, height: 16, color: '#E0E7FF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#FFFFFF' }}>Manager Tips</span>
-          </div>
-          <p style={{ fontSize: 12, color: '#C7D2FE', lineHeight: 1.6 }}>Giving constructive feedback works best when it's specific, actionable, and delivered within 24 hours.</p>
-          <div className="space-y-2">
-            {['Use the "Situation-Behavior-Impact" model.', 'Balance praise with growth opportunities.'].map(tip => (
-              <div key={tip} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px' }}>
-                <svg style={{ width: 12, height: 12, color: '#A5B4FC', flexShrink: 0, marginTop: 2 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                <p style={{ fontSize: 11, color: '#E0E7FF', lineHeight: 1.4 }}>{tip}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -295,29 +268,29 @@ const ReplyItem = ({
   editingReplyId, editReplyText, setEditReplyText, setEditingReplyId,
   handleUpdateReply, handleScrollToParent, onContextMenu, isUpdatingReply
 }: {
-  reply: any; allReplies: any[]; user: any; authorId: number | string;
-  highlightedReplyId: number | string | null; editingReplyId: number | string | null;
+  reply: any; allReplies: any[]; user: any; authorId: number;
+  highlightedReplyId: number | null; editingReplyId: number | null;
   editReplyText: string; setEditReplyText: (val: string) => void;
-  setEditingReplyId: (val: number | string | null) => void;
-  handleUpdateReply: (id: any) => void;
-  handleScrollToParent: (parentId: any) => void;
+  setEditingReplyId: (val: number | null) => void;
+  handleUpdateReply: (id: number) => void;
+  handleScrollToParent: (parentId: number) => void;
   onContextMenu: (e: React.MouseEvent, reply: any) => void;
   isUpdatingReply: boolean;
 }) => {
-  const isCurrentUser = String(reply.employeeId) === String(user?.id);
-  const isAuthor = String(reply.employeeId) === String(authorId);
-  const isHighlighted = String(highlightedReplyId) === String(reply.replyId);
+  const isCurrentUser = reply.employeeId === user?.id;
+  const isAuthor = reply.employeeId === authorId;
+  const isHighlighted = highlightedReplyId === reply.replyId;
 
   const bubbleStyle: React.CSSProperties = isCurrentUser
-    ? { background: '#6366F1', color: '#FFFFFF', borderRadius: '18px 18px 4px 18px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(99,102,241,0.08)' }
-    : { background: '#F1F5F9', color: '#1E293B', borderRadius: '18px 18px 18px 4px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(148,163,184,0.04)', border: '1px solid #E2E8F0' };
+    ? { background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', color: '#FFFFFF', borderRadius: '18px 18px 4px 18px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(124,58,237,0.15)' }
+    : { background: '#F8FAFC', color: '#1E293B', borderRadius: '18px 18px 18px 4px', padding: '10px 14px', minWidth: 120, position: 'relative', boxShadow: '0 2px 8px rgba(148,163,184,0.04)', border: '1px solid #E2E8F0' };
 
-  const avatarBg = isCurrentUser || isHighlighted ? '#6366F1' : '#E2E8F0';
-  const avatarText = isCurrentUser || isHighlighted ? '#FFFFFF' : '#475569';
+  const avatarBg = isCurrentUser || isHighlighted ? '#7C3AED' : '#F1F5F9';
+  const avatarText = isCurrentUser || isHighlighted ? '#FFFFFF' : '#64748B';
 
   return (
     <div id={`reply-${reply.replyId}`} onContextMenu={(e) => onContextMenu(e, reply)}
-      style={isHighlighted ? { background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 16, padding: 12, margin: -12, transition: 'all 0.3s' } : { transition: 'all 0.3s' }}>
+      style={isHighlighted ? { background: '#FAF5FF', border: '1px solid #DDD6FE', borderRadius: 16, padding: 12, margin: -12, transition: 'all 0.3s' } : { transition: 'all 0.3s' }}>
       <div style={{ display: 'flex', gap: 10, ...(isCurrentUser ? { flexDirection: 'row-reverse' as const } : {}) }}>
         <div style={{ width: 28, height: 28, borderRadius: 8, background: avatarBg, color: avatarText, border: isCurrentUser || isHighlighted ? 'none' : '1px solid #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 4, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
           {reply.employeeName?.charAt(0) || '?'}
@@ -327,12 +300,12 @@ const ReplyItem = ({
             <span style={{ fontSize: 10, fontWeight: 700, color: '#1E293B', letterSpacing: '0.1px' }}>
               {isCurrentUser ? 'You' : reply.employeeName}
             </span>
-            {isAuthor && <span style={{ background: '#4F46E5', color: '#FFFFFF', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Author</span>}
+            {isAuthor && <span style={{ background: '#7C3AED', color: '#FFFFFF', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Author</span>}
             <span style={{ fontSize: 9, color: '#94A3B8' }}>{reply.createdAt ? format(new Date(reply.createdAt), 'h:mm a') : ''}</span>
           </div>
           <div style={bubbleStyle} className="group">
             <button onClick={(e) => onContextMenu(e as any, reply)}
-              style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', color: isCurrentUser ? '#C7D2FE' : '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex' }}
+              style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', color: isCurrentUser ? '#DDD6FE' : '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex' }}
               className="opacity-0 group-hover:opacity-100 transition-opacity">
               <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
             </button>
@@ -342,10 +315,10 @@ const ReplyItem = ({
               if (!parent) return null;
               return (
                 <div onClick={() => handleScrollToParent(parent.replyId)}
-                  style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 10, borderLeft: '3px solid #6366F1', background: isCurrentUser ? 'rgba(255,255,255,0.15)' : '#F1F5F9', cursor: 'pointer' }}
+                  style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 10, borderLeft: '3px solid #7C3AED', background: isCurrentUser ? 'rgba(255,255,255,0.15)' : '#F1F5F9', cursor: 'pointer' }}
                   className="hover:opacity-90 transition-opacity">
-                  <div style={{ fontSize: 9, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{parent.employeeName}</div>
-                  <div style={{ fontSize: 10, color: isCurrentUser ? '#CBD5E1' : '#475569', fontStyle: 'italic' }} className="line-clamp-2">"{parent.replyText}"</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{parent.employeeName}</div>
+                  <div style={{ fontSize: 10, color: isCurrentUser ? '#E9D5FF' : '#475569', fontStyle: 'italic' }} className="line-clamp-2">"{parent.replyText}"</div>
                 </div>
               );
             })()}
@@ -361,9 +334,9 @@ const ReplyItem = ({
                     e.target.value = val;
                   }} />
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button onClick={() => setEditingReplyId(null)} style={{ fontSize: 10, fontWeight: 600, color: isCurrentUser ? '#CBD5E1' : '#64748B', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => setEditingReplyId(null)} style={{ fontSize: 10, fontWeight: 600, color: isCurrentUser ? '#E9D5FF' : '#64748B', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
                   <button disabled={isUpdatingReply} onClick={() => handleUpdateReply(reply.replyId)}
-                    style={{ fontSize: 10, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#6366F1', background: 'none', border: 'none', cursor: isUpdatingReply ? 'not-allowed' : 'pointer', opacity: isUpdatingReply ? 0.5 : 1 }}>
+                    style={{ fontSize: 10, fontWeight: 700, color: isCurrentUser ? '#FFFFFF' : '#7C3AED', background: 'none', border: 'none', cursor: isUpdatingReply ? 'not-allowed' : 'pointer', opacity: isUpdatingReply ? 0.5 : 1 }}>
                     {isUpdatingReply ? 'Saving…' : 'Save'}
                   </button>
                 </div>
@@ -372,7 +345,7 @@ const ReplyItem = ({
               <>
                 <span style={{ fontSize: 13, color: isCurrentUser ? '#FFFFFF' : '#0F172A', lineHeight: 1.5, display: 'block', paddingRight: 10 }}>{reply.replyText}</span>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  <span style={{ fontSize: 8, fontWeight: 600, color: isCurrentUser ? '#C7D2FE' : '#94A3B8' }}>{formatRelativeTime(reply.createdAt)}</span>
+                  <span style={{ fontSize: 8, fontWeight: 600, color: isCurrentUser ? '#DDD6FE' : '#94A3B8' }}>{formatRelativeTime(reply.createdAt)}</span>
                   {isCurrentUser && <svg style={{ width: 10, height: 10, color: '#FFFFFF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                 </div>
               </>
@@ -385,15 +358,13 @@ const ReplyItem = ({
 };
 
 const FeedbackPage = () => {
-  const { user, isManager, isAdmin, isHR, isIntern, hasPermission } = useAuth();
-  const canViewFeedback = isAdmin || hasPermission('FEEDBACK_VIEW') || isManager || isHR || isIntern;
-  const canCreate = isManager || isAdmin || isHR || hasPermission('FEEDBACK_GIVE');
+  const { user, isManager, isAdmin, isHR } = useAuth();
+  const canCreate = isManager || isAdmin || isHR;
 
   const [perspective, setPerspective] = useState<'all' | 'received' | 'given'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [goToPage, setGoToPage] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined);
   const [filterFeedbackType, setFilterFeedbackType] = useState<string | undefined>(undefined);
   const [filterTagId, setFilterTagId] = useState<number | undefined>(undefined);
   const [filterCreatedAfter, setFilterCreatedAfter] = useState<string>('');
@@ -409,7 +380,7 @@ const FeedbackPage = () => {
   };
 
   const { data: allResponse, isLoading: isLoadingAll } = useGetAllFeedbacksQuery(
-    { ...queryParams, status: filterStatus },
+    queryParams,
     { skip: !user || perspective !== 'all' }
   );
 
@@ -419,7 +390,7 @@ const FeedbackPage = () => {
   );
 
   const { data: managerResponse, isLoading: isLoadingMgr } = useGetFeedbacksByManagerQuery(
-    { managerId: user?.id || 0, status: filterStatus, ...queryParams },
+    { managerId: user?.id || 0, ...queryParams },
     { skip: !user || perspective !== 'given' }
   );
 
@@ -445,45 +416,37 @@ const FeedbackPage = () => {
   const [newTagName, setNewTagName] = useState("");
   const [tagToDelete, setTagToDelete] = useState<number | null>(null);
   const [feedbackToDelete, setFeedbackToDelete] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<{ id: number | string; name: string } | null>(null);
-  const [expandedFeedbackId, setExpandedFeedbackId] = useState<number | string | null>(null);
+  const [expandedFeedbackId, setExpandedFeedbackId] = useState<number | null>(null);
 
-  const deptEmployees = employees?.filter(emp =>
+  // 1. Direct reports or mentees of the current manager
+  const directReports = (employees || []).filter(emp =>
+    String(emp.directManagerId) === String(user?.id) ||
+    String(emp.directManagerId) === String(user?.profile?.id) ||
+    (emp.directManagerName && (emp.directManagerName === user?.username || emp.directManagerName === user?.staffName))
+  );
+
+  // 2. Department members (excluding those already in direct reports)
+  const deptEmployees = (employees || []).filter(emp =>
     emp.currentDepartmentName && user?.currentDepartmentName &&
-    emp.currentDepartmentName === user?.currentDepartmentName
-  ) || [];
-  // Include the logged-in user's own rank since they are excluded from the
-  // employees list (excludeSelf=true). Without this, the next person below
-  // them becomes minRankInDept and gets incorrectly filtered out.
-  const allDeptRanks = [
-    ...deptEmployees.map(emp => emp.levelRank ?? 9999),
-    user?.levelRank ?? 9999
-  ];
-  const minRankInDept = allDeptRanks.length > 0
-    ? Math.min(...allDeptRanks)
-    : 9999;
+    emp.currentDepartmentName === user?.currentDepartmentName &&
+    !directReports.some(d => String(d.id) === String(emp.id))
+  );
 
-  const isManagerRole = isManager || user?.role === 'MANAGER';
-  const { data: assignedMentees = [] } = useGetAssignedMenteesQuery(undefined, { skip: !isManagerRole });
+  // 3. Other staff across company (excluding direct reports and dept members)
+  const otherEmployees = (employees || []).filter(emp =>
+    !directReports.some(d => String(d.id) === String(emp.id)) &&
+    !deptEmployees.some(d => String(d.id) === String(emp.id))
+  );
 
-  const assignedIds = new Set([
-    ...assignedMentees.map(m => String(m.id)),
-    ...assignedMentees.map(m => String(m.userId)),
-    ...assignedMentees.map(m => String(m.employeeCode || '').toLowerCase()),
-  ]);
-
-  const filteredEmployees = (isAdmin || isHR || isManagerRole)
-    ? employees?.filter(emp => String(emp.id) !== String(user?.id))
-    : employees?.filter(emp =>
-        emp.currentDepartmentName && user?.currentDepartmentName &&
-        emp.currentDepartmentName === user?.currentDepartmentName &&
-        emp.id !== user?.id &&
-        (emp.levelRank === undefined || emp.levelRank === null || emp.levelRank !== minRankInDept) &&
-        (emp.levelRank === undefined || emp.levelRank === null || user?.levelRank === undefined || user?.levelRank === null || emp.levelRank >= user.levelRank)
-      );
-
-  const availableEmployees = filteredEmployees || [];
+  const availableEmployees = (isAdmin || isHR)
+    ? (employees && employees.length > 0 ? employees : [])
+    : [
+        ...directReports,
+        ...deptEmployees,
+        ...(otherEmployees || []),
+      ];
 
   const blankFeedback = { employeeId: "" as number | string, tagId: "" as number | "", feedbackType: FeedbackType.PRAISE, description: "" };
   const [showModal, setShowModal] = useState(false);
@@ -500,7 +463,7 @@ const FeedbackPage = () => {
     description: "",
   });
 
-  const selectedEmp = employees?.find(e => String(e.id) === String(newFeedback.employeeId) || String((e as any).userId) === String(newFeedback.employeeId));
+  const selectedEmp = employees?.find(e => String(e.id) === String(newFeedback.employeeId));
 
   const handleCreate = async (e: React.FormEvent, status?: ContinuousStatus) => {
     if (e) e.preventDefault();
@@ -508,22 +471,24 @@ const FeedbackPage = () => {
       toast.warning("Please select an employee and a category.");
       return;
     }
-
     try {
       const resolvedStatus = status || (editingId ? undefined : submitStatus);
       const body = {
         employeeId: newFeedback.employeeId,
-        tagId: Number(newFeedback.tagId),
+        tagId: newFeedback.tagId as number,
         feedbackType: newFeedback.feedbackType,
         description: newFeedback.description,
+
         managerId: user.id,
         status: resolvedStatus,
       };
 
       if (editingId) {
         await updateFeedback({ id: editingId, body }).unwrap();
+        toast.success("Feedback updated successfully!");
       } else {
         await createFeedback(body).unwrap();
+        toast.success("Feedback saved successfully!");
       }
 
       setShowModal(false);
@@ -540,9 +505,11 @@ const FeedbackPage = () => {
     try {
       if (editingTagId) {
         await updateFeedbackTag({ id: editingTagId, body: { tagName: newTagName } }).unwrap();
+        toast.success("Tag updated successfully!");
       } else {
         const response = await createFeedbackTag({ tagName: newTagName }).unwrap();
         setNewFeedback({ ...newFeedback, tagId: response.tagId });
+        toast.success("Tag created successfully!");
       }
       setIsAddingTag(false); setEditingTagId(null); setNewTagName("");
     } catch (err: any) { toast.error("Failed to save tag."); }
@@ -554,6 +521,7 @@ const FeedbackPage = () => {
       await deleteFeedbackTag(tagToDelete).unwrap();
       if (newFeedback.tagId === tagToDelete) setNewFeedback({ ...newFeedback, tagId: "" });
       setTagToDelete(null);
+      toast.success("Tag deleted successfully!");
     } catch (err: any) { toast.error("Failed to delete tag."); }
   };
 
@@ -562,13 +530,14 @@ const FeedbackPage = () => {
     try {
       await deleteFeedback(feedbackToDelete).unwrap();
       setFeedbackToDelete(null);
+      toast.success("Feedback deleted successfully!");
     } catch (err: any) { toast.error("Failed to delete feedback."); }
   };
 
   const handleEdit = (fb: any) => {
     setEditingId(fb.feedbackId);
-    const emp = employees?.find(e => String(e.id) === String(fb.employeeId) || String((e as any).userId) === String(fb.employeeId));
-    setEditingEmployee({ id: fb.employeeId, name: emp?.staffName || fb.employeeName || 'Unknown' });
+    const emp = employees?.find(e => String(e.id) === String(fb.employeeId));
+    setEditingEmployee({ id: fb.employeeId, name: emp?.staffName || fb.employeeName || 'Staff Member' });
     setNewFeedback({
       employeeId: fb.employeeId,
       tagId: fb.tag?.tagId || 0,
@@ -578,7 +547,7 @@ const FeedbackPage = () => {
     setShowModal(true);
   };
 
-  const handlePublish = async (id: number | string) => {
+  const handlePublish = async (id: number) => {
     try {
       await publishFeedback(id).unwrap();
       toast.success('Feedback published successfully!');
@@ -600,42 +569,42 @@ const FeedbackPage = () => {
 
   if (isLoading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
-      <div style={{ width: 28, height: 28, border: '2px solid #E4E6EC', borderTopColor: '#1A56DB', borderRadius: '50%' }} className="animate-spin" />
+      <div style={{ width: 28, height: 28, border: '2px solid #EDE9FE', borderTopColor: '#7C3AED', borderRadius: '50%' }} className="animate-spin" />
     </div>
   );
 
-  const totalItems = feedbackResponse?.totalElements || 0;
-  const totalPages = feedbackResponse?.totalPages || 0;
+  const totalItems = feedbackResponse?.totalElements || feedbacks.length;
+  const totalPages = feedbackResponse?.totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + feedbacks.length;
+  const endIndex = Math.min(startIndex + feedbacks.length, totalItems);
 
   const publishedFeedbacks = feedbacks?.filter(f => f.status === ContinuousStatus.PUBLISHED) || [];
-  const praiseList = [FeedbackType.PRAISE, 'POSITIVE', 'REWARDS'];
-  const imprList = [FeedbackType.IMPROVEMENT, 'CONSTRUCTIVE', 'COACHING', 'OBSERVATION', 'PROGRESS', 'SATISFACTORY', 'SUGGESTION'];
-  const warnList = [FeedbackType.WARNING, 'NEGATIVE'];
-
-  const stats = (feedbackStats && (feedbackStats.totalPublished || 0) > 0 && perspective === 'all' && !filterFeedbackType && !filterTagId && !filterCreatedAfter && !filterCreatedBefore) ? {
-    praise: Math.round((((feedbackStats as any).praise || 0) / feedbackStats.totalPublished) * 100),
-    improvement: Math.round((((feedbackStats as any).improvement || 0) / feedbackStats.totalPublished) * 100),
-    correction: Math.round((((feedbackStats as any).warning || 0) / feedbackStats.totalPublished) * 100),
-  } : {
-    praise: Math.round((publishedFeedbacks.filter(f => praiseList.includes(f.feedbackType)).length / (publishedFeedbacks.length || 1)) * 100),
-    improvement: Math.round((publishedFeedbacks.filter(f => imprList.includes(f.feedbackType)).length / (publishedFeedbacks.length || 1)) * 100),
-    correction: Math.round((publishedFeedbacks.filter(f => warnList.includes(f.feedbackType)).length / (publishedFeedbacks.length || 1)) * 100),
+  const stats = {
+    praise: Math.round((publishedFeedbacks.filter(f => f.feedbackType === FeedbackType.PRAISE).length / (publishedFeedbacks.length || 1)) * 100),
+    improvement: Math.round((publishedFeedbacks.filter(f => f.feedbackType === FeedbackType.IMPROVEMENT).length / (publishedFeedbacks.length || 1)) * 100),
+    correction: Math.round((publishedFeedbacks.filter(f => f.feedbackType === FeedbackType.WARNING).length / (publishedFeedbacks.length || 1)) * 100),
   };
   const btnPageStyle = (active: boolean): React.CSSProperties => ({
-    width: 30, height: 30, borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
-    background: active ? '#1A56DB' : 'transparent', color: active ? '#FFFFFF' : '#9EA3B0',
+    width: 32, height: 32, borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+    background: active ? 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)' : 'transparent',
+    color: active ? '#FFFFFF' : '#64748B',
+    boxShadow: active ? '0 2px 8px rgba(124, 58, 237, 0.25)' : 'none',
+    transition: 'all 0.2s ease',
   });
   return (
     <div className="space-y-4 pb-8">
       <style dangerouslySetInnerHTML={{ __html: officeStyles }} />
 
       {/* Header */}
-      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', letterSpacing: '-0.3px' }}>Continuous Feedback</h1>
-          <p style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Real-time performance insights and team recognition.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px' }}>Continuous Feedback</h1>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 999, padding: '2px 8px', letterSpacing: '0.3px' }}>
+              Real-Time Coaching
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: '#64748B' }}>Real-time performance insights, peer recognition, and continuous coaching.</p>
         </div>
         {canCreate && (
           <button onClick={() => setShowModal(true)} className="office-button-primary">
@@ -645,63 +614,47 @@ const FeedbackPage = () => {
         )}
       </div>
 
-      {isManager && (
-        <div className="space-y-3">
-          {/* Perspective selector tabs */}
-          <div className="bg-slate-100 border border-slate-200 rounded-2xl p-1.5 flex gap-2 w-fit shadow-inner">
-            <button
-              type="button"
-              onClick={() => { setPerspective('all'); setFilterStatus(undefined); setCurrentPage(1); }}
-              className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
-                perspective === 'all'
-                  ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              All Feedback
-            </button>
-            <button
-              type="button"
-              onClick={() => { setPerspective('received'); setFilterStatus(undefined); setCurrentPage(1); }}
-              className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
-                perspective === 'received'
-                  ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              Feedback Received
-            </button>
-            <button
-              type="button"
-              onClick={() => { setPerspective('given'); setFilterStatus(undefined); setCurrentPage(1); }}
-              className={`px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-300 ${
-                perspective === 'given'
-                  ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-100'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              Feedback Given
-            </button>
-          </div>
-
-          {/* Draft/Published filter (only applicable for given or all) */}
-          {perspective !== 'received' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {([{ label: 'All Statuses', value: undefined }, { label: 'Published Only', value: ContinuousStatus.PUBLISHED }, { label: 'Drafts Only', value: ContinuousStatus.DRAFT }] as const).map(({ label, value }) => (
-                <button key={label} type="button"
-                  onClick={() => { setFilterStatus(value as string | undefined); setCurrentPage(1); }}
-                  className="office-pill-filter"
-                  style={{ background: filterStatus === value ? '#4F46E5' : '#F1F5F9', color: filterStatus === value ? '#FFFFFF' : '#475569', border: filterStatus === value ? '1px solid #4F46E5' : '1px solid #E2E8F0' }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Perspective selector tabs */}
+        <div className="bg-white/80 backdrop-blur-sm border border-purple-100/90 rounded-2xl p-1.5 flex gap-1.5 w-fit shadow-sm shadow-purple-500/5">
+          <button
+            type="button"
+            onClick={() => { setPerspective('all'); setCurrentPage(1); }}
+            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
+              perspective === 'all'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50/60'
+            }`}
+          >
+            All Feedback
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPerspective('received'); setCurrentPage(1); }}
+            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
+              perspective === 'received'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50/60'
+            }`}
+          >
+            Feedback Received
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPerspective('given'); setCurrentPage(1); }}
+            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
+              perspective === 'given'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50/60'
+            }`}
+          >
+            Feedback Given
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Filter Toolbar */}
-      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+      <div className="office-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', padding: '16px 20px' }}>
         <div style={{ flex: '1 1 130px', minWidth: 0 }}>
           <label style={labelStyle}>Type</label>
           <select className="office-input" value={filterFeedbackType ?? ''}
@@ -709,11 +662,11 @@ const FeedbackPage = () => {
             <option value="">All Types</option>
             <option value="PRAISE">Praise</option>
             <option value="IMPROVEMENT">Improvement</option>
-            <option value="WARNING">Warning</option>
+            <option value="WARNING">Correction</option>
           </select>
         </div>
         <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-          <label style={labelStyle}>Tag</label>
+          <label style={labelStyle}>Competency Tag</label>
           <select className="office-input" value={filterTagId ?? ''}
             onChange={e => { setFilterTagId(e.target.value ? Number(e.target.value) : undefined); setCurrentPage(1); }}>
             <option value="">All Tags</option>
@@ -721,12 +674,12 @@ const FeedbackPage = () => {
           </select>
         </div>
         <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-          <label style={labelStyle}>From</label>
+          <label style={labelStyle}>From Date</label>
           <input type="date" className="office-input" value={filterCreatedAfter}
             onChange={e => { setFilterCreatedAfter(e.target.value); setCurrentPage(1); }} />
         </div>
         <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-          <label style={labelStyle}>To</label>
+          <label style={labelStyle}>To Date</label>
           <input type="date" className="office-input" value={filterCreatedBefore}
             onChange={e => { setFilterCreatedBefore(e.target.value); setCurrentPage(1); }} />
         </div>
@@ -734,7 +687,7 @@ const FeedbackPage = () => {
           <button type="button"
             onClick={() => { setFilterFeedbackType(undefined); setFilterTagId(undefined); setFilterCreatedAfter(''); setFilterCreatedBefore(''); setCurrentPage(1); }}
             className="office-button-secondary"
-            style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+            style={{ padding: '8px 14px', whiteSpace: 'nowrap', height: 38 }}>
             Clear Filters
           </button>
         )}
@@ -743,33 +696,32 @@ const FeedbackPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Main Feed */}
         <div className="lg:col-span-2 space-y-4 order-2 lg:order-1 office-timeline-line">
-          {!canViewFeedback && (
-            <div style={{ background: '#FFFBEB', border: '1px dashed #F59E0B', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#78350F', marginBottom: 6 }}>Access Restricted</h3>
-              <p style={{ fontSize: 12, color: '#92400E', marginBottom: 14 }}>You are not authorized to view continuous feedback details.</p>
+          {feedbacks?.length === 0 && (
+            <div style={{ padding: '48px 24px', textAlign: 'center', border: '2px dashed #EDE9FE', borderRadius: 20, background: '#FFFFFF' }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', border: '1px solid #DDD6FE' }}>
+                <svg style={{ width: 20, height: 20 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>No feedback found</p>
+              <p style={{ fontSize: 12, color: '#64748B' }}>Try adjusting your search criteria or give constructive feedback to a teammate.</p>
             </div>
           )}
 
-          {canViewFeedback && feedbacks?.length === 0 && (
-            <div style={{ padding: '48px 24px', textAlign: 'center', border: '2px dashed #E2E8F0', borderRadius: 20 }}>
-              <p style={{ fontSize: 13, color: '#64748B' }}>No feedback entries yet.</p>
-            </div>
-          )}
-
-          {canViewFeedback && feedbacks?.map((fb) => {
+          {feedbacks?.map((fb) => {
             const typeStyle = FEEDBACK_TYPE_STYLE[fb.feedbackType] || FEEDBACK_TYPE_STYLE[FeedbackType.PRAISE];
             return (
               <div key={fb.feedbackId} className="office-feed-card group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 38, height: 38, borderRadius: 10, background: typeStyle.bg, color: typeStyle.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0, border: `1px solid ${typeStyle.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-                      {fb.managerName.charAt(0)}
+                      {fb.managerName ? fb.managerName.charAt(0) : 'M'}
                     </div>
                     <div>
                       <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>
                         {fb.managerName}
-                        {String(fb.employeeId) !== String(user?.id) && <span style={{ color: '#64748B', fontWeight: 400, marginLeft: 4, fontSize: 12 }}>to {fb.employeeName}</span>}
-                        {String(fb.employeeId) === String(user?.id) && String(fb.managerId) === String(user?.id) && <span style={{ color: '#64748B', fontWeight: 400, marginLeft: 4, fontSize: 12 }}>(Self)</span>}
+                        {fb.employeeId !== user?.id && <span style={{ color: '#64748B', fontWeight: 400, marginLeft: 4, fontSize: 12 }}>to {fb.employeeName}</span>}
+                        {fb.employeeId === user?.id && fb.managerId === user?.id && <span style={{ color: '#7C3AED', fontWeight: 500, marginLeft: 4, fontSize: 12 }}>(Self)</span>}
                       </h3>
                       <p style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>
                         {fb.publishedAt
@@ -787,12 +739,12 @@ const FeedbackPage = () => {
                     <span style={{ fontSize: 9, fontWeight: 700, background: typeStyle.bg, color: typeStyle.text, border: `1px solid ${typeStyle.border}`, borderRadius: 6, padding: '3px 8px', textTransform: 'uppercase' }}>
                       {fb.feedbackType}
                     </span>
-                    {(String(fb.managerId) === String(user?.id) || String(fb.createdBy) === String(user?.id) || isAdmin || isHR) && (
+                    {(fb.managerId === user?.id || isAdmin || isHR) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <button onClick={() => handleEdit(fb)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-[#EEF2FF] hover:text-[#6366F1] transition-colors">
+                        <button onClick={() => handleEdit(fb)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-purple-50 hover:text-purple-600 transition-colors">
                           <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         </button>
-                        <button onClick={() => setFeedbackToDelete(fb.feedbackId as any)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-[#FFF5F5] hover:text-[#B91C1C] transition-colors">
+                        <button onClick={() => setFeedbackToDelete(fb.feedbackId)} style={{ padding: 5, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', borderRadius: 6 }} className="hover:bg-[#FFF5F5] hover:text-[#B91C1C] transition-colors">
                           <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       </div>
@@ -806,24 +758,24 @@ const FeedbackPage = () => {
                 <p 
                   onClick={() => setExpandedFeedbackId(expandedFeedbackId === fb.feedbackId ? null : fb.feedbackId)}
                   style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, cursor: 'pointer' }}
-                  className="hover:text-[#6366F1] transition-colors"
+                  className="hover:text-purple-700 transition-colors"
                 >
                   {fb.description}
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, marginTop: 12, borderTop: '1px solid #F1F5F9' }}>
                   <button type="button"
                     onClick={() => setExpandedFeedbackId(expandedFeedbackId === fb.feedbackId ? null : fb.feedbackId)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: expandedFeedbackId === fb.feedbackId ? '#6366F1' : '#94A3B8', fontSize: 12, fontWeight: 600 }}
-                    className="hover:text-[#4F46E5] transition-colors">
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: expandedFeedbackId === fb.feedbackId ? '#7C3AED' : '#94A3B8', fontSize: 12, fontWeight: 600 }}
+                    className="hover:text-purple-700 transition-colors">
                     <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
                     Replies{(fb.replyCount ?? 0) > 0 ? ` (${fb.replyCount})` : ''}
                   </button>
-                  {fb.status === ContinuousStatus.DRAFT && (fb.managerId === user?.id || isAdmin || isHR) && (
+                  {fb.status === ContinuousStatus.DRAFT && (fb.managerId === user?.id || String(fb.managerId) === String(user?.id) || isAdmin || isHR) && (
                     <button type="button" onClick={() => handlePublish(fb.feedbackId)} disabled={isPublishing}
                       className="office-button-primary"
-                      style={{ padding: '6px 12px', fontSize: 11 }}>
+                      style={{ padding: '6px 14px', fontSize: 11 }}>
                       <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                       Publish
                     </button>
@@ -864,32 +816,31 @@ const FeedbackPage = () => {
         {/* Sidebar Widgets */}
         <div className="lg:col-span-1 space-y-4 order-1 lg:order-2 lg:sticky lg:top-6">
           <div className="office-panel" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 10, background: '#EEF2FF', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #C7D2FE' }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #DDD6FE' }}>
               <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
             </div>
             <div>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>
-                {perspective === 'received' ? 'Received Published' : perspective === 'given' ? 'Given Published' : 'Total Published'}
+                {perspective === 'received' ? 'Received Published' : perspective === 'given' ? 'Given Published' : (isManager || isAdmin || isHR) ? 'Total Published' : 'Total Received'}
               </p>
               <p style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>
-                {perspective === 'received' ? (feedbackResponse?.totalElements || 0) : perspective === 'given' ? (feedbackResponse?.totalElements || 0) : (feedbackStats?.totalPublished || totalItems)}
+                {perspective === 'received' ? (feedbackResponse?.totalElements || 0) : perspective === 'given' ? (feedbackStats?.totalPublished || 0) : (isManager || isAdmin || isHR) ? (feedbackStats?.totalPublished || totalItems) : totalItems}
               </p>
             </div>
           </div>
           {(isManager || isAdmin || isHR) && perspective !== 'received' && (
-            <button type="button"
-              onClick={() => { setFilterStatus(ContinuousStatus.DRAFT); setCurrentPage(1); }}
-              className="office-panel hover:border-[#FDE68A] transition-colors"
-              style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', cursor: 'pointer' }}
+            <div
+              className="office-panel"
+              style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left' }}
             >
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: '#FFFBEB', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #FDE68A' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: '#FFFBEB', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #FDE68A' }}>
                 <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
               </div>
               <div>
                 <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Total Drafts</p>
                 <p style={{ fontSize: 22, fontWeight: 800, color: '#B45309' }}>{feedbackStats?.totalDraft || 0}</p>
               </div>
-            </button>
+            </div>
           )}
           <FeedbackSnapshot stats={stats} />
         </div>
@@ -899,7 +850,7 @@ const FeedbackPage = () => {
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
           <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 20, width: '100%', maxWidth: 520, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
-            <div style={{ background: '#4F46E5', padding: '16px 24px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)', padding: '18px 24px' }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.3px' }}>{editingId ? 'Edit Feedback' : 'Give Performance Feedback'}</h2>
             </div>
             <div style={{ padding: 24, maxHeight: '80vh', overflowY: 'auto' }}>
@@ -908,18 +859,44 @@ const FeedbackPage = () => {
                   <div>
                     <label style={labelStyle}>Employee</label>
                     {editingId && editingEmployee ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 10, padding: '9px 14px' }}>
-                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#FFFFFF', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '9px 14px' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#FFFFFF', flexShrink: 0 }}>
                           {editingEmployee.name.charAt(0)}
                         </div>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{editingEmployee.name}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px', background: '#E2E8F0', borderRadius: 6, padding: '2px 6px' }}>Fixed</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.4px', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 6, padding: '2px 6px' }}>Fixed</span>
                       </div>
                     ) : (
-                      <select required className="office-input" value={newFeedback.employeeId}
+                      <select required className="office-input" value={newFeedback.employeeId || ""}
                         onChange={e => setNewFeedback({ ...newFeedback, employeeId: e.target.value })}>
-                        <option value="">Choose Staff / Employee</option>
-                        {availableEmployees?.map(emp => <option key={emp.id} value={emp.id}>{emp.staffName}</option>)}
+                        <option value="">Choose Staff</option>
+                        {directReports.length > 0 && (
+                          <optgroup label="Direct Reports / Mentees">
+                            {directReports.map(emp => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.staffName} ({emp.currentDepartmentName || 'General'} - {emp.positionName || 'Member'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {deptEmployees.length > 0 && (
+                          <optgroup label="Department Members">
+                            {deptEmployees.map(emp => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.staffName} ({emp.currentDepartmentName || 'General'} - {emp.positionName || 'Member'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {otherEmployees.length > 0 && (
+                          <optgroup label={directReports.length > 0 || deptEmployees.length > 0 ? "All Other Staff" : "All Employees"}>
+                            {otherEmployees.map(emp => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.staffName} ({emp.currentDepartmentName || 'General'} - {emp.positionName || 'Member'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
                     )}
                   </div>
@@ -928,7 +905,7 @@ const FeedbackPage = () => {
                       <label style={{ ...labelStyle, marginBottom: 0 }}>Tag</label>
                       {!isAddingTag && (
                         <button type="button" onClick={() => setIsAddingTag(true)}
-                          style={{ fontSize: 10, fontWeight: 700, color: '#6366F1', background: 'none', border: 'none', cursor: 'pointer' }}>+ New Tag</button>
+                          style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', background: 'none', border: 'none', cursor: 'pointer' }}>+ New Tag</button>
                       )}
                     </div>
                     {isAddingTag ? (
@@ -1074,7 +1051,7 @@ const FeedbackPage = () => {
   );
 };
 
-const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string; authorId: number | string }) => {
+const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string; authorId?: number | string }) => {
   const { user } = useAuth();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; reply: any } | null>(null);
 
@@ -1095,21 +1072,21 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
     }
   };
 
-  const { data: replies, isLoading } = useGetFeedbackRepliesQuery(feedbackId as any);
+  const { data: replies, isLoading } = useGetFeedbackRepliesQuery(feedbackId);
   const [replyToFeedback, { isLoading: isReplying }] = useReplyToFeedbackMutation();
   const [deleteReply] = useDeleteReplyMutation();
   const [updateReply, { isLoading: isUpdatingReply }] = useUpdateReplyMutation();
 
   const [newReply, setNewReply] = useState("");
-  const [replyingToId, setReplyingToId] = useState<number | string | null>(null);
-  const [replyTarget, setReplyTarget] = useState<{ id: number | string; name: string; text: string } | null>(null);
-  const [editingReplyId, setEditingReplyId] = useState<number | string | null>(null);
+  const [replyingToId, setReplyingToId] = useState<number | null>(null);
+  const [replyTarget, setReplyTarget] = useState<{ id: number; name: string; text: string } | null>(null);
+  const [editingReplyId, setEditingReplyId] = useState<number | null>(null);
   const [editReplyText, setEditReplyText] = useState("");
-  const [replyToDelete, setReplyToDelete] = useState<number | string | null>(null);
-  const [highlightedReplyId, setHighlightedReplyId] = useState<number | string | null>(null);
+  const [replyToDelete, setReplyToDelete] = useState<number | null>(null);
+  const [highlightedReplyId, setHighlightedReplyId] = useState<number | null>(null);
   const mainInputRef = useRef<HTMLInputElement>(null);
 
-  const handleScrollToParent = (parentId: number | string) => {
+  const handleScrollToParent = (parentId: number) => {
     const element = document.getElementById(`reply-${parentId}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1122,7 +1099,7 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
     e.preventDefault();
     if (!newReply.trim() || !user) return;
     try {
-      await replyToFeedback({ feedbackId: feedbackId as any, body: { replyText: newReply, employeeId: user.id as any, parentId: (replyingToId as any) ?? undefined } }).unwrap();
+      await replyToFeedback({ feedbackId, body: { replyText: newReply, employeeId: user.id, parentId: replyingToId ?? undefined } }).unwrap();
       setNewReply(""); setReplyingToId(null); setReplyTarget(null);
     } catch (err: any) { toast.error("Failed to post reply."); }
   };
@@ -1135,14 +1112,14 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
 
   const handleDeleteReply = async () => {
     if (!replyToDelete) return;
-    try { await deleteReply({ replyId: replyToDelete as any, feedbackId: feedbackId as any }).unwrap(); setReplyToDelete(null); }
+    try { await deleteReply({ replyId: replyToDelete, feedbackId }).unwrap(); setReplyToDelete(null); }
     catch (err) { console.error("Failed to delete reply", err); }
   };
 
-  const handleUpdateReply = async (replyId: number | string) => {
+  const handleUpdateReply = async (replyId: number) => {
     if (!editReplyText.trim() || !user) return;
     try {
-      await updateReply({ replyId: replyId as any, feedbackId: feedbackId as any, body: { replyText: editReplyText, employeeId: user.id as any } }).unwrap();
+      await updateReply({ replyId, feedbackId, body: { replyText: editReplyText, employeeId: user.id } }).unwrap();
       setEditingReplyId(null); setEditReplyText("");
     } catch (err) { console.error("Failed to update reply", err); }
   };
@@ -1198,13 +1175,13 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
           onClick={(e) => e.stopPropagation()}>
           <button onClick={() => { startReply(contextMenu.reply); setContextMenu(null); }}
             style={{ width: '100%', padding: '8px 14px', textAlign: 'left', fontSize: 13, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-            className="hover:bg-[#F1F5F9] transition-colors">
-            <svg style={{ width: 14, height: 14, color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+            className="hover:bg-purple-50 transition-colors">
+            <svg style={{ width: 14, height: 14, color: '#7C3AED' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
             Reply
           </button>
           <button onClick={() => { navigator.clipboard.writeText(contextMenu.reply.replyText); setContextMenu(null); }}
             style={{ width: '100%', padding: '8px 14px', textAlign: 'left', fontSize: 13, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-            className="hover:bg-[#F1F5F9] transition-colors">
+            className="hover:bg-purple-50 transition-colors">
             <svg style={{ width: 14, height: 14, color: '#94A3B8' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
             Copy Text
           </button>
@@ -1213,8 +1190,8 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
               <div style={{ height: '1px', background: '#F1F5F9', margin: '4px 0' }} />
               <button onClick={() => { setEditingReplyId(contextMenu.reply.replyId); setEditReplyText(contextMenu.reply.replyText); setContextMenu(null); }}
                 style={{ width: '100%', padding: '8px 14px', textAlign: 'left', fontSize: 13, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-                className="hover:bg-[#F1F5F9] transition-colors">
-                <svg style={{ width: 14, height: 14, color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                className="hover:bg-purple-50 transition-colors">
+                <svg style={{ width: 14, height: 14, color: '#7C3AED' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                 Edit
               </button>
               <button onClick={() => { setReplyToDelete(contextMenu.reply.replyId); setContextMenu(null); }}
@@ -1231,28 +1208,28 @@ const FeedbackReplies = ({ feedbackId, authorId }: { feedbackId: number | string
       {/* Reply input */}
       <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 12 }}>
         {replyTarget && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, background: '#EEF2FF', border: '1px solid #C7D2FE', borderLeft: '3px solid #6366F1', borderRadius: 10, padding: '6px 12px' }} className="animate-fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, background: '#FAF5FF', border: '1px solid #DDD6FE', borderLeft: '3px solid #7C3AED', borderRadius: 10, padding: '6px 12px' }} className="animate-fade-in">
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2 }}>{replyTarget.name}</p>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2 }}>{replyTarget.name}</p>
               <p style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }} className="truncate">"{replyTarget.text}"</p>
             </div>
             <button onClick={() => { setReplyingToId(null); setReplyTarget(null); }}
-              style={{ width: 18, height: 18, borderRadius: '50%', background: '#E2E8F0', color: '#64748B', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              style={{ width: 18, height: 18, borderRadius: '50%', background: '#EDE9FE', color: '#7C3AED', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg style={{ width: 10, height: 10 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
         )}
         <form onSubmit={handleReply} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div className="office-avatar-circle" style={{ background: '#6366F1', color: '#FFFFFF', width: 28, height: 28, fontSize: 11 }}>
+          <div className="office-avatar-circle" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', color: '#FFFFFF', width: 28, height: 28, fontSize: 11 }}>
             {user?.staffName?.charAt(0) || '?'}
           </div>
-          <div style={{ flex: 1, display: 'flex', gap: 6, background: '#F1F5F9', borderRadius: 24, padding: '3px 6px 3px 14px', alignItems: 'center', border: '1px solid #E2E8F0' }}>
+          <div style={{ flex: 1, display: 'flex', gap: 6, background: '#FAFAFD', borderRadius: 24, padding: '3px 6px 3px 14px', alignItems: 'center', border: '1px solid #E2E8F0' }}>
             <input ref={mainInputRef} style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, height: 32, padding: 0 }}
               placeholder={replyTarget ? `Replying to ${replyTarget.name}…` : 'Add to the conversation…'}
               maxLength={2000}
               value={newReply} onChange={(e) => setNewReply(e.target.value)} />
             <button type="submit" disabled={isReplying || !newReply.trim()}
-              style={{ background: '#6366F1', color: '#FFFFFF', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isReplying || !newReply.trim() ? 'not-allowed' : 'pointer', opacity: isReplying || !newReply.trim() ? 0.5 : 1, transition: 'all 0.2s', flexShrink: 0 }}>
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)', color: '#FFFFFF', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isReplying || !newReply.trim() ? 'not-allowed' : 'pointer', opacity: isReplying || !newReply.trim() ? 0.5 : 1, transition: 'all 0.2s', flexShrink: 0 }}>
               <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
             </button>
           </div>

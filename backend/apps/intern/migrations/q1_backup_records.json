@@ -1,0 +1,749 @@
+[
+  {
+    "intern_id": "ffbea6f8-796c-494d-9dde-26c18f9ba91f",
+    "username": "aakash_yadav",
+    "employee_code": "DLQ-DD2-037",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.117652+00:00"
+  },
+  {
+    "intern_id": "841365d7-c60d-4457-8841-44f3d3c232bd",
+    "username": "aditi_gupta",
+    "employee_code": "DLQ-CC1-052",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.133373+00:00"
+  },
+  {
+    "intern_id": "d83a6d11-f0b3-4352-89ff-4787321b9d87",
+    "username": "aditya_sen",
+    "employee_code": "DLQ-CC1-013",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.147384+00:00"
+  },
+  {
+    "intern_id": "88e1ca02-a078-4627-9496-fda0d8f3be15",
+    "username": "aditya_yadav",
+    "employee_code": "DLQ-AA2-022",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.161418+00:00"
+  },
+  {
+    "intern_id": "9b2d21e9-f5b1-4682-bdc3-a67361a4fd8b",
+    "username": "akansha_attri",
+    "employee_code": "DLQ-CC2-010",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.178744+00:00"
+  },
+  {
+    "intern_id": "3b4e5249-80a9-469d-9906-eab9bfdadecc",
+    "username": "akshat_awasthi",
+    "employee_code": "DLQ-CC1-031",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.200409+00:00"
+  },
+  {
+    "intern_id": "c99e9225-b689-4b0e-84c3-655ba9220a9d",
+    "username": "akshat_bansal",
+    "employee_code": "DLQ-CC2-011",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.217622+00:00"
+  },
+  {
+    "intern_id": "b31f7b3d-3090-445f-ae5f-8ed5f0b38f3e",
+    "username": "intern_alex",
+    "employee_code": "INT-2025-001",
+    "previous_q1_status": "COMPLETED",
+    "previous_q1_progress": 100.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.222621+00:00"
+  },
+  {
+    "intern_id": "2be51177-292e-448c-831c-7d697d830a18",
+    "username": "anant_sharma",
+    "employee_code": "DLQ-DD2-043",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.238690+00:00"
+  },
+  {
+    "intern_id": "2b6c3052-7322-4d77-8812-6993386f4823",
+    "username": "anant_vaibhav",
+    "employee_code": "DLQ-DD2-046",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.254649+00:00"
+  },
+  {
+    "intern_id": "64bccd3f-0991-4fce-9f7e-2f3bc0660a1e",
+    "username": "ananya_jain",
+    "employee_code": "DLQ-CC1-048",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.269627+00:00"
+  },
+  {
+    "intern_id": "c86e4aa3-1564-4884-9b90-010044346685",
+    "username": "ansh_kukreti",
+    "employee_code": "DLQ-CC1-062",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.284127+00:00"
+  },
+  {
+    "intern_id": "7f49b03f-da21-466c-8ded-15e2449b543b",
+    "username": "anshuman_mathur",
+    "employee_code": "DLQ-BB2-034",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.299178+00:00"
+  },
+  {
+    "intern_id": "efe04fa9-3b47-41ee-bb26-a992d6b0275f",
+    "username": "anshuman_mishra",
+    "employee_code": "DLQ-DD1-045",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.314178+00:00"
+  },
+  {
+    "intern_id": "a0a934fc-2a91-4d3c-afbd-5d1548699a72",
+    "username": "anushka_khare",
+    "employee_code": "DLQ-CC2-018",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.329176+00:00"
+  },
+  {
+    "intern_id": "2da21013-175b-451d-ace7-fd7a567052fb",
+    "username": "anushka_sharma",
+    "employee_code": "DLQ-DD2-038",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.344176+00:00"
+  },
+  {
+    "intern_id": "00e71738-9f72-4b52-8aab-eb9500bb7192",
+    "username": "arth_saxena",
+    "employee_code": "DLQ-DD2-069",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.359687+00:00"
+  },
+  {
+    "intern_id": "c00e2604-349b-4428-874c-0914608f4416",
+    "username": "aryan_sharma",
+    "employee_code": "DLQ-CC2-005",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.376299+00:00"
+  },
+  {
+    "intern_id": "7a4aeabd-163f-4505-ab86-37747caaadce",
+    "username": "ashish_rai",
+    "employee_code": "DLQ-CC1-003",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.392310+00:00"
+  },
+  {
+    "intern_id": "8d0c4fb3-d6ba-455f-aac2-82b1fb0a47c1",
+    "username": "athira_r_pillai",
+    "employee_code": "DLQ-DD2-074",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.408823+00:00"
+  },
+  {
+    "intern_id": "06250821-8b79-42c5-b017-501f6bbd2ff2",
+    "username": "ayush_rai",
+    "employee_code": "DLQ-BB2-035",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.423824+00:00"
+  },
+  {
+    "intern_id": "096633a0-6d4e-46e2-8638-ad4462a47157",
+    "username": "ayush_v_panicker",
+    "employee_code": "DLQ-AA2-033",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.439823+00:00"
+  },
+  {
+    "intern_id": "ba06470e-6907-47c8-b959-1cfefb73410e",
+    "username": "bharat_yadav",
+    "employee_code": "DLQ-BB1-058",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.455823+00:00"
+  },
+  {
+    "intern_id": "010d20f8-89de-484c-902a-af524cc9df4e",
+    "username": "bhavya_bhutani",
+    "employee_code": "DLQ-CC2-015",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.471823+00:00"
+  },
+  {
+    "intern_id": "44762ab5-8569-48e5-8c8f-6ac5b131cc74",
+    "username": "d_a_kumar",
+    "employee_code": "DLQ-AA1-075",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.486827+00:00"
+  },
+  {
+    "intern_id": "f9e05b0e-2b4f-4d38-9d98-a4a2a5994165",
+    "username": "darsheel_jaiswal",
+    "employee_code": "DLQ-BB2-042",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.502340+00:00"
+  },
+  {
+    "intern_id": "b5c662fa-48c2-4540-95a7-1323f820fdd3",
+    "username": "deepanshu_dangi",
+    "employee_code": "DLQ-BB2-065",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.517340+00:00"
+  },
+  {
+    "intern_id": "426f83f6-410c-4a25-b6ef-e33d13e1878a",
+    "username": "divyansh_agarwal",
+    "employee_code": "DLQ-DD1-067",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.532340+00:00"
+  },
+  {
+    "intern_id": "9291b13d-da88-455b-8462-7a4ce121e38a",
+    "username": "divyom_agarwal",
+    "employee_code": "DLQ-BB2-032",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.548341+00:00"
+  },
+  {
+    "intern_id": "b601bc61-5964-4ca6-9590-5959016dfb5c",
+    "username": "garvita_singh",
+    "employee_code": "DLQ-BB1-053",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.563341+00:00"
+  },
+  {
+    "intern_id": "542b2390-f48f-4dd5-aa81-8dbd16c0b612",
+    "username": "harsh_kumar",
+    "employee_code": "DLQ-BB2-066",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.579341+00:00"
+  },
+  {
+    "intern_id": "67caf6cf-e78b-4f70-9ed9-dba41ec0fbff",
+    "username": "himanshu_gupta",
+    "employee_code": "DLQ-DD1-040",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.595347+00:00"
+  },
+  {
+    "intern_id": "270aeda6-503a-4779-a49a-c62db971e8fb",
+    "username": "j_c_sai",
+    "employee_code": "DLQ-AA1-024",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.613867+00:00"
+  },
+  {
+    "intern_id": "5e8d9396-6c41-487a-ba6d-0cc254ddd907",
+    "username": "jasleen_kaur",
+    "employee_code": "DLQ-CC1-002",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.629374+00:00"
+  },
+  {
+    "intern_id": "4662303f-0cac-4cbd-81e4-dc129373f709",
+    "username": "jatin_maurya",
+    "employee_code": "DLQ-CC2-014",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.644376+00:00"
+  },
+  {
+    "intern_id": "faba7b14-f5e6-491a-9e44-44d585296611",
+    "username": "jatin_malik",
+    "employee_code": "DLQ-CC2-063",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.660374+00:00"
+  },
+  {
+    "intern_id": "2e6dc714-e231-4707-bb2e-f345691d8953",
+    "username": "jayesh_kansal",
+    "employee_code": "DLQ-CC2-080",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.675377+00:00"
+  },
+  {
+    "intern_id": "173ae71f-b739-4331-b37c-6356ca0d2f0a",
+    "username": "k_s_naveen",
+    "employee_code": "DLQ-AA1-025",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.690381+00:00"
+  },
+  {
+    "intern_id": "5c662784-4c57-499d-a132-81eb63135c65",
+    "username": "kanak_varshney",
+    "employee_code": "DLQ-BB1-057",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.705413+00:00"
+  },
+  {
+    "intern_id": "98f887a7-22ad-46cd-b3a6-5fb9794b9d09",
+    "username": "keshav_agarwal",
+    "employee_code": "DLQ-AA1-029",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.721413+00:00"
+  },
+  {
+    "intern_id": "19c90866-0de4-4daa-a52f-68306352062c",
+    "username": "keshav_gupta",
+    "employee_code": "DLQ-CC1-064",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.736412+00:00"
+  },
+  {
+    "intern_id": "7ef7fd86-2db1-4466-86e9-49d98a1879e3",
+    "username": "khushal_n_g",
+    "employee_code": "DLQ-AA2-026",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.753412+00:00"
+  },
+  {
+    "intern_id": "0b1cbe7f-d910-4598-b2a5-064f599ae84c",
+    "username": "khushi_bainsla",
+    "employee_code": "DLQ-DD1-070",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.769414+00:00"
+  },
+  {
+    "intern_id": "090a00ff-83fd-4ff3-ab2b-254e113bf293",
+    "username": "krish_jain",
+    "employee_code": "DLQ-CC1-016",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.784428+00:00"
+  },
+  {
+    "intern_id": "34bfda3c-0aee-492b-98e2-fa7e47fd7078",
+    "username": "intern_liam",
+    "employee_code": "INT-2025-003",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.799954+00:00"
+  },
+  {
+    "intern_id": "c9f55ca8-ffdb-4a2c-9c6c-25ad17043580",
+    "username": "m_n_reddy",
+    "employee_code": "DLQ-AA2-007",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.814118+00:00"
+  },
+  {
+    "intern_id": "ba27f2a3-126a-4004-ba97-cdeed0928f9f",
+    "username": "peram_m_reddy",
+    "employee_code": "DLQ-BB1-060",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.829118+00:00"
+  },
+  {
+    "intern_id": "c745fc5c-356b-4bac-bb73-21d07d88b36e",
+    "username": "manisha_parihar",
+    "employee_code": "DLQ-CC2-004",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.844117+00:00"
+  },
+  {
+    "intern_id": "5d3c750d-8cfc-4661-b668-6df3e14ca5bd",
+    "username": "mann_upadhyay",
+    "employee_code": "DLQ-BB2-051",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.860273+00:00"
+  },
+  {
+    "intern_id": "737d5eea-acf6-45b6-9392-d2b2c9657d00",
+    "username": "intern_maya",
+    "employee_code": "INT-2025-002",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.873650+00:00"
+  },
+  {
+    "intern_id": "76a67e23-1c5b-4baf-bce1-b141b07f4f67",
+    "username": "mayank_j_malu",
+    "employee_code": "DLQ-BB2-030",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.889310+00:00"
+  },
+  {
+    "intern_id": "51246919-7252-4286-a8fa-ed9fc44cfee8",
+    "username": "nikhil_bisla",
+    "employee_code": "DLQ-DD2-049",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.904823+00:00"
+  },
+  {
+    "intern_id": "3af0dca5-d101-4838-8a98-8ce417fe31a6",
+    "username": "nikhil_s_manam",
+    "employee_code": "DLQ-AA2-077",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.920331+00:00"
+  },
+  {
+    "intern_id": "e7dca8f7-c7b1-4e6b-8d52-578a7312782d",
+    "username": "nishant_sindhu",
+    "employee_code": "DLQ-DD1-079",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.935414+00:00"
+  },
+  {
+    "intern_id": "2225dc6b-1475-4a4c-99a9-8c7a3081a671",
+    "username": "nitin_aman",
+    "employee_code": "DLQ-DD1-072",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.950392+00:00"
+  },
+  {
+    "intern_id": "582afdb3-696c-4610-bff8-b8cae2f9b765",
+    "username": "nitin_singh",
+    "employee_code": "DLQ-BB1-054",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.965599+00:00"
+  },
+  {
+    "intern_id": "1b598389-f846-4c24-941e-344347adb06c",
+    "username": "p_g_srihitha",
+    "employee_code": "DLQ-AA1-009",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.980707+00:00"
+  },
+  {
+    "intern_id": "26d33b20-4fcb-4735-9981-02f9fd7562bc",
+    "username": "piyush_yadav",
+    "employee_code": "DLQ-DD2-071",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:27.995714+00:00"
+  },
+  {
+    "intern_id": "c13612f3-c1b1-48f2-8957-f21bdde1ee01",
+    "username": "penmetsa_h_varma",
+    "employee_code": "DLQ-BB2-050",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.011266+00:00"
+  },
+  {
+    "intern_id": "12c680fb-bebb-4e8a-a685-136112d1be9d",
+    "username": "j_pramod",
+    "employee_code": "DLQ-AA1-019",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.026397+00:00"
+  },
+  {
+    "intern_id": "3f441494-5750-46a7-bf12-0cde317bc007",
+    "username": "pranav_suresh",
+    "employee_code": "DLQ-BB1-055",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.041663+00:00"
+  },
+  {
+    "intern_id": "23dbd8d2-a5ff-405a-90ef-7a86edc6bfc7",
+    "username": "prince_kumar",
+    "employee_code": "DLQ-BB1-006",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.055675+00:00"
+  },
+  {
+    "intern_id": "0d906ef6-4fdc-4244-856a-287646628713",
+    "username": "rohit_raghav",
+    "employee_code": "DLQ-BB2-056",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.071903+00:00"
+  },
+  {
+    "intern_id": "10aa03d6-daed-4625-81c7-cfda622878a7",
+    "username": "rudraraju_s_varma",
+    "employee_code": "DLQ-BB1-047",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.086908+00:00"
+  },
+  {
+    "intern_id": "e7c8955f-16f4-494b-a856-4a36dbc79e28",
+    "username": "saksham_gupta",
+    "employee_code": "DLQ-AA2-023",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.101422+00:00"
+  },
+  {
+    "intern_id": "c01e483d-1766-443b-96cf-54f0091d801c",
+    "username": "saloni_rana",
+    "employee_code": "DLQ-DD1-078",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.116422+00:00"
+  },
+  {
+    "intern_id": "3ad8290d-53a2-489c-b336-b45ac557feae",
+    "username": "sameer_shukla",
+    "employee_code": "DLQ-DD1-041",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.132422+00:00"
+  },
+  {
+    "intern_id": "a2adaa46-3d92-4a05-b8ec-53b4e87ffec1",
+    "username": "sanka_m_srujan",
+    "employee_code": "DLQ-AA1-017",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.147422+00:00"
+  },
+  {
+    "intern_id": "d9d798e8-9cab-467b-b912-9b5d0130298b",
+    "username": "sarthak_shah",
+    "employee_code": "DLQ-BB1-036",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.162423+00:00"
+  },
+  {
+    "intern_id": "e92c27e5-56bd-4dcc-b633-a52fc3641d4b",
+    "username": "s_n_chawande",
+    "employee_code": "DLQ-AA2-021",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.177573+00:00"
+  },
+  {
+    "intern_id": "6df2be34-a38a-4eee-9db7-f4526b054a7e",
+    "username": "s_r_teja",
+    "employee_code": "DLQ-AA1-020",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.192798+00:00"
+  },
+  {
+    "intern_id": "1dc59cd8-77b6-4d5b-9df5-f120d74734c9",
+    "username": "sourabh_pal",
+    "employee_code": "DLQ-AA2-008",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.207310+00:00"
+  },
+  {
+    "intern_id": "c92e86dd-5376-4609-92ab-3efb2818140f",
+    "username": "k_s_reddy",
+    "employee_code": "DLQ-BB2-059",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.223312+00:00"
+  },
+  {
+    "intern_id": "48326be3-8d1f-4081-b4dc-76a50d4b740a",
+    "username": "talapanti_rajesh",
+    "employee_code": "DLQ-AA2-027",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.238310+00:00"
+  },
+  {
+    "intern_id": "4b494aa5-3f06-4163-9170-d6e887522c21",
+    "username": "tanmay_garg",
+    "employee_code": "DLQ-DD1-039",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.253320+00:00"
+  },
+  {
+    "intern_id": "dff33817-a35a-4d83-be6c-dddc70a10067",
+    "username": "tanvi_kad",
+    "employee_code": "DLQ-CC1-001",
+    "previous_q1_status": "IN_PROGRESS",
+    "previous_q1_progress": 10.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.258320+00:00"
+  },
+  {
+    "intern_id": "4f219cdd-a929-4f88-aa44-a823afe76094",
+    "username": "titirsha_singh",
+    "employee_code": "DLQ-DD2-044",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.272330+00:00"
+  },
+  {
+    "intern_id": "e15cded6-824c-4e5c-a430-66ff6ae55d43",
+    "username": "vaivashvat_upadhyay",
+    "employee_code": "DLQ-DD2-073",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.286609+00:00"
+  },
+  {
+    "intern_id": "aeb20201-20f0-49b5-8221-67eb8e22a898",
+    "username": "v_n_kanishka",
+    "employee_code": "DLQ-AA2-012",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.301874+00:00"
+  },
+  {
+    "intern_id": "473707fa-3eeb-47a6-af5b-7a35f2097c2d",
+    "username": "yash_tawar",
+    "employee_code": "DLQ-DD1-068",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.316874+00:00"
+  },
+  {
+    "intern_id": "919a8c86-e268-4632-b9e0-d54124083b73",
+    "username": "yayivi_vinay",
+    "employee_code": "DLQ-AA1-076",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.332330+00:00"
+  },
+  {
+    "intern_id": "487c6272-7cfd-4343-b4a5-4a2e103a2e51",
+    "username": "sivaram_s_alla",
+    "employee_code": "DLQ-BB1-061",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.346890+00:00"
+  },
+  {
+    "intern_id": "bfd24858-2b2e-4f80-b2dd-ca738c906dc1",
+    "username": "m_v_somanadh",
+    "employee_code": "DLQ-AA1-028",
+    "previous_q1_status": "NOT_STARTED",
+    "previous_q1_progress": 0.0,
+    "previous_is_manual": false,
+    "timestamp": "2026-10-11T15:22:28.363015+00:00"
+  }
+]

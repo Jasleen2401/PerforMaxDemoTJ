@@ -3,6 +3,7 @@ from .models import (
     JapaneseLearningPlan, JapaneseTopic, JapaneseMaterial,
     JapanesePracticeResult, JLPTAttempt, JLPTEligibilityRecord,
     JapaneseEvaluation, JapaneseEvalCriterion, JapaneseEvalRating,
+    JapaneseBatch,
 )
 
 
@@ -105,3 +106,103 @@ class JapaneseEvaluationSerializer(serializers.ModelSerializer):
             if user.role == 'INTERN' and instance.status not in ('ACCEPTED',):
                 data.pop('instructor_remarks', None)
         return data
+
+
+class JapaneseBatchSerializer(serializers.ModelSerializer):
+    creator = serializers.SerializerMethodField()
+    interns_count = serializers.SerializerMethodField()
+    instructors_list = serializers.SerializerMethodField()
+    assigned_interns = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JapaneseBatch
+        fields = [
+            'id', 'name', 'cohort', 'description', 'created_by',
+            'creator', 'interns_count', 'instructors_list', 'assigned_interns',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_creator(self, obj):
+        if not obj.created_by:
+            return {
+                'id': None,
+                'name': 'System Administrator',
+                'role': 'SUPER_ADMIN',
+                'role_display': 'Super Admin',
+                'email': '',
+            }
+        role = getattr(obj.created_by, 'role', 'HR')
+        role_display = 'HR Partner' if role == 'HR' else ('Super Admin' if role == 'SUPER_ADMIN' else role)
+        full_name = obj.created_by.get_full_name() or obj.created_by.username
+        return {
+            'id': str(obj.created_by.id),
+            'name': full_name,
+            'role': role,
+            'role_display': role_display,
+            'email': obj.created_by.email or '',
+        }
+
+    def get_interns_count(self, obj):
+        return obj.interns.count()
+
+    def get_instructors_list(self, obj):
+        return [
+            {
+                'id': str(inst.id),
+                'username': inst.username,
+                'fullName': inst.get_full_name() or inst.username,
+                'email': inst.email,
+            }
+            for inst in obj.instructors.all()
+        ]
+
+    def get_assigned_interns(self, obj):
+        interns_data = []
+        for p in obj.interns.select_related('user', 'department', 'manager').all():
+            plan = p.japanese_learning_plans.filter(is_active=True).first() or p.japanese_learning_plans.first()
+            evaluation = p.japanese_evaluations.first()
+            eligibility = p.jlpt_eligibility_records.first()
+            practice_results = p.japanese_practice_results.all()
+            completed_practice = practice_results.filter(status='REVIEWED').count()
+            total_practice = practice_results.count()
+            progress_pct = round((completed_practice / max(total_practice, 1)) * 100, 1) if total_practice > 0 else 0.0
+
+            interns_data.append({
+                'id': str(p.id),
+                'userId': str(p.user.id),
+                'fullName': p.full_name or p.user.username,
+                'employeeCode': p.employee_code,
+                'email': p.user.email,
+                'department': p.department.name if p.department else 'Language & Training',
+                'managerName': p.manager.username if p.manager else 'Unassigned',
+                'designation': p.designation or 'Intern',
+                'plan': {
+                    'id': str(plan.id) if plan else None,
+                    'title': plan.title if plan else 'No Active Plan',
+                    'targetLevel': plan.target_jlpt_level if plan else None,
+                    'targetDate': str(plan.target_date) if plan and plan.target_date else None,
+                    'topicsCount': plan.topics.count() if plan else 0,
+                } if plan else None,
+                'progress': {
+                    'percentage': progress_pct,
+                    'completed': completed_practice,
+                    'total': total_practice,
+                },
+                'evaluation': {
+                    'id': str(evaluation.id) if evaluation else None,
+                    'status': evaluation.status if evaluation else 'NOT_ASSIGNED',
+                    'statusDisplay': evaluation.get_status_display() if evaluation else 'Not Assigned',
+                    'overallScore': float(evaluation.overall_language_score) if evaluation and evaluation.overall_language_score is not None else None,
+                    'returnReason': evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else '',
+                } if evaluation else None,
+                'jlpt': {
+                    'requiredLevel': eligibility.required_level if eligibility else (plan.target_jlpt_level if plan else 'N4'),
+                    'eligibilityStatus': eligibility.eligibility_status if eligibility else 'NOT_STARTED',
+                    'eligibilityStatusDisplay': eligibility.get_eligibility_status_display() if eligibility else 'Not Started',
+                    'attemptsCount': p.jlpt_attempts.count(),
+                    'lastAttemptPassed': p.jlpt_attempts.first().passed if p.jlpt_attempts.exists() else None,
+                },
+            })
+        return interns_data
+

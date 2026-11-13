@@ -426,6 +426,91 @@ body {
   color: var(--color-muted);
 }
 
+.field-label {
+  margin-bottom: 0.5rem;
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.32rem 0.62rem;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.badge-purple {
+  background: var(--color-purple-100);
+  color: var(--color-purple-700);
+}
+
+.button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  transition: all 160ms ease;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.button-ghost {
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.button-ghost:hover {
+  background: var(--color-purple-50);
+}
+
+.role-option {
+  min-height: 4.8rem;
+  justify-content: space-between;
+  border: 1px solid var(--color-border);
+  padding: 0.85rem;
+  background: white;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.role-option-active {
+  border-color: var(--color-purple-600) !important;
+  background: var(--color-purple-50) !important;
+  box-shadow: 0 0 0 0.15rem var(--color-purple-100) !important;
+}
+
+.radio-dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  background: white;
+  transition: all 160ms ease;
+}
+
+.radio-dot-active {
+  border: 0.3rem solid var(--color-purple-600) !important;
+}
+
 /* Polished Scrollbar */
 ::-webkit-scrollbar        { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { background: transparent; }

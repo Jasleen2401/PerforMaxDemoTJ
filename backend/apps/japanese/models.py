@@ -444,3 +444,40 @@ class JapaneseEvalRating(models.Model):
 
     def __str__(self):
         return f"{self.evaluation.intern} — {self.criterion.name}: {self.score}"
+
+
+# ---------------------------------------------------------------------------
+# JapaneseBatch — Training batches created by HR / Super Admin
+# ---------------------------------------------------------------------------
+class JapaneseBatch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=150)
+    cohort = models.CharField(max_length=100, default='MIRAI Cohort 2026')
+    description = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='created_japanese_batches'
+    )
+    instructors = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='assigned_japanese_batches'
+    )
+    interns = models.ManyToManyField(
+        'employees.EmployeeProfile',
+        blank=True,
+        related_name='japanese_batches'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Japanese Batch'
+        verbose_name_plural = 'Japanese Batches'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.cohort})"
+

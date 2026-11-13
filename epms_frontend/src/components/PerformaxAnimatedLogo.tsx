@@ -1,6 +1,14 @@
 import { useState, type KeyboardEvent } from "react";
 
-export default function PerformaxAnimatedLogo({ compact = false }: { compact?: boolean }) {
+export default function PerformaxAnimatedLogo({
+  compact = false,
+  textColor,
+  variant = "light",
+}: {
+  compact?: boolean;
+  textColor?: string;
+  variant?: "dark" | "light";
+}) {
   const [animationKey, setAnimationKey] = useState(0);
   const replay = () => setAnimationKey((current) => current + 1);
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -9,6 +17,8 @@ export default function PerformaxAnimatedLogo({ compact = false }: { compact?: b
       replay();
     }
   };
+
+  const resolvedColor = textColor || (variant === "dark" ? "#0b0e17" : "#ffffff");
 
   return (
     <div
@@ -22,7 +32,7 @@ export default function PerformaxAnimatedLogo({ compact = false }: { compact?: b
       style={compact ? { transform: "scale(0.82)", transformOrigin: "left center" } : undefined}
     >
       <div key={animationKey} className="performax-animated-logo">
-        <span className="performax-animated-perfor" style={{ color: "#ffffff" }}>
+        <span className="performax-animated-perfor" style={{ color: resolvedColor }}>
           PERFOR
         </span>
         <span className="performax-animated-max">

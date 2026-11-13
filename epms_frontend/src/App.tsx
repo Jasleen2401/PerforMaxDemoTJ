@@ -14,6 +14,7 @@ import {
   kpiRoutes,
   continuousRoutes,
   managerRoutes,
+  instructorRoutes,
 } from "./routes";
 import { ActiveCycleProvider } from "./context/ActiveCycleContext";
 import KpiCategoryManager from './pages/kpi/KpiCategoryManager';
@@ -72,6 +73,11 @@ const App = () => {
 
             {/* Appraisal Workflow Routes */}
             {appraisalRoutes.map((route) => (
+              <Route key={route.path} path={route.path} element={route.element} />
+            ))}
+
+            {/* Japanese Instructor Routes */}
+            {instructorRoutes.map((route) => (
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
 

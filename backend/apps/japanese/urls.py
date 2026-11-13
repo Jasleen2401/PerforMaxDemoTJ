@@ -4,9 +4,11 @@ from .views import (
     JapaneseLearningPlanViewSet, JapaneseTopicViewSet, JapaneseMaterialViewSet,
     JapanesePracticeResultViewSet, JLPTAttemptViewSet, JLPTEligibilityRecordViewSet,
     JapaneseEvaluationViewSet, JapaneseEvalCriterionViewSet, JapaneseEvalRatingViewSet,
+    JapaneseBatchViewSet, JapaneseDashboardView, JapaneseInternsView,
 )
 
 router = DefaultRouter()
+router.register(r'batches', JapaneseBatchViewSet, basename='japanese-batch')
 router.register(r'learning-plans', JapaneseLearningPlanViewSet, basename='japanese-plan')
 router.register(r'topics', JapaneseTopicViewSet, basename='japanese-topic')
 router.register(r'materials', JapaneseMaterialViewSet, basename='japanese-material')
@@ -18,5 +20,7 @@ router.register(r'eval-criteria', JapaneseEvalCriterionViewSet, basename='japane
 router.register(r'eval-ratings', JapaneseEvalRatingViewSet, basename='japanese-eval-rating')
 
 urlpatterns = [
+    path('dashboard/', JapaneseDashboardView.as_view(), name='japanese-dashboard'),
+    path('assigned-interns/', JapaneseInternsView.as_view(), name='japanese-assigned-interns'),
     path('', include(router.urls)),
 ]

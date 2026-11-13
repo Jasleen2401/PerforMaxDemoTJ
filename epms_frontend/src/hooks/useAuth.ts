@@ -64,6 +64,14 @@ export const useAuth = () => {
     return user.permissions.includes(permission);
   };
 
+  const isInstructor = Boolean(
+    user && (
+      normalizeRole(user.role || "") === "INSTRUCTOR" ||
+      user.roles?.some(r => normalizeRole(r) === "INSTRUCTOR") ||
+      user.username?.toLowerCase().includes("instructor")
+    )
+  );
+
   return {
     user,
     isAuthenticated,
@@ -74,10 +82,11 @@ export const useAuth = () => {
     hasAnyRole,
     hasPermission,
     isAdmin,
+    isInstructor,
     isManager: isAdmin || hasRole("MANAGER"),
     isHR: isAdmin || hasRole("HR"),
     isEmployee: isAdmin || hasRole("EMPLOYEE") || hasRole("INTERN"),
-    isIntern: hasRole("INTERN") || (user ? (!isAdmin && !hasRole("MANAGER") && !hasRole("HR")) : false),
+    isIntern: (hasRole("INTERN") && !isInstructor) || (user ? (!isAdmin && !hasRole("MANAGER") && !hasRole("HR") && !isInstructor) : false),
     // ABAC Helpers - Admin has top seniority and passes all rank checks
     isSenior: isAdmin ? true : (user ? user.levelRank <= 4 : false),
     isJunior: isAdmin ? false : (user ? user.levelRank >= 7 : false),

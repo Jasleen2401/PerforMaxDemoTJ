@@ -2,36 +2,26 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
-def api_root(request):
-    return JsonResponse({
-        "status": "online",
-        "service": "PERFORMAX EPMS API",
-        "version": "1.0.0",
-        "docs": "/api/docs/",
-        "schema": "/api/schema/",
-        "health": "ok"
-    })
-
 urlpatterns = [
-    path('', api_root, name='api_root'),
-    path('health/', api_root, name='api_health'),
     path('admin/', admin.site.urls),
 
-    # API Documentation
+    # Core API Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
-    # API Endpoints
+    # Application Endpoints
     path('api/auth/', include('apps.accounts.urls')),
     path('api/v1/auth/', include('apps.accounts.urls')),
     path('auth/', include('apps.accounts.urls')),
-    path('api/organization/', include('apps.organization.urls')),
     path('api/employees/', include('apps.employees.urls')),
+    path('employees/', include('apps.employees.urls')),
+    path('api/organization/', include('apps.organization.urls')),
+    path('organization/', include('apps.organization.urls')),
     path('api/performance/', include('apps.performance.urls')),
+    path('performance/', include('apps.performance.urls')),
     path('api/goals/', include('apps.goals.urls')),
     path('api/evidence/', include('apps.evidence.urls')),
     path('api/feedback/', include('apps.feedback.urls')),
@@ -51,9 +41,12 @@ urlpatterns = [
     path('api/hr/', include('apps.hr.urls')),
     path('api/manager/', include('apps.manager.urls')),
     path('api/v1/manager/', include('apps.manager.urls')),
-    path('api/intern/', include('apps.intern.urls')),
+    path('manager/', include('apps.manager.urls')),
+    path('api/intern/', include(('apps.intern.urls', 'intern'), namespace='intern')),
     path('api/v1/intern/', include('apps.intern.urls')),
     path('intern/', include('apps.intern.urls')),
+    path('api/interns/', include('apps.intern.urls')),
+    path('interns/', include('apps.intern.urls')),
 
     # Frontend Compatibility Endpoints (Dashboards, Departments, Employees, Appraisals)
     path('api/', include('apps.frontend_compat.urls')),

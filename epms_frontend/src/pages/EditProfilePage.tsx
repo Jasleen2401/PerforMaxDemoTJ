@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useGetCurrentUserQuery, useUpdateProfileMutation, useChangePasswordMutation, useUploadProfileImageMutation } from "../features/employee/employeeapi";
+import { useAuth } from "../hooks/useAuth";
 import { toast } from "react-toastify";
 import { validatePassword } from "../utils/validation";
 import type { UpdateProfileRequest, MaritalStatus } from "../features/employee/employeeTypes";
@@ -28,15 +29,47 @@ const panelStyle: React.CSSProperties = {
 };
 
 const EditProfilePage = () => {
+  const { isAdmin, isHR, isManager, isIntern, user: authUser } = useAuth();
+  const isInternUser = isIntern || authUser?.role === 'INTERN' || (!isAdmin && !isHR && !isManager);
+
   const { data: profile, isLoading } = useGetCurrentUserQuery();
   const [updateProfile] = useUpdateProfileMutation();
   const [changePassword] = useChangePasswordMutation();
   const [uploadProfileImage] = useUploadProfileImageMutation();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageTimestamp, setImageTimestamp] = useState(() => Date.now());
   const [fileInputKey, setFileInputKey] = useState(0);
 
-  
+  const getAvatarUrl = (img?: string | null) => {
+    if (!img || img === "default.jpg") return null;
+    if (img.startsWith("blob:") || img.startsWith("data:") || img.startsWith("http://") || img.startsWith("https://")) {
+      return img;
+    }
+    return img.startsWith("/") ? img : `/${img}`;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handleRemoveSelectedFile = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setFileInputKey((prev) => prev + 1);
+  };
 
   const [formData, setFormData] = useState<UpdateProfileRequest>({
     staffName: "", otherName: "", email: "", phoneNo: "",
@@ -72,6 +105,10 @@ const EditProfilePage = () => {
       await updateProfile(formData).unwrap();
       if (selectedFile && profile?.id) {
         await uploadProfileImage({ id: profile.id, file: selectedFile }).unwrap();
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+          setPreviewUrl(null);
+        }
         setImageTimestamp(Date.now());
         setSelectedFile(null);
         setFileInputKey(prev => prev + 1);
@@ -108,21 +145,45 @@ const EditProfilePage = () => {
   if (isLoading) return <div className="py-16 text-center" style={{ color: "#9EA3B0", fontSize: 13 }}>Loading profile...</div>;
 
   const avatarColor = AVATAR_COLORS[(profile?.staffName?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length];
+  const activeAvatarSrc = previewUrl || getAvatarUrl(profile?.profileImage);
 
   return (
     <div className="space-y-4 pb-8">
       {/* Profile header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4" style={panelStyle}>
-        <div style={{ width: 56, height: 56, borderRadius: "50%", background: avatarColor.bg, color: avatarColor.text, fontSize: 20, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
-          {profile?.profileImage && profile.profileImage !== "default.jpg" ? (
-            <img src={`http://localhost:8000${profile.profileImage}?t=${imageTimestamp}`} alt={profile.staffName} className="w-full h-full object-cover"
-              onError={(e) => { e.currentTarget.style.display = "none"; }} />
-          ) : profile?.staffName.charAt(0)}
+        <div style={{
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          background: avatarColor.bg,
+          color: avatarColor.text,
+          fontSize: 20,
+          fontWeight: 500,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          overflow: "hidden",
+          position: "relative",
+          border: previewUrl ? "2px solid #1A56DB" : "1px solid #E0E2E8",
+        }}>
+          {activeAvatarSrc ? (
+            <img
+              src={`${activeAvatarSrc}${previewUrl ? "" : `?t=${imageTimestamp}`}`}
+              alt={profile?.staffName || "Avatar"}
+              className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          ) : profile?.staffName?.charAt(0) || "?"}
         </div>
         <div>
           <h1 style={{ fontSize: 18, fontWeight: 500, color: "#111827" }}>{profile?.staffName}</h1>
           <p style={{ fontSize: 12, color: "#1A56DB", marginTop: 2 }}>{profile?.positionName} / {profile?.currentDepartmentName}</p>
-          {/* removed cycle selector — moved to admin EmployeeProfileView */}
+          {previewUrl && (
+            <span className="inline-block mt-1 text-[11px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+              Photo preview ready &bull; Click 'Update information' to save
+            </span>
+          )}
         </div>
       </div>
 
@@ -136,16 +197,32 @@ const EditProfilePage = () => {
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label style={labelStyle}>Full name</label>
-                  <input style={inputStyle} type="text" value={formData.staffName} onChange={(e) => setFormData({ ...formData, staffName: e.target.value })} />
+                  <label style={labelStyle}>
+                    Full name {isInternUser && <span style={{ color: "#9EA3B0", fontSize: 10 }}>(HR Managed)</span>}
+                  </label>
+                  <input
+                    style={isInternUser ? { ...inputStyle, background: "#EAEDF1", cursor: "not-allowed", color: "#64748B" } : inputStyle}
+                    type="text"
+                    value={formData.staffName}
+                    readOnly={isInternUser}
+                    onChange={(e) => !isInternUser && setFormData({ ...formData, staffName: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Other name</label>
                   <input style={inputStyle} type="text" value={formData.otherName || ""} onChange={(e) => setFormData({ ...formData, otherName: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Email</label>
-                  <input style={inputStyle} type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                  <label style={labelStyle}>
+                    Email {isInternUser && <span style={{ color: "#9EA3B0", fontSize: 10 }}>(HR Managed)</span>}
+                  </label>
+                  <input
+                    style={isInternUser ? { ...inputStyle, background: "#EAEDF1", cursor: "not-allowed", color: "#64748B" } : inputStyle}
+                    type="email"
+                    value={formData.email}
+                    readOnly={isInternUser}
+                    onChange={(e) => !isInternUser && setFormData({ ...formData, email: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Phone</label>
@@ -179,8 +256,35 @@ const EditProfilePage = () => {
                 </div>
                 <div className="sm:col-span-2">
                   <label style={labelStyle}>Profile image</label>
-                  <input key={fileInputKey} type="file" accept="image/*" style={{ ...inputStyle, padding: "5px 12px" }}
-                    onChange={(e) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); }} />
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    <input
+                      key={fileInputKey}
+                      type="file"
+                      accept="image/*"
+                      style={{ ...inputStyle, padding: "5px 12px", maxWidth: 360 }}
+                      onChange={handleFileChange}
+                    />
+                    {selectedFile && previewUrl && (
+                      <div className="flex items-center gap-3 p-2 px-3 rounded-lg bg-blue-50/80 border border-blue-200">
+                        <img
+                          src={previewUrl}
+                          alt="New upload preview"
+                          className="w-10 h-10 rounded-full object-cover border border-blue-300 shadow-xs"
+                        />
+                        <div className="text-xs">
+                          <p className="font-semibold text-slate-800 truncate max-w-[160px]">{selectedFile.name}</p>
+                          <p className="text-emerald-700 font-medium">New photo selected ({(selectedFile.size / 1024).toFixed(1)} KB)</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveSelectedFile}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors ml-2"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <button type="submit"

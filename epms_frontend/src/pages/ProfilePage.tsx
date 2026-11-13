@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGetCurrentUserQuery } from "../features/employee/employeeapi";
 import { useGetGoalSetByEmployeeQuery, useGetActiveCycleQuery } from "../services/kpiApi";
+import { useAuth } from "../hooks/useAuth";
+import SimplifiedInternProfile from "../components/intern/SimplifiedInternProfile";
 import {
   Settings,
   ThumbsUp,
@@ -28,6 +30,7 @@ const TABS = [
   "Skill Set",
   "Feedback",
   "Appraisal Data",
+  "Multi-Rater Selection",
 ] as const;
 
 type TabType = typeof TABS[number];
@@ -67,7 +70,15 @@ const formatDate = (date?: string) => {
     : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
-const ProfilePage = () => {
+const getAvatarUrl = (img?: string | null) => {
+  if (!img || img === "default.jpg") return null;
+  if (img.startsWith("blob:") || img.startsWith("data:") || img.startsWith("http://") || img.startsWith("https://")) {
+    return img;
+  }
+  return img.startsWith("/") ? img : `/${img}`;
+};
+
+const StandardProfilePage = () => {
   const navigate = useNavigate();
   const { data: profile, isLoading: isProfileLoading } = useGetCurrentUserQuery();
   const { data: activeCycleResp } = useGetActiveCycleQuery();
@@ -190,9 +201,12 @@ const ProfilePage = () => {
           >
             {profile.profileImage && profile.profileImage !== "default.jpg" ? (
               <img
-                src={`http://localhost:8000${profile.profileImage}`}
+                src={getAvatarUrl(profile.profileImage) || ""}
                 alt={profile.staffName}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
             ) : (
               profile.staffName?.charAt(0) || "?"
@@ -651,6 +665,20 @@ const ProfilePage = () => {
       />
     </div>
   );
+};
+
+const ProfilePage = () => {
+  const { user: authUser, isAdmin, isHR, isManager } = useAuth();
+  const isInternUser =
+    authUser?.role === "INTERN" ||
+    authUser?.roles?.some((r) => r.includes("INTERN")) ||
+    (!isAdmin && !isHR && !isManager);
+
+  if (isInternUser) {
+    return <SimplifiedInternProfile />;
+  }
+
+  return <StandardProfilePage />;
 };
 
 export default ProfilePage;

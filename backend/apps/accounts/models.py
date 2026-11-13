@@ -94,6 +94,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_super_admin(self):
         return self.role in (UserRole.SUPER_ADMIN, 'ADMIN') or bool(self.is_superuser) or self.username == 'admin'
 
+    def get_full_name(self):
+        if hasattr(self, 'profile') and self.profile and hasattr(self.profile, 'full_name') and self.profile.full_name:
+            return self.profile.full_name
+        first = getattr(self, 'first_name', '')
+        last = getattr(self, 'last_name', '')
+        if first or last:
+            return f"{first} {last}".strip()
+        return self.username
+
+    def get_short_name(self):
+        return self.username
+
 
 class EmailOTP(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -45,8 +45,11 @@ export const dashboardApi = api.injectEndpoints({
       transformResponse: (res: any) => res?.data ?? res,
       providesTags: ["Profile", "GoalSet", "Appraisal"],
     }),
-    getInternJourney: builder.query<InternJourneyData, void>({
-      query: () => "/intern/journey/",
+    getInternJourney: builder.query<InternJourneyData, string | void>({
+      query: (employeeId) =>
+        employeeId
+          ? `/intern/journey/?employee_id=${encodeURIComponent(employeeId)}`
+          : "/intern/journey/",
       transformResponse: (res: any) => res?.data ?? res,
       providesTags: ["Profile", "GoalSet", "Appraisal"],
     }),
@@ -57,8 +60,13 @@ export const dashboardApi = api.injectEndpoints({
     }),
     getInternGoals: builder.query<InternGoalItem[], void>({
       query: () => "/intern/my-goals/",
-      transformResponse: (res: any) => res?.data ?? res,
-      providesTags: ["GoalSet"],
+      transformResponse: (res: any) => {
+        if (Array.isArray(res)) return res;
+        if (res?.data && Array.isArray(res.data)) return res.data;
+        if (res?.results && Array.isArray(res.results)) return res.results;
+        return res?.data ?? res ?? [];
+      },
+      providesTags: ["GoalSet", "Profile"],
     }),
     updateInternGoalProgress: builder.mutation<any, { id: string; progress: number; comment?: string }>({
       query: ({ id, ...body }) => ({
@@ -80,6 +88,53 @@ export const dashboardApi = api.injectEndpoints({
       query: () => "/intern/tasks/",
       transformResponse: (res: any) => res?.data ?? res,
       providesTags: ["GoalSet", "Profile"],
+    }),
+    createInternTask: builder.mutation<any, { title: string; description?: string; goalId?: string; dueDate?: string; priority?: string; status?: string }>({
+      query: (body) => ({
+        url: "/intern/tasks/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["GoalSet", "Profile"],
+    }),
+    updateInternTask: builder.mutation<any, { id: string; title?: string; description?: string; dueDate?: string; priority?: string; status?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/intern/tasks/${id}/`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["GoalSet", "Profile"],
+    }),
+    deleteInternTask: builder.mutation<any, string>({
+      query: (id) => ({
+        url: `/intern/tasks/${id}/`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["GoalSet", "Profile"],
+    }),
+    getHrInternTasks: builder.query<InternTaskItem[], { employee_id?: string; status?: string; priority?: string } | void>({
+      query: (params) => ({
+        url: "/hr/intern-tasks/",
+        params: params || {},
+      }),
+      transformResponse: (res: any) => res?.data ?? res,
+      providesTags: ["GoalSet"],
+    }),
+    createGoal: builder.mutation<any, { employee: string; title: string; description?: string; category?: string; priority?: string; start_date?: string; due_date: string; target_value?: number; weightage?: number }>({
+      query: (body) => ({
+        url: "/api/goals/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["GoalSet", "Profile", "Appraisal"],
+    }),
+    reviewEvidence: builder.mutation<any, { id: string; review_status: string; review_notes?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/api/evidence/${id}/review/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["GoalSet", "Appraisal"],
     }),
     completeInternTask: builder.mutation<any, { id: string; isCompleted: boolean; completedAt?: string; hoursSpent?: number; completionNotes?: string; artifactUrl?: string }>({
       query: ({ id, ...body }) => ({
@@ -169,6 +224,32 @@ export const dashboardApi = api.injectEndpoints({
       invalidatesTags: ["Appraisal", "Profile"],
     }),
 
+    // MIRAI Certification Endpoints
+    submitMiraiCertification: builder.mutation<any, { jlptLevel: string; quarterCode?: string; name?: string; score?: string; examDate?: string; clearanceDate?: string; certificateUrl?: string; status?: string }>({
+      query: (body) => ({
+        url: "/intern/journey/certifications/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Profile", "GoalSet", "Appraisal"],
+    }),
+    verifyMiraiCertification: builder.mutation<any, { id: string; is_verified: boolean; notes?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/intern/journey/certifications/${id}/verify/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Profile", "GoalSet", "Appraisal"],
+    }),
+    updateInternJourney: builder.mutation<any, { employeeId: string; [key: string]: any }>({
+      query: ({ employeeId, ...body }) => ({
+        url: `/intern/journey/${employeeId}/`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Profile", "GoalSet", "Appraisal"],
+    }),
+
     // Notification Endpoints
     getUnreadNotificationsCount: builder.query<{ unread_count: number }, void>({
       query: () => "/notifications/unread-count/",
@@ -201,6 +282,12 @@ export const {
   useUpdateInternGoalProgressMutation,
   useAddInternGoalCommentMutation,
   useGetInternTasksQuery,
+  useCreateInternTaskMutation,
+  useUpdateInternTaskMutation,
+  useDeleteInternTaskMutation,
+  useGetHrInternTasksQuery,
+  useCreateGoalMutation,
+  useReviewEvidenceMutation,
   useCompleteInternTaskMutation,
   useGetInternEvidenceQuery,
   useSubmitInternEvidenceMutation,
@@ -214,6 +301,9 @@ export const {
   useGetInternFormsQuery,
   useGetInternFormDetailQuery,
   useSubmitInternFormMutation,
+  useSubmitMiraiCertificationMutation,
+  useVerifyMiraiCertificationMutation,
+  useUpdateInternJourneyMutation,
   useGetUnreadNotificationsCountQuery,
   useMarkNotificationReadMutation,
   useMarkAllNotificationsReadMutation,

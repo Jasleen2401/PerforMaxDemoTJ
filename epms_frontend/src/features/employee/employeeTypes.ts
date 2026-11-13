@@ -35,9 +35,9 @@ export interface CreateEmployeeRequest {
   salary?: number;
   currency?: string;
   roleId: number;
-  parentDepartmentId: number;
-  currentDepartmentId: number;
-  directManagerId?: number;
+  parentDepartmentId?: number | string;
+  currentDepartmentId?: number | string;
+  directManagerId?: number | string;
 }
 
 export interface EmployeeImportResult {
@@ -151,6 +151,7 @@ export interface EmployeeResponse {
   currency?: string;
 
   dateOfAppointment?: string;
+  joiningDate?: string;
   dateOfConfirmation?: string;
   dateOfPromotion?: string;
 
@@ -165,4 +166,3 @@ export interface EmployeeResponse {
   password_change_required?: boolean;
   password_changed_at?: string | null;
 }
-

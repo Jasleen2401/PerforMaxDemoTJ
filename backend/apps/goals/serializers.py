@@ -39,7 +39,7 @@ class GoalSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'employee', 'employee_name', 'employee_code', 'cycle', 'cycle_name',
             'assigned_by', 'assigned_by_name', 'title', 'description', 'due_date',
-            'status', 'priority', 'completion_percentage', 'kpis', 'recent_progress',
+            'status', 'priority', 'category', 'completion_percentage', 'kpis', 'recent_progress',
             'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'assigned_by', 'created_at', 'updated_at')
@@ -53,6 +53,24 @@ class LogProgressSerializer(serializers.Serializer):
         max_digits=5,
         decimal_places=2,
         min_value=Decimal('0.00'),
-        max_value=Decimal('100.00')
+        max_value=Decimal('100.00'),
+        required=False
     )
-    comment = serializers.CharField(required=True)
+    progress = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        max_value=Decimal('100.00'),
+        required=False
+    )
+    comment = serializers.CharField(required=False, default="Progress update")
+
+    def validate(self, attrs):
+        if 'progress_percentage' not in attrs:
+            if 'progress' in attrs:
+                attrs['progress_percentage'] = attrs['progress']
+            else:
+                attrs['progress_percentage'] = Decimal('0.00')
+        if not attrs.get('comment'):
+            attrs['comment'] = "Progress update"
+        return attrs

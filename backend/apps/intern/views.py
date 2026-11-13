@@ -1,5 +1,5 @@
 import os
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta
 from django.db.models import Q
 from django.utils import timezone
@@ -10,21 +10,27 @@ from rest_framework.exceptions import ValidationError, PermissionDenied, NotFoun
 
 from apps.accounts.models import User, UserRole
 from apps.employees.models import EmployeeProfile
-from apps.goals.models import Goal, GoalStatus, GoalPriority, GoalProgress, KPI, KPIMeasurementType
+from apps.goals.models import Goal, GoalStatus, GoalPriority, GoalProgress
 from apps.evidence.models import EvidenceSubmission, EvidenceReviewStatus
 from apps.performance.models import (
-    PerformanceCycle, Appraisal, AppraisalType, AppraisalStatus, CycleStatus
+    PerformanceCycle, Appraisal, AppraisalType, AppraisalStatus, CycleStatus,
+    TechnicalCapabilityParameter, TechnicalCapabilityReview
 )
 from apps.performance.services.scoring import ScoringService
 from apps.notifications.services import NotificationService
 from apps.notifications.models import Notification, NotificationType
+from apps.audit.services import AuditService
 
 from .models import (
     InternTask, TaskCategory, TaskPriority, TaskStatus,
     InternGoalComment, InternSelfAppraisalSubmission, InternFeedbackReply,
     InternForm, InternFormQuestion, InternFormSubmission,
-    FormStatus, QuestionType
+    FormStatus, QuestionType,
+    MiraiQuarterProgress, MiraiCertification, MiraiTimelineEvent,
+    QuarterCode, QuarterStatus, CertificationStatus, VerificationStatus,
+    ConversionDecision, TimelineEventType
 )
+from .services import MiraiJourneyService
 from .serializers import (
     InternGoalListSerializer, InternGoalProgressUpdateSerializer,
     InternGoalCommentSerializer, InternEvidenceSubmissionSerializer,
@@ -46,143 +52,6 @@ def get_authenticated_intern_profile(user):
     if not profile:
         raise NotFound("Employee profile not found for this account.")
     return profile
-
-
-def ensure_default_goals_for_profile(profile, user=None):
-    """
-    Auto-provisions goals and milestones for the active performance cycle
-    if the employee/manager profile currently has 0 goals.
-    """
-    if not profile:
-        return
-    active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
-    if not active_cycle:
-        return
-
-    if Goal.objects.filter(employee=profile).exists():
-        return
-
-    today = date.today()
-    due = getattr(active_cycle, 'end_date', None) or (today + timedelta(days=60))
-    role_str = str(getattr(user, 'role', '')).upper()
-    desig_str = str(getattr(profile, 'designation', '')).lower()
-
-    is_manager = 'MANAGER' in role_str or 'manager' in desig_str or 'lead' in desig_str
-
-    if is_manager:
-        goals_data = [
-            {
-                'title': "Core Technical Architecture & Scalability Engineering",
-                'description': "Lead system design, architecture documentation, high-availability microservices, and database query optimizations for the active performance cycle.",
-                'priority': GoalPriority.HIGH,
-                'weight': Decimal('30.00'),
-                'progress': Decimal('45.00'),
-                'milestones': [
-                    {'name': "Architecture Blueprint & High-Level Design Approval", 'target': 100, 'achieved': 100, 'unit': '%'},
-                    {'name': "Database Query & Latency Optimization (<120ms)", 'target': 120, 'achieved': 85, 'unit': 'ms'},
-                ]
-            },
-            {
-                'title': "Sprint Deliverables & Technical Milestones Delivery",
-                'description': "Oversee sprint planning, track critical path deliverables, resolve technical blockers, and guarantee 100% on-time milestone delivery.",
-                'priority': GoalPriority.HIGH,
-                'weight': Decimal('25.00'),
-                'progress': Decimal('50.00'),
-                'milestones': [
-                    {'name': "Quarterly Sprint Goals On-Time Delivery Rate", 'target': 100, 'achieved': 80, 'unit': '%'},
-                    {'name': "Blocker Resolution SLA (<4 hours)", 'target': 4, 'achieved': 2, 'unit': 'hrs'},
-                ]
-            },
-            {
-                'title': "Mentorship, Code Quality & PR Review Excellence",
-                'description': "Supervise technical mentees and junior engineers, enforce coding standards, and maintain >90% code coverage and security standards across repositories.",
-                'priority': GoalPriority.MEDIUM,
-                'weight': Decimal('25.00'),
-                'progress': Decimal('60.00'),
-                'milestones': [
-                    {'name': "Assigned Mentees 1:1 Check-ins & Evaluation Submissions", 'target': 100, 'achieved': 90, 'unit': '%'},
-                    {'name': "Repository Unit & Integration Test Coverage (>90%)", 'target': 90, 'achieved': 92, 'unit': '%'},
-                ]
-            },
-            {
-                'title': "CI/CD Pipeline Automation & Production Reliability",
-                'description': "Automate regression test suites, zero-downtime deployment pipelines, infrastructure monitoring, and incident response runbooks.",
-                'priority': GoalPriority.MEDIUM,
-                'weight': Decimal('20.00'),
-                'progress': Decimal('40.00'),
-                'milestones': [
-                    {'name': "Automated End-to-End Regression Suite Pass Rate", 'target': 100, 'achieved': 95, 'unit': '%'},
-                    {'name': "Zero Critical Vulnerabilities in Production Scans", 'target': 0, 'achieved': 0, 'unit': 'vulns'},
-                ]
-            },
-        ]
-    else:
-        goals_data = [
-            {
-                'title': "Full-Stack Feature Implementation & API Integrations",
-                'description': "Deliver assigned sprint user stories and end-to-end features adhering to enterprise architecture and coding guidelines.",
-                'priority': GoalPriority.HIGH,
-                'weight': Decimal('35.00'),
-                'progress': Decimal('35.00'),
-                'milestones': [
-                    {'name': "Sprint User Stories Delivered", 'target': 10, 'achieved': 4, 'unit': 'stories'},
-                ]
-            },
-            {
-                'title': "Automated Testing, Test Coverage & Code Quality",
-                'description': "Write unit and integration tests for all new deliverables ensuring high test coverage and clean PR reviews.",
-                'priority': GoalPriority.MEDIUM,
-                'weight': Decimal('25.00'),
-                'progress': Decimal('45.00'),
-                'milestones': [
-                    {'name': "Unit Test Coverage for Modules", 'target': 90, 'achieved': 85, 'unit': '%'},
-                ]
-            },
-            {
-                'title': "System Documentation & Technical Specs",
-                'description': "Maintain up-to-date Swagger / OpenAPI specs, architectural decisions, and setup guides.",
-                'priority': GoalPriority.MEDIUM,
-                'weight': Decimal('20.00'),
-                'progress': Decimal('25.00'),
-                'milestones': [
-                    {'name': "Module Documentation & Guides Published", 'target': 100, 'achieved': 50, 'unit': '%'},
-                ]
-            },
-            {
-                'title': "Continuous Learning & Technical Mentorship Check-ins",
-                'description': "Participate in weekly 1:1 mentor syncs, technical sprint retrospectives, and apply mentor feedback.",
-                'priority': GoalPriority.MEDIUM,
-                'weight': Decimal('20.00'),
-                'progress': Decimal('50.00'),
-                'milestones': [
-                    {'name': "Sprint Sync Attendance & Feedback Implementation", 'target': 100, 'achieved': 100, 'unit': '%'},
-                ]
-            },
-        ]
-
-    for item in goals_data:
-        g = Goal.objects.create(
-            employee=profile,
-            cycle=active_cycle,
-            assigned_by=profile.manager or user,
-            title=item['title'],
-            description=item['description'],
-            due_date=due,
-            status=GoalStatus.IN_PROGRESS if item['progress'] > 0 else GoalStatus.NOT_STARTED,
-            priority=item['priority'],
-            completion_percentage=item['progress'],
-        )
-        for m in item.get('milestones', []):
-            KPI.objects.create(
-                goal=g,
-                name=m['name'],
-                description=m['name'],
-                target_value=Decimal(str(m['target'])),
-                achieved_value=Decimal(str(m['achieved'])),
-                unit=m['unit'],
-                measurement_type=KPIMeasurementType.NUMERIC if m['unit'] != '%' else KPIMeasurementType.PERCENTAGE
-            )
-
 
 
 def get_performance_classification(score):
@@ -240,10 +109,8 @@ class InternOverviewView(APIView):
         # 2. Active Evaluation Cycle
         today = date.today()
         active_cycle = PerformanceCycle.objects.filter(
-            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD),
-            start_date__lte=today,
-            end_date__gte=today
-        ).order_by('-start_date').first()
+            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD)
+        ).order_by('-start_date').first() or PerformanceCycle.objects.order_by('-start_date').first()
 
         cycle_data = None
         if active_cycle:
@@ -262,7 +129,6 @@ class InternOverviewView(APIView):
             }
 
         # 3. Assigned Goals (Authentic data only)
-        ensure_default_goals_for_profile(profile, user)
         goals_qs = Goal.objects.filter(employee=profile)
         total_goals = goals_qs.count()
         completed_goals = goals_qs.filter(
@@ -363,6 +229,8 @@ class InternOverviewView(APIView):
             'message': 'Success',
             'data': {
                 'profile': {
+                    'id': str(profile.id),
+                    'userId': str(user.id),
                     'name': profile.full_name,
                     'email': user.email,
                     'employeeCode': profile.employee_code,
@@ -407,8 +275,7 @@ class InternGoalsView(APIView):
 
     def get(self, request):
         profile = get_authenticated_intern_profile(request.user)
-        ensure_default_goals_for_profile(profile, request.user)
-        goals = Goal.objects.filter(employee=profile).select_related('cycle', 'assigned_by').prefetch_related('kpis', 'goal_comments', 'evidence_submissions').order_by('due_date')
+        goals = Goal.objects.filter(employee=profile).select_related('cycle', 'assigned_by').order_by('due_date')
         serializer = InternGoalListSerializer(goals, many=True)
         return Response({'code': 200, 'data': serializer.data})
 
@@ -575,12 +442,21 @@ class InternEvidenceView(APIView):
     def post(self, request):
         profile = get_authenticated_intern_profile(request.user)
         goal_id = request.data.get('goalId') or request.data.get('goal_id') or request.data.get('goal')
-        if not goal_id:
-            return Response({'code': 400, 'message': 'Goal ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        task_id = request.data.get('taskId') or request.data.get('task_id') or request.data.get('task')
+        if not goal_id and not task_id:
+            return Response({'code': 400, 'message': 'Goal ID or Task ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        goal = Goal.objects.filter(id=goal_id, employee=profile).first()
-        if not goal:
-            return Response({'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'}, status=status.HTTP_400_BAD_REQUEST)
+        goal = None
+        if goal_id:
+            goal = Goal.objects.filter(id=goal_id, employee=profile).first()
+            if not goal:
+                return Response({'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        task = None
+        if task_id:
+            task = InternTask.objects.filter(id=task_id, intern=profile).first()
+            if not task:
+                return Response({'code': 400, 'message': 'Specified task does not belong to your assigned tasks.'}, status=status.HTTP_400_BAD_REQUEST)
 
         title = request.data.get('title', '').strip()
         if not title:
@@ -600,22 +476,23 @@ class InternEvidenceView(APIView):
             except ValidationError as ve:
                 return Response({'code': 400, 'message': ve.detail[0] if isinstance(ve.detail, list) else str(ve.detail)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Duplicate submission protection (same title and goal within 1 hour)
-        recent_duplicate = EvidenceSubmission.objects.filter(
-            employee=profile,
-            goal=goal,
-            title__iexact=title,
-            created_at__gte=timezone.now() - timedelta(hours=1)
-        ).first()
+        # Duplicate submission protection (same title and goal/task within 1 hour)
+        dup_filter = {'employee': profile, 'title__iexact': title, 'created_at__gte': timezone.now() - timedelta(hours=1)}
+        if goal:
+            dup_filter['goal'] = goal
+        if task:
+            dup_filter['task'] = task
+        recent_duplicate = EvidenceSubmission.objects.filter(**dup_filter).first()
         if recent_duplicate:
             return Response({
                 'code': 400,
-                'message': 'A duplicate evidence submission with this title was already submitted recently for this goal.'
+                'message': 'A duplicate evidence submission with this title was already submitted recently.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         evidence = EvidenceSubmission.objects.create(
             employee=profile,
             goal=goal,
+            task=task,
             title=title,
             description=description,
             external_url=external_url.strip() if external_url else None,
@@ -655,28 +532,100 @@ class InternEvidenceDetailView(APIView):
 class InternTasksView(APIView):
     """
     List all assigned tasks for the intern, filterable by ?status=...
+    Or create a personal task for the authenticated intern.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         profile = get_authenticated_intern_profile(request.user)
-        tasks = InternTask.objects.filter(intern=profile).select_related('reviewed_by')
+        tasks = InternTask.objects.filter(intern=profile).select_related('reviewed_by', 'goal')
         status_filter = request.query_params.get('status')
         if status_filter:
             tasks = tasks.filter(status=status_filter.upper())
         serializer = InternTaskSerializer(tasks, many=True)
         return Response({'code': 200, 'data': serializer.data})
 
+    def post(self, request):
+        profile = get_authenticated_intern_profile(request.user)
+        title = request.data.get('title', '').strip()
+        if not title:
+            return Response({'code': 400, 'message': 'Task title is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        description = request.data.get('description', '').strip() or request.data.get('instructions', '').strip()
+        category = request.data.get('category', TaskCategory.TECHNICAL)
+        if category not in [c[0] for c in TaskCategory.choices]:
+            category = TaskCategory.TECHNICAL
+
+        priority = request.data.get('priority', TaskPriority.MEDIUM).upper()
+        if priority not in [p[0] for p in TaskPriority.choices]:
+            priority = TaskPriority.MEDIUM
+
+        due_date_val = request.data.get('due_date') or request.data.get('dueDate')
+        if not due_date_val:
+            due_date = date.today() + timedelta(days=14)
+        else:
+            try:
+                due_date = datetime.strptime(str(due_date_val)[:10], '%Y-%m-%d').date()
+            except ValueError:
+                due_date = date.today() + timedelta(days=14)
+
+        raw_status = (request.data.get('status') or 'ASSIGNED').upper()
+        if raw_status in ['TO DO', 'TO_DO', 'TODO', 'ASSIGNED', 'NOT_STARTED']:
+            task_status = TaskStatus.ASSIGNED
+        elif raw_status in ['IN PROGRESS', 'IN_PROGRESS']:
+            task_status = TaskStatus.IN_PROGRESS
+        elif raw_status in ['COMPLETED', 'DONE']:
+            task_status = TaskStatus.COMPLETED
+        else:
+            task_status = TaskStatus.ASSIGNED
+
+        # Related goal validation (anti-IDOR: goal must belong to this intern)
+        goal_id = request.data.get('goalId') or request.data.get('goal_id') or request.data.get('goal')
+        related_goal = None
+        if goal_id:
+            related_goal = Goal.objects.filter(id=goal_id, employee=profile).first()
+            if not related_goal:
+                return Response(
+                    {'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        is_completed = (task_status == TaskStatus.COMPLETED)
+        completed_at = date.today() if is_completed else None
+
+        task = InternTask.objects.create(
+            intern=profile,
+            created_by=request.user,
+            goal=related_goal,
+            title=title,
+            description=description,
+            instructions=description,
+            category=category,
+            priority=priority,
+            due_date=due_date,
+            status=task_status,
+            is_completed=is_completed,
+            completed_at=completed_at,
+            requires_mentor_review=False,
+            is_permitted_to_complete=True
+        )
+
+        return Response({
+            'code': 201,
+            'message': 'Task created successfully',
+            'data': InternTaskSerializer(task).data
+        }, status=status.HTTP_201_CREATED)
+
 
 class InternTaskDetailView(APIView):
     """
-    Retrieve single task detail or transition status (e.g. ASSIGNED -> IN_PROGRESS).
+    Retrieve single task detail, update task details/status, or delete personal task.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
         profile = get_authenticated_intern_profile(request.user)
-        task = InternTask.objects.filter(id=pk, intern=profile).select_related('reviewed_by').first()
+        task = InternTask.objects.filter(id=pk, intern=profile).select_related('reviewed_by', 'goal').first()
         if not task:
             return Response({'code': 404, 'message': 'Task not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = InternTaskSerializer(task)
@@ -688,12 +637,106 @@ class InternTaskDetailView(APIView):
         if not task:
             return Response({'code': 404, 'message': 'Task not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
 
+        title = request.data.get('title')
+        if title is not None:
+            if not str(title).strip():
+                return Response({'code': 400, 'message': 'Task title cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+            task.title = str(title).strip()
+
+        desc = request.data.get('description') or request.data.get('instructions')
+        if desc is not None:
+            task.description = str(desc).strip()
+            task.instructions = str(desc).strip()
+
+        priority = request.data.get('priority')
+        if priority and priority.upper() in [p[0] for p in TaskPriority.choices]:
+            task.priority = priority.upper()
+
+        due_date_val = request.data.get('due_date') or request.data.get('dueDate')
+        if due_date_val:
+            try:
+                task.due_date = datetime.strptime(str(due_date_val)[:10], '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        goal_id = request.data.get('goalId') or request.data.get('goal_id')
+        if goal_id is not None:
+            if str(goal_id).strip() in ('', 'null', 'none'):
+                task.goal = None
+            else:
+                goal = Goal.objects.filter(id=goal_id, employee=profile).first()
+                if not goal:
+                    return Response({'code': 400, 'message': 'Specified goal does not belong to your assigned goals.'}, status=status.HTTP_400_BAD_REQUEST)
+                task.goal = goal
+
         target_status = request.data.get('status')
-        if target_status == TaskStatus.IN_PROGRESS and task.status == TaskStatus.ASSIGNED:
-            task.status = TaskStatus.IN_PROGRESS
-            task.save()
-            return Response({'code': 200, 'message': 'Task marked in progress', 'data': InternTaskSerializer(task).data})
-        return Response({'code': 400, 'message': 'Invalid status transition requested.'}, status=status.HTTP_400_BAD_REQUEST)
+        if target_status:
+            ts = target_status.upper()
+            if ts in ['TO DO', 'TO_DO', 'TODO', 'ASSIGNED', 'NOT_STARTED']:
+                task.status = TaskStatus.ASSIGNED
+                task.is_completed = False
+            elif ts in ['IN PROGRESS', 'IN_PROGRESS']:
+                task.status = TaskStatus.IN_PROGRESS
+                task.is_completed = False
+            elif ts in ['COMPLETED', 'DONE']:
+                task.status = TaskStatus.COMPLETED
+                task.is_completed = True
+                task.completed_at = date.today()
+
+        task.save()
+        return Response({'code': 200, 'message': 'Task updated successfully', 'data': InternTaskSerializer(task).data})
+
+    def put(self, request, pk):
+        return self.patch(request, pk)
+
+    def delete(self, request, pk):
+        profile = get_authenticated_intern_profile(request.user)
+        task = InternTask.objects.filter(id=pk, intern=profile).first()
+        if not task:
+            return Response({'code': 404, 'message': 'Task not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if task.created_by != request.user and not (request.user.role in [UserRole.HR, UserRole.SUPER_ADMIN]):
+            return Response({'code': 403, 'message': 'You can only delete tasks you created yourself.'}, status=status.HTTP_403_FORBIDDEN)
+
+        task.delete()
+        return Response({'code': 200, 'message': 'Task deleted successfully.'})
+
+
+class InternAllTasksView(APIView):
+    """
+    List all intern-created and assigned tasks for HR and Managers.
+    Allows filtering by ?employee_id=... / ?intern_id=... and ?status=...
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not (user.role in [UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER] or user.is_superuser):
+            return Response({'code': 403, 'message': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = InternTask.objects.select_related('intern__user', 'goal', 'reviewed_by', 'created_by').all()
+
+        if user.role == UserRole.MANAGER and not (user.is_superuser or user.role in [UserRole.HR, UserRole.SUPER_ADMIN]):
+            qs = qs.filter(intern__manager=user)
+
+        employee_param = request.query_params.get('employee_id') or request.query_params.get('intern_id')
+        if employee_param:
+            qs = qs.filter(
+                Q(intern__id__iexact=str(employee_param)) |
+                Q(intern__user__id__iexact=str(employee_param)) |
+                Q(intern__employee_code__iexact=str(employee_param))
+            )
+
+        status_param = request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            qs = qs.filter(status=status_param.upper())
+
+        priority_param = request.query_params.get('priority')
+        if priority_param and priority_param.upper() != 'ALL':
+            qs = qs.filter(priority=priority_param.upper())
+
+        serializer = InternTaskSerializer(qs.order_by('-created_at'), many=True)
+        return Response({'code': 200, 'data': serializer.data})
 
 
 class InternCompleteTaskView(APIView):
@@ -921,10 +964,8 @@ class InternSelfAppraisalView(APIView):
         profile = get_authenticated_intern_profile(request.user)
         today = date.today()
         cycle = PerformanceCycle.objects.filter(
-            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD),
-            start_date__lte=today,
-            end_date__gte=today
-        ).order_by('-start_date').first()
+            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD)
+        ).order_by('-start_date').first() or PerformanceCycle.objects.order_by('-start_date').first()
 
         if not cycle:
             return Response({
@@ -953,10 +994,8 @@ class InternSelfAppraisalView(APIView):
         profile = get_authenticated_intern_profile(request.user)
         today = date.today()
         cycle = PerformanceCycle.objects.filter(
-            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD),
-            start_date__lte=today,
-            end_date__gte=today
-        ).order_by('-start_date').first()
+            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD)
+        ).order_by('-start_date').first() or PerformanceCycle.objects.order_by('-start_date').first()
 
         if not cycle:
             return Response({'code': 400, 'message': 'No active evaluation cycle open.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1025,19 +1064,6 @@ class InternPublishedFeedbackView(APIView):
         ).select_related('cycle', 'reviewer').order_by('-published_at', '-created_at').first()
 
         if not published_appraisal:
-            evaluated_appraisal = Appraisal.objects.filter(
-                employee=profile,
-                status__in=[AppraisalStatus.SUBMITTED, AppraisalStatus.HR_APPROVED, AppraisalStatus.PUBLISHED]
-            ).filter(overall_score__isnull=False).select_related('cycle', 'reviewer').order_by('-submitted_at', '-created_at').first()
-            if evaluated_appraisal:
-                if evaluated_appraisal.status != AppraisalStatus.PUBLISHED:
-                    evaluated_appraisal.status = AppraisalStatus.PUBLISHED
-                    if not evaluated_appraisal.published_at:
-                        evaluated_appraisal.published_at = timezone.now()
-                    evaluated_appraisal.save(update_fields=['status', 'published_at'])
-                published_appraisal = evaluated_appraisal
-
-        if not published_appraisal:
             return Response({
                 'code': 200,
                 'data': {
@@ -1053,16 +1079,6 @@ class InternPublishedFeedbackView(APIView):
             'self_assessment': 20.0
         })
         eval_params = calc_score.get('evaluation_parameters', [])
-        if not eval_params:
-            for r in published_appraisal.ratings.select_related('criterion').all():
-                eval_params.append({
-                    'id': str(r.criterion.id),
-                    'name': r.criterion.name,
-                    'category': getattr(r.criterion, 'category', 'General') or 'General',
-                    'weight': float(getattr(r.criterion, 'weight', 20.0)),
-                    'score': float(r.score),
-                    'comments': r.comments or '',
-                })
 
         replies = InternFeedbackReply.objects.filter(
             intern=profile,
@@ -1070,13 +1086,8 @@ class InternPublishedFeedbackView(APIView):
         ).order_by('created_at')
 
         reviewer_name = published_appraisal.reviewer.username if published_appraisal.reviewer else 'Assigned Mentor'
-        if published_appraisal.reviewer:
-            if hasattr(published_appraisal.reviewer, 'profile') and published_appraisal.reviewer.profile and published_appraisal.reviewer.profile.full_name:
-                reviewer_name = published_appraisal.reviewer.profile.full_name
-            elif getattr(published_appraisal.reviewer, 'name', None):
-                reviewer_name = published_appraisal.reviewer.name
-            elif hasattr(published_appraisal.reviewer, 'get_full_name') and published_appraisal.reviewer.get_full_name():
-                reviewer_name = published_appraisal.reviewer.get_full_name()
+        if published_appraisal.reviewer and hasattr(published_appraisal.reviewer, 'profile') and published_appraisal.reviewer.profile:
+            reviewer_name = published_appraisal.reviewer.profile.full_name or reviewer_name
 
         areas_for_improvement = published_appraisal.areas_for_improvement or []
 
@@ -1090,16 +1101,12 @@ class InternPublishedFeedbackView(APIView):
                 'classification': published_appraisal.classification or get_performance_classification(published_appraisal.overall_score),
                 'performanceClassification': published_appraisal.classification or get_performance_classification(published_appraisal.overall_score),
                 'reviewerName': reviewer_name,
-                'mentorName': reviewer_name,
-                'publishedAt': published_appraisal.published_at.isoformat() if published_appraisal.published_at else None,
                 'reviewerComments': published_appraisal.reviewer_comments,
                 'mentorFeedback': published_appraisal.reviewer_comments or '',
-                'hrComments': published_appraisal.final_comments or 'Evaluation calibrated and officially verified.',
                 'strengths': published_appraisal.strengths,
                 'areasForImprovement': areas_for_improvement,
                 'recommendations': published_appraisal.recommendations,
                 'allowInternReply': published_appraisal.allow_intern_reply,
-                'isReplyPermitted': published_appraisal.allow_intern_reply,
                 'weightDistribution': weight_dist,
                 'evaluationParameters': eval_params,
                 'replies': [{
@@ -1136,8 +1143,8 @@ class InternFeedbackReplyView(APIView):
         if not published_appraisal.allow_intern_reply:
             return Response({'code': 403, 'message': 'Replies to this feedback are not currently permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
-        reply_text = request.data.get('replyText') or request.data.get('reply_text', '')
-        if not reply_text.strip():
+        reply_text = request.data.get('replyText') or request.data.get('reply_text') or request.data.get('reply') or request.data.get('message', '')
+        if not reply_text or not str(reply_text).strip():
             return Response({'code': 400, 'message': 'Reply text cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
 
         reply = InternFeedbackReply.objects.create(
@@ -1168,16 +1175,32 @@ class InternJourneyView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
+    def get(self, request, pk=None):
         user = request.user
-        try:
-            profile = get_authenticated_intern_profile(user)
-        except NotFound:
-            return Response({
-                'code': 404,
-                'message': 'No profile found for authenticated account.',
-                'data': None
-            }, status=status.HTTP_404_NOT_FOUND)
+        target_intern_id = pk or request.query_params.get('intern_id') or request.query_params.get('employee_id')
+        if target_intern_id:
+            if user.role in [UserRole.HR, UserRole.MANAGER, UserRole.SUPER_ADMIN] or user.is_superuser:
+                target_profile = EmployeeProfile.objects.filter(
+                    Q(id=target_intern_id) | Q(user__id=target_intern_id) | Q(employee_code__iexact=str(target_intern_id))
+                ).first()
+                if not target_profile:
+                    return Response({'code': 404, 'message': 'Target intern profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+                profile = target_profile
+            elif user.role == UserRole.INTERN:
+                profile = getattr(user, 'profile', None)
+                if not profile or (str(profile.id) != str(target_intern_id) and str(user.id) != str(target_intern_id) and profile.employee_code != str(target_intern_id)):
+                    return Response({'code': 403, 'message': 'Forbidden: You cannot access another intern\'s journey.'}, status=status.HTTP_403_FORBIDDEN)
+            else:
+                return Response({'code': 403, 'message': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            try:
+                profile = get_authenticated_intern_profile(user)
+            except NotFound:
+                return Response({
+                    'code': 404,
+                    'message': 'No intern profile found for authenticated account.',
+                    'data': None
+                }, status=status.HTTP_404_NOT_FOUND)
 
         today = date.today()
         joining_date = profile.joining_date or (profile.created_at.date() if profile.created_at else today)
@@ -1383,6 +1406,9 @@ class InternJourneyView(APIView):
             }
         ]
 
+        # Evaluate 4-Quarter MIRAI Progression
+        mirai_eval = MiraiJourneyService.evaluate_intern_journey(profile)
+
         return Response({
             'code': 200,
             'data': {
@@ -1402,7 +1428,9 @@ class InternJourneyView(APIView):
                     'endDate': active_cycle.end_date.isoformat() if active_cycle else None,
                 } if active_cycle else None,
                 'currentStage': current_stage,
-                'overallProgressPercent': overall_progress,
+                'currentQuarter': mirai_eval['currentQuarter'],
+                'overallProgressPercent': mirai_eval['overallProgressPercent'],
+                'quarters': mirai_eval['quarters'],
                 'milestones': milestones,
                 'stats': {
                     'goalsTotal': total_goals,
@@ -1418,4 +1446,431 @@ class InternJourneyView(APIView):
                     'isResultsPublished': bool(published_appraisal)
                 }
             }
+        })
+
+    def patch(self, request, pk=None):
+        """
+        Allows authorized HR administrators and SuperAdmins to edit an intern's MIRAI Journey:
+        quarter progress (0–100%), quarter status transitions with prerequisite validation,
+        milestones, dates, project focus, JLPT exam certifications, and technical parameters.
+        All changes are persistently saved to the database and logged to the audit service.
+        """
+        user = request.user
+        if not (user.role in [UserRole.HR, UserRole.SUPER_ADMIN] or user.is_superuser):
+            return Response(
+                {'code': 403, 'message': 'Permission denied. Only authorized HR administrators can edit the intern journey.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        target_id = pk or request.data.get('intern_id') or request.data.get('employee_id') or request.query_params.get('employee_id')
+        if not target_id:
+            return Response({'code': 400, 'message': 'Target intern employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = EmployeeProfile.objects.filter(
+            Q(id=target_id) | Q(user__id=target_id) | Q(employee_code__iexact=str(target_id))
+        ).first()
+
+        if not profile:
+            return Response({'code': 404, 'message': 'Target intern profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        quarters_data = data.get('quarters')
+        if not quarters_data and any(k in data for k in ['quarter_code', 'quarterCode', 'status', 'progress', 'completion_percentage', 'completionPercentage']):
+            quarters_data = [data]
+
+        updated_quarters = []
+
+        if quarters_data and isinstance(quarters_data, list):
+            for q_update in quarters_data:
+                q_code = q_update.get('quarter_code') or q_update.get('quarterCode')
+                if not q_code:
+                    continue
+                q_code = str(q_code).upper()
+                if q_code not in [c[0] for c in QuarterCode.choices]:
+                    return Response({'code': 400, 'message': f'Invalid quarter code: {q_code}'}, status=status.HTTP_400_BAD_REQUEST)
+
+                quarter = MiraiQuarterProgress.objects.filter(intern=profile, quarter_code=q_code).first()
+                if not quarter:
+                    MiraiJourneyService.get_or_initialize_quarters(profile)
+                    quarter = MiraiQuarterProgress.objects.filter(intern=profile, quarter_code=q_code).first()
+
+                # 1. Progress percentage validation (strict 0.0 to 100.0)
+                progress_val = q_update.get('completion_percentage')
+                if progress_val is None:
+                    progress_val = q_update.get('completionPercentage')
+                if progress_val is None:
+                    progress_val = q_update.get('progress')
+
+                if progress_val is not None:
+                    try:
+                        p_dec = Decimal(str(progress_val))
+                    except (InvalidOperation, ValueError):
+                        return Response({
+                            'code': 400,
+                            'message': f'Progress percentage for {q_code} must be a valid number.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    if p_dec < Decimal('0.00') or p_dec > Decimal('100.00'):
+                        return Response({
+                            'code': 400,
+                            'message': f'Progress percentage for {q_code} must be strictly between 0 and 100%.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    quarter.completion_percentage = p_dec
+
+                # 2. Quarter Status transition & prerequisite validation
+                status_val = q_update.get('status')
+                if status_val:
+                    s_str = str(status_val).upper().replace(' ', '_')
+                    if s_str in ['TODO', 'NOT_STARTED']:
+                        s_str = QuarterStatus.NOT_STARTED
+                    elif s_str in ['IN_PROGRESS', 'INPROGRESS']:
+                        s_str = QuarterStatus.IN_PROGRESS
+                    elif s_str in ['COMPLETED', 'DONE']:
+                        s_str = QuarterStatus.COMPLETED
+
+                    if s_str not in [c[0] for c in QuarterStatus.choices]:
+                        return Response({'code': 400, 'message': f'Invalid quarter status: {status_val}'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    force_override = q_update.get('force_override') or q_update.get('forceOverride') or q_update.get('prerequisites_met') or q_update.get('prerequisitesMet')
+
+                    # Validate prerequisites for quarter transition
+                    if s_str in [QuarterStatus.IN_PROGRESS, QuarterStatus.COMPLETED]:
+                        if q_code == 'Q3' and not force_override:
+                            n4_verified = MiraiCertification.objects.filter(
+                                intern=profile,
+                                jlpt_level='N4',
+                                status=CertificationStatus.CLEARED,
+                                verification_status=VerificationStatus.VERIFIED
+                            ).exists()
+                            all_tech = TechnicalCapabilityReview.objects.filter(employee=profile)
+                            avg_tech = (sum(float(r.score) for r in all_tech) / all_tech.count()) if all_tech.exists() else 0.0
+                            if not n4_verified and avg_tech < 3.5:
+                                return Response({
+                                    'code': 400,
+                                    'message': f'Cannot advance Q3 to {s_str}: Entry prerequisites (verified JLPT N4 and technical capability benchmark >= 3.5/5.0) are not satisfied.'
+                                }, status=status.HTTP_400_BAD_REQUEST)
+
+                        elif q_code == 'Q4' and not force_override:
+                            n3_verified = MiraiCertification.objects.filter(
+                                intern=profile,
+                                jlpt_level='N3',
+                                status=CertificationStatus.CLEARED,
+                                verification_status=VerificationStatus.VERIFIED
+                            ).exists()
+                            all_tech = TechnicalCapabilityReview.objects.filter(employee=profile)
+                            avg_tech = (sum(float(r.score) for r in all_tech) / all_tech.count()) if all_tech.exists() else 0.0
+                            if not n3_verified and avg_tech < 4.0:
+                                return Response({
+                                    'code': 400,
+                                    'message': f'Cannot advance Q4 to {s_str}: Entry prerequisites (verified JLPT N3 and technical capability benchmark >= 4.0/5.0) are not satisfied.'
+                                }, status=status.HTTP_400_BAD_REQUEST)
+
+                    quarter.status = s_str
+
+                # Dates
+                if 'start_date' in q_update or 'startDate' in q_update:
+                    sd = q_update.get('start_date') or q_update.get('startDate')
+                    if sd:
+                        try:
+                            quarter.start_date = datetime.strptime(str(sd)[:10], '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+                if 'end_date' in q_update or 'endDate' in q_update:
+                    ed = q_update.get('end_date') or q_update.get('endDate')
+                    if ed:
+                        try:
+                            quarter.end_date = datetime.strptime(str(ed)[:10], '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+
+                # Journey Focus & Project
+                if 'title' in q_update:
+                    quarter.title = q_update['title']
+                if 'current_focus' in q_update or 'currentFocus' in q_update:
+                    quarter.current_focus = q_update.get('current_focus') or q_update.get('currentFocus', '')
+                if 'project_name' in q_update or 'projectName' in q_update:
+                    quarter.project_name = q_update.get('project_name') or q_update.get('projectName', '')
+                if 'attendance_percentage' in q_update or 'attendancePercentage' in q_update:
+                    att_val = q_update.get('attendance_percentage') or q_update.get('attendancePercentage')
+                    if att_val is not None:
+                        try:
+                            att_dec = Decimal(str(att_val))
+                            if Decimal('0.00') <= att_dec <= Decimal('100.00'):
+                                quarter.attendance_percentage = att_dec
+                        except (InvalidOperation, ValueError):
+                            pass
+
+                # Milestones & Requirements
+                if 'completed_requirements' in q_update or 'completedRequirements' in q_update:
+                    cr = q_update.get('completed_requirements') or q_update.get('completedRequirements')
+                    if isinstance(cr, list):
+                        quarter.completed_requirements = cr
+                if 'pending_requirements' in q_update or 'pendingRequirements' in q_update:
+                    pr = q_update.get('pending_requirements') or q_update.get('pendingRequirements')
+                    if isinstance(pr, list):
+                        quarter.pending_requirements = pr
+                if 'prerequisites_met' in q_update or 'prerequisitesMet' in q_update:
+                    pm = q_update.get('prerequisites_met') if 'prerequisites_met' in q_update else q_update.get('prerequisitesMet')
+                    quarter.prerequisites_met = bool(pm)
+
+                # Conversion Decision (Q4)
+                if 'conversion_decision' in q_update or 'conversionDecision' in q_update:
+                    cd = q_update.get('conversion_decision') or q_update.get('conversionDecision')
+                    if cd in [c[0] for c in ConversionDecision.choices]:
+                        quarter.conversion_decision = cd
+                if 'conversion_effective_date' in q_update or 'conversionEffectiveDate' in q_update:
+                    ced = q_update.get('conversion_effective_date') or q_update.get('conversionEffectiveDate')
+                    if ced:
+                        try:
+                            quarter.conversion_effective_date = datetime.strptime(str(ced)[:10], '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+                if 'hr_conversion_notes' in q_update or 'hrConversionNotes' in q_update:
+                    quarter.hr_conversion_notes = q_update.get('hr_conversion_notes') or q_update.get('hrConversionNotes', '')
+
+                quarter.is_manually_updated = True
+                quarter.save()
+                updated_quarters.append(q_code)
+
+        # 3. Certifications / Exams updates
+        certs_data = data.get('certifications') or data.get('exams')
+        if certs_data and isinstance(certs_data, list):
+            for c_item in certs_data:
+                jlpt = c_item.get('jlpt_level') or c_item.get('jlptLevel', 'OTHER')
+                q_code = c_item.get('quarter_code') or c_item.get('quarterCode') or {'N5': 'Q1', 'N4': 'Q2', 'N3': 'Q3'}.get(jlpt, 'Q1')
+                is_ver = c_item.get('verification_status') or c_item.get('verificationStatus') or VerificationStatus.VERIFIED
+                MiraiCertification.objects.update_or_create(
+                    intern=profile,
+                    jlpt_level=jlpt,
+                    defaults={
+                        'name': c_item.get('name') or f"JLPT {jlpt} Examination",
+                        'quarter_code': q_code,
+                        'status': c_item.get('status', CertificationStatus.CLEARED),
+                        'score': str(c_item.get('score', '')),
+                        'certificate_url': c_item.get('certificate_url') or c_item.get('certificateUrl', ''),
+                        'verification_status': is_ver,
+                        'verification_notes': c_item.get('verification_notes') or c_item.get('verificationNotes', f"Updated by HR ({user.username})"),
+                        'verified_by': user if is_ver == VerificationStatus.VERIFIED else None,
+                        'verified_at': timezone.now() if is_ver == VerificationStatus.VERIFIED else None,
+                    }
+                )
+
+        # 4. Technical Parameters updates
+        tech_data = data.get('technical_parameters') or data.get('technicalParameters')
+        if tech_data and isinstance(tech_data, list):
+            for t_item in tech_data:
+                param_id = t_item.get('parameter_id') or t_item.get('id')
+                param = None
+                if param_id:
+                    param = TechnicalCapabilityParameter.objects.filter(id=param_id).first()
+                if not param and t_item.get('parameterName'):
+                    param = TechnicalCapabilityParameter.objects.filter(name__icontains=t_item['parameterName']).first()
+                
+                score_val = t_item.get('achievedScore') if t_item.get('achievedScore') is not None else t_item.get('score')
+                if param and score_val is not None:
+                    try:
+                        s_dec = Decimal(str(score_val))
+                        if Decimal('0.00') <= s_dec <= Decimal('5.00'):
+                            TechnicalCapabilityReview.objects.update_or_create(
+                                parameter=param,
+                                employee=profile,
+                                defaults={
+                                    'score': s_dec,
+                                    'reviewer': user,
+                                    'status': 'SUBMITTED',
+                                    'mentor_assessment': t_item.get('assessmentNotes', t_item.get('mentor_assessment', 'Assessed by HR')),
+                                }
+                            )
+                    except (InvalidOperation, ValueError):
+                        pass
+
+        # 5. Record Audit Log
+        AuditService.log(
+            actor=user,
+            action='UPDATE',
+            entity_type='MIRAI_JOURNEY',
+            entity_id=str(profile.id),
+            metadata={
+                'intern_username': profile.user.username,
+                'intern_code': profile.employee_code,
+                'updated_by': user.username,
+                'quarters_updated': updated_quarters,
+            },
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        # Refresh displayed journey from database
+        eval_res = MiraiJourneyService.evaluate_intern_journey(profile)
+        return Response({
+            'code': 200,
+            'message': 'MIRAI Journey successfully updated and persisted.',
+            'data': eval_res
+        })
+
+    def put(self, request, pk=None):
+        return self.patch(request, pk)
+
+
+class MiraiCertificationSubmitView(APIView):
+    """
+    Endpoint for intern to submit JLPT certification details, score, and certificate verification URL.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        try:
+            profile = get_authenticated_intern_profile(user)
+        except NotFound:
+            return Response({'code': 404, 'message': 'Profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        jlpt_level = data.get('jlpt_level') or data.get('jlptLevel')
+        if not jlpt_level:
+            return Response({'code': 400, 'message': 'jlpt_level is required (N5, N4, N3, N2, N1).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        quarter_code = data.get('quarter_code') or data.get('quarterCode')
+        if not quarter_code:
+            quarter_code = {'N5': 'Q1', 'N4': 'Q2', 'N3': 'Q3'}.get(jlpt_level, 'Q1')
+
+        name = data.get('name') or f"JLPT {jlpt_level} Japanese Proficiency Examination"
+        score = data.get('score', '')
+        exam_date_str = data.get('exam_date') or data.get('examDate')
+        clearance_date_str = data.get('clearance_date') or data.get('clearanceDate')
+        cert_url = data.get('certificate_url') or data.get('certificateUrl', '')
+        cert_status = data.get('status') or CertificationStatus.IN_PROGRESS
+
+        cert, created = MiraiCertification.objects.update_or_create(
+            intern=profile,
+            jlpt_level=jlpt_level,
+            defaults={
+                'name': name,
+                'quarter_code': quarter_code,
+                'status': cert_status,
+                'score': score,
+                'exam_date': exam_date_str if exam_date_str else None,
+                'clearance_date': clearance_date_str if clearance_date_str else None,
+                'certificate_url': cert_url,
+                'verification_status': VerificationStatus.PENDING if cert_url else VerificationStatus.NOT_SUBMITTED,
+            }
+        )
+
+        MiraiTimelineEvent.objects.create(
+            intern=profile,
+            quarter_code=quarter_code,
+            event_type=TimelineEventType.EXAM_CLEARED if cert_status == CertificationStatus.CLEARED else TimelineEventType.MILESTONE,
+            title=f"Submitted JLPT {jlpt_level} Details",
+            description=f"Submitted examination details. Certificate verification: {cert.verification_status}.",
+            event_date=date.today(),
+            actor=profile.full_name or user.username
+        )
+
+        eval_res = MiraiJourneyService.evaluate_intern_journey(profile)
+
+        return Response({
+            'code': 200,
+            'message': f"JLPT {jlpt_level} certification updated successfully.",
+            'data': eval_res
+        })
+
+
+class MiraiCertificationVerifyView(APIView):
+    """
+    Endpoint for HR or Mentor to verify or reject an intern's certification.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if user.role not in [UserRole.HR, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+            return Response({'code': 403, 'message': 'Only HR or Mentors can verify certificates.'}, status=status.HTTP_403_FORBIDDEN)
+
+        cert = MiraiCertification.objects.filter(id=pk).first()
+        if not cert:
+            return Response({'code': 404, 'message': 'Certification record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        is_verified = request.data.get('is_verified', True)
+        notes = request.data.get('notes', '')
+
+        if is_verified:
+            cert.verification_status = VerificationStatus.VERIFIED
+            cert.status = CertificationStatus.CLEARED
+            cert.verified_by = user
+            cert.verified_at = timezone.now()
+            cert.verification_notes = notes or f"Verified by {user.get_full_name() or user.username} ({user.role})"
+            cert.save()
+
+            MiraiTimelineEvent.objects.create(
+                intern=cert.intern,
+                quarter_code=cert.quarter_code,
+                event_type=TimelineEventType.STATUS_CHANGE,
+                title=f"{cert.name} Verified by HR",
+                description=f"Official certificate authenticated. {cert.verification_notes}",
+                event_date=date.today(),
+                actor=user.get_full_name() or user.username
+            )
+        else:
+            cert.verification_status = VerificationStatus.REJECTED
+            cert.verification_notes = notes or "Certificate rejected during verification review."
+            cert.save()
+
+        eval_res = MiraiJourneyService.evaluate_intern_journey(cert.intern)
+
+        return Response({
+            'code': 200,
+            'message': f"Certification {cert.name} has been {'verified' if is_verified else 'rejected'}.",
+            'data': eval_res
+        })
+
+
+class MiraiQuarterConfigureView(APIView):
+    """
+    Allows HR or authorized managers to customize quarter dates, requirements,
+    and conversion decisions dynamically.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, quarter_code):
+        user = request.user
+        if user.role not in [UserRole.HR, UserRole.SUPER_ADMIN]:
+            return Response({'code': 403, 'message': 'Only HR administrators can configure quarters.'}, status=status.HTTP_403_FORBIDDEN)
+
+        intern_id = request.data.get('intern_id')
+        if not intern_id:
+            return Response({'code': 400, 'message': 'intern_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = EmployeeProfile.objects.filter(Q(id=intern_id) | Q(user__id=intern_id)).first()
+        if not profile:
+            return Response({'code': 404, 'message': 'Intern profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        quarter = MiraiQuarterProgress.objects.filter(intern=profile, quarter_code=quarter_code).first()
+        if not quarter:
+            return Response({'code': 404, 'message': f"Quarter {quarter_code} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        if 'start_date' in data:
+            quarter.start_date = data['start_date']
+        if 'end_date' in data:
+            quarter.end_date = data['end_date']
+        if 'current_focus' in data:
+            quarter.current_focus = data['current_focus']
+        if 'project_name' in data:
+            quarter.project_name = data['project_name']
+        if 'conversion_decision' in data:
+            quarter.conversion_decision = data['conversion_decision']
+        if 'conversion_effective_date' in data:
+            quarter.conversion_effective_date = data['conversion_effective_date']
+        if 'hr_conversion_notes' in data:
+            quarter.hr_conversion_notes = data['hr_conversion_notes']
+        if 'requirements_config' in data:
+            quarter.requirements_config = data['requirements_config']
+
+        quarter.save()
+
+        eval_res = MiraiJourneyService.evaluate_intern_journey(profile)
+        return Response({
+            'code': 200,
+            'message': f"Quarter {quarter_code} configuration updated successfully.",
+            'data': eval_res
         })

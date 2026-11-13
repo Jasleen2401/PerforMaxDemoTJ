@@ -1,3 +1,5 @@
+import os
+from django.http import FileResponse
 from django.utils import timezone
 from django.db.models import Q
 from rest_framework import viewsets, permissions, status
@@ -12,8 +14,8 @@ from apps.evidence.serializers import EvidenceSubmissionSerializer, ReviewEviden
 class EvidenceSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = EvidenceSubmissionSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['goal', 'employee', 'review_status']
-    search_fields = ['title', 'description', 'goal__title', 'employee__first_name']
+    filterset_fields = ['goal', 'task', 'employee', 'review_status']
+    search_fields = ['title', 'description', 'goal__title', 'task__title', 'employee__first_name']
     ordering_fields = ['created_at', 'review_status']
 
     def get_queryset(self):
@@ -21,7 +23,7 @@ class EvidenceSubmissionViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return EvidenceSubmission.objects.none()
 
-        base_qs = EvidenceSubmission.objects.select_related('employee__user', 'goal', 'reviewed_by').all()
+        base_qs = EvidenceSubmission.objects.select_related('employee__user', 'goal', 'task', 'reviewed_by').all()
 
         if user.is_super_admin or user.is_hr:
             return base_qs
@@ -36,10 +38,34 @@ class EvidenceSubmissionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not hasattr(user, 'profile'):
             raise permissions.exceptions.PermissionDenied("User profile not found.")
-        goal = serializer.validated_data['goal']
-        if goal.employee != user.profile:
+        goal = serializer.validated_data.get('goal')
+        task = serializer.validated_data.get('task')
+        if not goal and not task:
+            raise permissions.exceptions.PermissionDenied("Evidence must be associated with an assigned goal or task.")
+        if goal and goal.employee != user.profile:
             raise permissions.exceptions.PermissionDenied("You can only submit evidence for your own assigned goals.")
+        if task and task.intern != user.profile:
+            raise permissions.exceptions.PermissionDenied("You can only submit evidence for your own assigned tasks.")
         serializer.save(employee=user.profile)
+
+    @action(detail=True, methods=['get'], url_path='download')
+    def download_file(self, request, pk=None):
+        """Securely stream evidence file to authorized users only."""
+        evidence = self.get_object()
+        if not evidence.file_attachment:
+            return Response(
+                {"detail": "No file attachment found for this evidence submission."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        try:
+            filename = os.path.basename(evidence.file_attachment.name)
+            response = FileResponse(evidence.file_attachment.open('rb'), as_attachment=True, filename=filename)
+            return response
+        except FileNotFoundError:
+            return Response(
+                {"detail": "File not found on storage server."},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
     @action(detail=True, methods=['post'], permission_classes=[IsManager], url_path='review')
     def review_submission(self, request, pk=None):

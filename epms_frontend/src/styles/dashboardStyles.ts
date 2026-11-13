@@ -1,24 +1,26 @@
 import type { CSSProperties } from 'react';
 
 export const DASHBOARD_COLORS = {
-  primary: '#1A56DB',
-  primarySoft: '#EEF3FD',
-  primaryBorder: '#B5D4F4',
-  success: '#27500A',
-  successSoft: '#EAF3DE',
-  successBorder: '#B8DCA0',
-  warning: '#633806',
-  warningSoft: '#FFF7D6',
-  danger: '#791F1F',
-  dangerSoft: '#FDECEC',
-  ink: '#111827',
-  muted: '#5A6070',
-  subtle: '#9EA3B0',
-  line: '#E4E6EC',
-  grid: '#F0F2F6',
+  primary: '#7C3AED',
+  primarySoft: '#F5F3FF',
+  primaryBorder: '#DDD6FE',
+  success: '#059669',
+  successSoft: '#ECFDF5',
+  successBorder: '#A7F3D0',
+  warning: '#D97706',
+  warningSoft: '#FFFBEB',
+  warningBorder: '#FDE68A',
+  danger: '#E11D48',
+  dangerSoft: '#FFF1F2',
+  dangerBorder: '#FECDD3',
+  ink: '#0F172A',
+  muted: '#64748B',
+  subtle: '#94A3B8',
+  line: '#E2E8F0',
+  grid: '#F1F5F9',
   surface: '#FFFFFF',
-  surfaceAlt: '#F5F6F8',
-  dark: '#111827',
+  surfaceAlt: '#F8FAFC',
+  dark: '#0F172A',
 } as const;
 
 export const DASHBOARD_SPACING = {
@@ -30,40 +32,42 @@ export const DASHBOARD_SPACING = {
   xxl: 24,
 } as const;
 
-export const DASHBOARD_BORDER = `0.5px solid ${DASHBOARD_COLORS.line}`;
+export const DASHBOARD_BORDER = `1px solid ${DASHBOARD_COLORS.line}`;
 
 export const dashboardStyles = {
   card: {
     background: DASHBOARD_COLORS.surface,
     border: DASHBOARD_BORDER,
-    borderRadius: 8,
-    padding: '16px 18px',
+    borderRadius: 12,
+    padding: '18px 20px',
+    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
   } satisfies CSSProperties,
   cardCompact: {
     background: DASHBOARD_COLORS.surface,
     border: DASHBOARD_BORDER,
-    borderRadius: 8,
-    padding: '12px 16px',
+    borderRadius: 12,
+    padding: '14px 18px',
+    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
   } satisfies CSSProperties,
   panelHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 16,
   } satisfies CSSProperties,
   label: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: DASHBOARD_COLORS.subtle,
-    textTransform: 'uppercase',
-    letterSpacing: 0,
+    fontSize: 12,
+    fontWeight: 700,
+    color: DASHBOARD_COLORS.ink,
+    letterSpacing: '-0.01em',
   } satisfies CSSProperties,
   select: {
     background: 'transparent',
     border: 'none',
     outline: 'none',
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: 600,
     color: DASHBOARD_COLORS.ink,
     fontFamily: 'inherit',
     minHeight: 28,
@@ -94,16 +98,16 @@ export const dashboardStyles = {
   tooltip: {
     borderRadius: 8,
     border: DASHBOARD_BORDER,
-    boxShadow: 'none',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
     background: DASHBOARD_COLORS.surface,
     fontSize: 12,
   } satisfies CSSProperties,
 };
 
 export const chartPalette = [
-  DASHBOARD_COLORS.primary,
-  DASHBOARD_COLORS.success,
-  DASHBOARD_COLORS.warning,
-  DASHBOARD_COLORS.danger,
-  DASHBOARD_COLORS.subtle,
+  '#7C3AED',
+  '#059669',
+  '#D97706',
+  '#E11D48',
+  '#6366F1',
 ] as const;

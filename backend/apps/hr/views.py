@@ -44,7 +44,7 @@ class HrCyclesView(APIView):
             'startDate': str(c.start_date),
             'endDate': str(c.end_date),
             'status': c.status,
-            'isLocked': c.is_locked,
+            'isLocked': getattr(c, 'is_locked', c.status == 'LOCKED'),
         } for c in cycles]
         return Response({'code': 200, 'data': data})
 
@@ -80,7 +80,7 @@ class HrCriteriaView(APIView):
             'id': str(c.id),
             'name': c.name,
             'description': c.description,
-            'weightage': float(c.weightage),
+            'weightage': float(getattr(c, 'weightage', getattr(c, 'weight', 0.0))),
             'isActive': c.is_active,
         } for c in criteria]
         return Response({'code': 200, 'data': data})
@@ -98,7 +98,7 @@ class HrPipOverviewView(APIView):
             'status': p.status,
             'startDate': str(p.start_date),
             'endDate': str(p.end_date),
-            'rootCause': p.root_cause_analysis,
+            'rootCause': getattr(p, 'root_cause_analysis', ''),
         } for p in pips]
         return Response({'code': 200, 'data': data})
 
@@ -118,3 +118,11 @@ class HrBellCurveAnalyticsView(APIView):
                 ]
             }
         })
+
+
+class HrInternTasksView(APIView):
+    permission_classes = [IsHrOrAdminUser]
+
+    def get(self, request):
+        from apps.intern.views import InternAllTasksView
+        return InternAllTasksView().get(request)

@@ -37,11 +37,83 @@ class GoalViewSet(viewsets.ModelViewSet):
         # Interns only see their assigned goals
         return base_qs.filter(employee__user=user)
 
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
+        # Resolve cycle
+        cycle_val = data.get('cycle')
+        if cycle_val:
+            from apps.performance.models import PerformanceCycle
+            from apps.frontend_compat.views import CYCLE_ID_MAP, is_valid_uuid
+            if not is_valid_uuid(str(cycle_val)):
+                resolved_id = CYCLE_ID_MAP.get(cycle_val) or CYCLE_ID_MAP.get(str(cycle_val))
+                if resolved_id and is_valid_uuid(str(resolved_id)):
+                    data['cycle'] = str(resolved_id)
+                elif str(cycle_val).isdigit():
+                    cycles = list(PerformanceCycle.objects.all().order_by("-start_date"))
+                    idx = int(cycle_val) - 1
+                    if 0 <= idx < len(cycles):
+                        data['cycle'] = str(cycles[idx].id)
+                else:
+                    c = PerformanceCycle.objects.filter(name__icontains=str(cycle_val)).first()
+                    if c:
+                        data['cycle'] = str(c.id)
+        if not data.get('cycle'):
+            from apps.performance.models import PerformanceCycle, CycleStatus
+            active_cycle = PerformanceCycle.objects.filter(status=CycleStatus.ACTIVE).first() or PerformanceCycle.objects.first()
+            if active_cycle:
+                data['cycle'] = str(active_cycle.id)
+
+        # Resolve employee
+        emp_val = data.get('employee') or data.get('employee_id') or data.get('employeeId')
+        if emp_val:
+            from apps.employees.models import EmployeeProfile
+            from apps.frontend_compat.views import is_valid_uuid
+            emp_obj = None
+            if is_valid_uuid(str(emp_val)):
+                emp_obj = EmployeeProfile.objects.filter(Q(id=str(emp_val)) | Q(user__id=str(emp_val))).first()
+            if not emp_obj:
+                emp_obj = EmployeeProfile.objects.filter(
+                    Q(employee_code__iexact=str(emp_val)) |
+                    Q(user__username__iexact=str(emp_val)) |
+                    Q(user__email__iexact=str(emp_val))
+                ).first()
+            if emp_obj:
+                data['employee'] = str(emp_obj.id)
+
+        if not data.get('due_date'):
+            data['due_date'] = '2026-06-30'
+
+        category_val = data.get('category') or 'TECHNICAL'
+        data['category'] = category_val
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
-        serializer.save(assigned_by=self.request.user)
+        goal = serializer.save(assigned_by=self.request.user)
+        target_val = self.request.data.get('target_value') or self.request.data.get('targetValue')
+        weight_val = self.request.data.get('weightage') or self.request.data.get('weight') or 20
+        category_val = self.request.data.get('category') or getattr(goal, 'category', 'TECHNICAL')
+        unit = self.request.data.get('unit', '%')
+        desc = f"weightage:{weight_val}|category:{category_val}"
+        target_amount = Decimal(str(target_val)) if target_val is not None else Decimal('100.00')
+        try:
+            KPI.objects.create(
+                goal=goal,
+                name=f"{goal.title} Target",
+                target_value=target_amount,
+                unit=unit,
+                description=desc,
+            )
+        except Exception:
+            pass
 
     def get_permissions(self):
-        if self.action in ['create', 'destroy']:
+        if self.action in ['create', 'destroy', 'update', 'partial_update']:
             return [IsManager()]
         return [permissions.IsAuthenticated()]
 

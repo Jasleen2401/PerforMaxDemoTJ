@@ -68,7 +68,7 @@ const AppraisalAssignment: React.FC = () => {
       const status = String(emp?.status || '').toUpperCase();
       const isActiveEmployee = status ? status === 'ACTIVE' : emp?.isActive !== false;
       const levelRank = Number(emp?.levelRank);
-      const hasEligibleLevel = Number.isFinite(levelRank) && levelRank >= 4 && levelRank <= 7;
+      const hasEligibleLevel = !Number.isFinite(levelRank) || levelRank >= 1 || (Array.isArray(emp?.roles) && (emp.roles.includes('INTERN') || emp.roles.includes('EMPLOYEE')));
       const matchesSearch = !normalizedSearch ||
         String(emp?.staffName || '').toLowerCase().includes(normalizedSearch) ||
         String(emp?.email || '').toLowerCase().includes(normalizedSearch) ||
@@ -85,13 +85,8 @@ const AppraisalAssignment: React.FC = () => {
   }, [filteredEmployees]);
 
   const eligiblePositions = useMemo(() => {
-    const eligibleLevelIds = new Set(
-      jobLevels
-        .filter(level => level.levelRank >= 4 && level.levelRank <= 7)
-        .map(level => level.levelId)
-    );
-    return positions.filter(position => eligibleLevelIds.has(position.levelId));
-  }, [jobLevels, positions]);
+    return positions;
+  }, [positions]);
 
   const allVisibleSelected = filteredEmployees.length > 0 && selectedEmployeeIds.length === filteredEmployees.length;
   const toggleEmployee = (id: number) => setSelectedEmployeeIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);

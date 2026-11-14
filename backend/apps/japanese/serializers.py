@@ -113,12 +113,15 @@ class JapaneseBatchSerializer(serializers.ModelSerializer):
     interns_count = serializers.SerializerMethodField()
     instructors_list = serializers.SerializerMethodField()
     assigned_interns = serializers.SerializerMethodField()
+    sub_batches_count = serializers.SerializerMethodField()
+    sub_batches = serializers.SerializerMethodField()
 
     class Meta:
         model = JapaneseBatch
         fields = [
-            'id', 'name', 'cohort', 'description', 'created_by',
-            'creator', 'interns_count', 'instructors_list', 'assigned_interns',
+            'id', 'name', 'code', 'cohort', 'status', 'description', 'created_by',
+            'creator', 'sub_batches_count', 'sub_batches', 'interns_count',
+            'instructors_list', 'assigned_interns',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -143,8 +146,28 @@ class JapaneseBatchSerializer(serializers.ModelSerializer):
             'email': obj.created_by.email or '',
         }
 
+    def get_sub_batches_count(self, obj):
+        return obj.sub_batches.count()
+
+    def get_sub_batches(self, obj):
+        result = []
+        for sb in obj.sub_batches.all():
+            result.append({
+                'id': str(sb.id),
+                'name': sb.name,
+                'code': sb.code,
+                'cohort': sb.cohort,
+                'status': sb.status,
+                'interns_count': sb.interns.count(),
+                'assigned_interns': [self._serialize_intern(p, sb.code, sb.name) for p in sb.interns.select_related('user', 'department', 'manager').all()],
+            })
+        return result
+
     def get_interns_count(self, obj):
-        return obj.interns.count()
+        # If it has sub-batches, count all interns across sub-batches plus direct
+        sub_interns_count = sum(sb.interns.count() for sb in obj.sub_batches.all())
+        direct_count = obj.interns.count()
+        return max(direct_count, sub_interns_count)
 
     def get_instructors_list(self, obj):
         return [
@@ -157,52 +180,64 @@ class JapaneseBatchSerializer(serializers.ModelSerializer):
             for inst in obj.instructors.all()
         ]
 
-    def get_assigned_interns(self, obj):
-        interns_data = []
-        for p in obj.interns.select_related('user', 'department', 'manager').all():
-            plan = p.japanese_learning_plans.filter(is_active=True).first() or p.japanese_learning_plans.first()
-            evaluation = p.japanese_evaluations.first()
-            eligibility = p.jlpt_eligibility_records.first()
-            practice_results = p.japanese_practice_results.all()
-            completed_practice = practice_results.filter(status='REVIEWED').count()
-            total_practice = practice_results.count()
-            progress_pct = round((completed_practice / max(total_practice, 1)) * 100, 1) if total_practice > 0 else 0.0
+    def _serialize_intern(self, p, sub_batch_code='', sub_batch_name=''):
+        plan = p.japanese_learning_plans.filter(is_active=True).first() or p.japanese_learning_plans.first()
+        evaluation = p.japanese_evaluations.first()
+        eligibility = p.jlpt_eligibility_records.first()
+        practice_results = p.japanese_practice_results.all()
+        completed_practice = practice_results.filter(status='REVIEWED').count()
+        total_practice = practice_results.count()
+        progress_pct = round((completed_practice / max(total_practice, 1)) * 100, 1) if total_practice > 0 else 0.0
 
-            interns_data.append({
-                'id': str(p.id),
-                'userId': str(p.user.id),
-                'fullName': p.full_name or p.user.username,
-                'employeeCode': p.employee_code,
-                'email': p.user.email,
-                'department': p.department.name if p.department else 'Language & Training',
-                'managerName': p.manager.username if p.manager else 'Unassigned',
-                'designation': p.designation or 'Intern',
-                'plan': {
-                    'id': str(plan.id) if plan else None,
-                    'title': plan.title if plan else 'No Active Plan',
-                    'targetLevel': plan.target_jlpt_level if plan else None,
-                    'targetDate': str(plan.target_date) if plan and plan.target_date else None,
-                    'topicsCount': plan.topics.count() if plan else 0,
-                } if plan else None,
-                'progress': {
-                    'percentage': progress_pct,
-                    'completed': completed_practice,
-                    'total': total_practice,
-                },
-                'evaluation': {
-                    'id': str(evaluation.id) if evaluation else None,
-                    'status': evaluation.status if evaluation else 'NOT_ASSIGNED',
-                    'statusDisplay': evaluation.get_status_display() if evaluation else 'Not Assigned',
-                    'overallScore': float(evaluation.overall_language_score) if evaluation and evaluation.overall_language_score is not None else None,
-                    'returnReason': evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else '',
-                } if evaluation else None,
-                'jlpt': {
-                    'requiredLevel': eligibility.required_level if eligibility else (plan.target_jlpt_level if plan else 'N4'),
-                    'eligibilityStatus': eligibility.eligibility_status if eligibility else 'NOT_STARTED',
-                    'eligibilityStatusDisplay': eligibility.get_eligibility_status_display() if eligibility else 'Not Started',
-                    'attemptsCount': p.jlpt_attempts.count(),
-                    'lastAttemptPassed': p.jlpt_attempts.first().passed if p.jlpt_attempts.exists() else None,
-                },
-            })
-        return interns_data
+        return {
+            'id': str(p.id),
+            'userId': str(p.user.id),
+            'fullName': p.full_name or p.user.username,
+            'employeeCode': p.employee_code,
+            'email': p.user.email,
+            'department': p.department.name if p.department else 'Language & Training',
+            'managerName': p.manager.username if p.manager else 'Unassigned',
+            'designation': p.designation or 'Intern',
+            'subBatchCode': sub_batch_code,
+            'subBatchName': sub_batch_name,
+            'plan': {
+                'id': str(plan.id) if plan else None,
+                'title': plan.title if plan else 'No Active Plan',
+                'targetLevel': plan.target_jlpt_level if plan else None,
+                'targetDate': str(plan.target_date) if plan and plan.target_date else None,
+                'topicsCount': plan.topics.count() if plan else 0,
+            } if plan else None,
+            'progress': {
+                'percentage': progress_pct,
+                'completed': completed_practice,
+                'total': total_practice,
+            },
+            'evaluation': {
+                'id': str(evaluation.id) if evaluation else None,
+                'status': evaluation.status if evaluation else 'NOT_ASSIGNED',
+                'statusDisplay': evaluation.get_status_display() if evaluation else 'Not Assigned',
+                'overallScore': float(evaluation.overall_language_score) if evaluation and evaluation.overall_language_score is not None else None,
+                'returnReason': evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else '',
+            } if evaluation else None,
+            'jlpt': {
+                'requiredLevel': eligibility.required_level if eligibility else (plan.target_jlpt_level if plan else 'N4'),
+                'eligibilityStatus': eligibility.eligibility_status if eligibility else 'NOT_STARTED',
+                'eligibilityStatusDisplay': eligibility.get_eligibility_status_display() if eligibility else 'Not Started',
+                'attemptsCount': p.jlpt_attempts.count(),
+                'lastAttemptPassed': p.jlpt_attempts.first().passed if p.jlpt_attempts.exists() else None,
+            },
+        }
+
+    def get_assigned_interns(self, obj):
+        interns_map = {}
+        # First add direct interns
+        for p in obj.interns.select_related('user', 'department', 'manager').all():
+            interns_map[p.id] = self._serialize_intern(p, obj.code, obj.name)
+
+        # Then add interns from sub-batches
+        for sb in obj.sub_batches.all():
+            for p in sb.interns.select_related('user', 'department', 'manager').all():
+                interns_map[p.id] = self._serialize_intern(p, sb.code, sb.name)
+
+        return list(interns_map.values())
 

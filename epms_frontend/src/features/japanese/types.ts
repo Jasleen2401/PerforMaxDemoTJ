@@ -255,13 +255,27 @@ export interface JapaneseBatchCreator {
   email: string;
 }
 
+export interface JapaneseSubBatch {
+  id: string;
+  name: string;
+  code: string;
+  cohort: string;
+  status: string;
+  interns_count: number;
+  assigned_interns: JapaneseAssignedIntern[];
+}
+
 export interface JapaneseBatch {
   id: string;
   name: string;
+  code: string;
   cohort: string;
+  status: string;
   description: string;
   created_by?: string | null;
   creator: JapaneseBatchCreator;
+  sub_batches_count: number;
+  sub_batches: JapaneseSubBatch[];
   interns_count: number;
   instructors_list: Array<{
     id: string;

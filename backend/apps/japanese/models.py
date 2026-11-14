@@ -452,7 +452,15 @@ class JapaneseEvalRating(models.Model):
 class JapaneseBatch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=150)
+    code = models.CharField(max_length=50, blank=True, default='')
     cohort = models.CharField(max_length=100, default='MIRAI Cohort 2026')
+    status = models.CharField(max_length=20, default='Active')
+    parent_batch = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='sub_batches'
+    )
     description = models.TextField(blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

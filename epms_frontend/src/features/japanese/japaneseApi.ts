@@ -25,7 +25,7 @@ export const japaneseApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getJapaneseBatches: builder.query<
       JapaneseBatch[],
-      { creator_role?: string; q?: string } | void
+      { creator_role?: string; q?: string; status?: string; sub?: string } | void
     >({
       query: (params) => ({
         url: "/japanese/batches/",

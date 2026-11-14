@@ -86,8 +86,8 @@ const App = () => {
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
 
-            {/* Manager & Admin/HR KPI & Mentor Hub Routes */}
-            <Route element={<ProtectedRoute allowedRoles={["MANAGER", "ADMIN", "HR"]} />}>
+            {/* Manager, Admin, HR & Instructor Employee Profile / Mentor Hub Routes */}
+            <Route element={<ProtectedRoute allowedRoles={["MANAGER", "ADMIN", "HR", "INSTRUCTOR"]} />}>
               {managerRoutes.map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}

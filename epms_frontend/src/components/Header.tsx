@@ -40,6 +40,11 @@ const PAGE_MAP: Record<string, PageInfo> = {
   "/continuous-feedback":  { title: "Continuous Feedback Stream" },
   "/performance-history":  { title: "Performance Pulse" },
   "/audit-logs":           { section: "Organization Hub", title: "System Audit Logs" },
+  "/japanese/dashboard":   { title: "Japanese Instructor Dashboard" },
+  "/japanese/batches":     { section: "Japanese Program", title: "Batches" },
+  "/japanese/evaluations": { section: "Japanese Program", title: "Evaluations" },
+  "/japanese/jlpt":        { section: "Japanese Program", title: "JLPT Tracking" },
+  "/japanese/feedback":    { section: "Japanese Program", title: "Feedback" },
 };
 
 function resolvePageInfo(pathname: string): PageInfo {
@@ -57,7 +62,7 @@ interface HeaderProps {
 const Header = ({ onMenuClick }: HeaderProps) => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { user, isAdmin, isHR, isManager } = useAuth();
+  const { user, isAdmin, isHR, isManager, isInstructor } = useAuth();
   const pageInfo = resolvePageInfo(pathname);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,12 +90,19 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     ? "Super Admin"
     : isHR
     ? "HR Partner"
+    : isInstructor
+    ? "Japanese Instructor"
     : isManager
     ? "Tech Manager"
     : "Intern";
 
-  const isInternUser = !isAdmin && !isHR && !isManager;
-  const displayTitle = (pathname === "/dashboard" && isInternUser) ? "Intern Dashboard" : pageInfo.title;
+  const isInternUser = !isAdmin && !isHR && !isManager && !isInstructor;
+  const displayTitle =
+    pathname === "/dashboard" && isInternUser
+      ? "Intern Dashboard"
+      : pathname === "/dashboard" && isInstructor
+      ? "Japanese Instructor Dashboard"
+      : pageInfo.title;
 
   return (
     <header className="flex items-center justify-between app-header sticky top-0 z-30 shrink-0 px-6 h-14 select-none">

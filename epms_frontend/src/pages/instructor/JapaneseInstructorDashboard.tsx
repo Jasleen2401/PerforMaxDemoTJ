@@ -1,496 +1,979 @@
 // src/pages/instructor/JapaneseInstructorDashboard.tsx
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from "recharts";
+import {
   Users,
-  BookOpen,
-  Award,
-  ClipboardCheck,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  TrendingUp,
-  FileCheck,
-  Calendar,
-  Languages,
-  RefreshCw,
-  ShieldAlert,
   Layers,
-  MessageSquare,
+  ClipboardCheck,
+  TrendingUp,
+  RefreshCw,
+  ArrowRight,
+  X,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  AlertTriangle,
+  Clock,
+  Award,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import {
   useGetJapaneseDashboardQuery,
+  useGetJapaneseBatchesQuery,
   useGetJapaneseInternsQuery,
+  useGetJapaneseEvaluationsQuery,
 } from "../../features/japanese/japaneseApi";
-import { ConductJapaneseEvaluationModal } from "../../components/instructor/ConductJapaneseEvaluationModal";
-import { CreateLearningPlanModal } from "../../components/instructor/CreateLearningPlanModal";
-import { RecordJLPTAttemptModal } from "../../components/instructor/RecordJLPTAttemptModal";
-import type { JapaneseEvaluation } from "../../features/japanese/types";
+
+type CardKey = "interns" | "batches" | "evaluations" | "progress";
+
+const PURPLE_SHADES = ["#6D3FEA", "#7B50F0", "#5526D9", "#9878EE", "#8B5CF6", "#A78BFA"];
 
 export const JapaneseInstructorDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { data: dashboardData, isLoading, error, refetch } = useGetJapaneseDashboardQuery();
-  const { data: internsList = [] } = useGetJapaneseInternsQuery();
 
+  // Primary live queries
+  const {
+    data: dashboardData,
+    isLoading: isDashboardLoading,
+    isFetching: isDashboardFetching,
+    isError,
+    refetch: refetchDashboard,
+  } = useGetJapaneseDashboardQuery();
+
+  const { data: batches = [], refetch: refetchBatches } = useGetJapaneseBatchesQuery();
+  const { data: internsList = [], refetch: refetchInterns } = useGetJapaneseInternsQuery();
+  const { data: evaluationsList = [], refetch: refetchEvaluations } = useGetJapaneseEvaluationsQuery();
+
+  const [activeDetailCard, setActiveDetailCard] = useState<CardKey | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedEval, setSelectedEval] = useState<JapaneseEvaluation | null>(null);
-  const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
-  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
-  const [isJlptModalOpen, setIsJlptModalOpen] = useState(false);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setActiveDetailCard(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refetch();
-      toast.success("Dashboard data refreshed.");
+      await Promise.all([
+        refetchDashboard(),
+        refetchBatches(),
+        refetchInterns(),
+        refetchEvaluations(),
+      ]);
+      toast.success("Workspace analytics updated.");
     } catch {
-      toast.error("Failed to refresh dashboard.");
+      toast.error("Failed to refresh dashboard data.");
     } finally {
       setTimeout(() => setIsRefreshing(false), 500);
     }
   };
 
-  const handleOpenEvaluation = (evalId: string) => {
-    navigate(`/japanese/evaluations?evaluationId=${evalId}`);
-  };
+  // Safe data arrays
+  const rawBatches = useMemo(() => (Array.isArray(batches) ? batches : []), [batches]);
+  const safeInterns = useMemo(() => (Array.isArray(internsList) ? internsList : []), [internsList]);
+  const safeEvaluations = useMemo(() => (Array.isArray(evaluationsList) ? evaluationsList : []), [evaluationsList]);
 
-  if (isLoading) {
+  // Live overview metrics
+  const overview = dashboardData?.overview;
+  const activeCycle = dashboardData?.activeCycle;
+
+  const totalInterns = overview?.totalInterns ?? safeInterns.length;
+  const assignedBatchesCount = overview?.assignedBatches ?? rawBatches.length;
+  const avgProgress = overview?.avgProgress ?? 0;
+  const reviewedExercises = overview?.reviewedExercises ?? 0;
+  const totalExercises = overview?.totalExercises ?? 0;
+
+  // Normalized assigned batches list
+  const normalizedBatches = useMemo(() => {
+    if (rawBatches.length > 0) {
+      return rawBatches.map((b) => ({
+        id: b.id,
+        name: b.name || "Unnamed Batch",
+        cohort: b.cohort || "Cohort",
+        internsCount: b.interns_count ?? b.assigned_interns?.length ?? 0,
+        creatorRole:
+          b.creator?.role_display ||
+          (b.creator?.role === "HR" ? "HR Partner" : "Super Admin"),
+      }));
+    }
+    if (dashboardData?.batches && Array.isArray(dashboardData.batches) && dashboardData.batches.length > 0) {
+      return dashboardData.batches.map((b) => ({
+        id: b.id,
+        name: b.name || "Unnamed Batch",
+        cohort: b.cohort || "Cohort",
+        internsCount: b.internsCount ?? 0,
+        creatorRole: b.creatorRole || "Super Admin",
+      }));
+    }
+    return [];
+  }, [rawBatches, dashboardData?.batches]);
+
+  // Normalized pending evaluations list
+  const pendingEvaluations = useMemo(() => {
+    if (safeEvaluations.length > 0) {
+      return safeEvaluations
+        .filter((ev) => ["RETURNED", "DRAFT", "PENDING"].includes(ev.status))
+        .map((ev) => ({
+          id: ev.id,
+          internName: ev.intern_name || "Intern",
+          internCode: ev.intern_code || "",
+          status: ev.status,
+          returnReason: ev.return_reason || "",
+        }));
+    }
+    if (dashboardData?.returned_evaluations && Array.isArray(dashboardData.returned_evaluations) && dashboardData.returned_evaluations.length > 0) {
+      return dashboardData.returned_evaluations.map((ev) => ({
+        id: ev.id,
+        internName: ev.internName,
+        internCode: ev.internCode,
+        status: ev.status,
+        returnReason: ev.returnReason,
+      }));
+    }
+    return [];
+  }, [safeEvaluations, dashboardData?.returned_evaluations]);
+
+  const returnedCount =
+    dashboardData?.evaluations_summary?.returned ??
+    pendingEvaluations.filter((e) => e.status === "RETURNED").length;
+  const draftCount =
+    dashboardData?.evaluations_summary?.draft ??
+    pendingEvaluations.filter((e) => e.status === "DRAFT").length;
+  const pendingEvalsCount =
+    overview?.pendingEvaluations ?? pendingEvaluations.length;
+
+  // -------------------------------------------------------------------------
+  // Section A: Batch Performance Overview Data
+  // -------------------------------------------------------------------------
+  const batchPerformanceData = useMemo(() => {
+    if (normalizedBatches.length === 0) {
+      return [{ fullName: "No Batches", shortName: "None", avgScore: 0, internsCount: 0 }];
+    }
+    return normalizedBatches.map((batch) => {
+      const rawBatch = rawBatches.find((b) => b && b.id === batch.id);
+      const assignedList = Array.isArray(rawBatch?.assigned_interns) ? rawBatch.assigned_interns : [];
+      const internIds = new Set(assignedList.map((i) => String(i.id)));
+      const internNames = new Set(assignedList.map((i) => i.fullName));
+
+      const evals = safeEvaluations.filter(
+        (ev) =>
+          (ev.intern && internIds.has(String(ev.intern))) ||
+          (ev.intern_name && internNames.has(ev.intern_name))
+      );
+
+      let avgScore = 0;
+      if (evals.length > 0) {
+        const scores = evals
+          .map((e) => Number(e.overall_language_score))
+          .filter((s) => !isNaN(s) && s > 0);
+        if (scores.length > 0) {
+          avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        }
+      }
+
+      if (avgScore === 0) {
+        const batchInternObjs = safeInterns.filter((i) => internIds.has(String(i.id)));
+        if (batchInternObjs.length > 0) {
+          const sumProg = batchInternObjs.reduce((acc, cur) => acc + (cur.progress?.percentage || 0), 0);
+          avgScore = Math.round(sumProg / batchInternObjs.length);
+        } else {
+          avgScore = overview?.avgProgress ? Math.round(overview.avgProgress) : 0;
+        }
+      }
+
+      return {
+        fullName: batch.name,
+        shortName: batch.name.length > 13 ? batch.name.substring(0, 11) + "…" : batch.name,
+        avgScore: Math.min(100, Math.max(0, avgScore)),
+        internsCount: batch.internsCount || 0,
+      };
+    });
+  }, [normalizedBatches, rawBatches, safeEvaluations, safeInterns, overview?.avgProgress]);
+
+  // -------------------------------------------------------------------------
+  // Section B: Learning Progress Data
+  // -------------------------------------------------------------------------
+  const learningProgressMetrics = useMemo(() => {
+    const langProgress = overview?.avgProgress ?? 0;
+    const practiceReviewed = overview?.reviewedExercises ?? 0;
+    const practiceTotal = overview?.totalExercises ?? 0;
+    const practicePercent =
+      practiceTotal > 0
+        ? Math.round((practiceReviewed / practiceTotal) * 100)
+        : Math.min(100, Math.round(langProgress * 0.9));
+
+    const jlptSummary = dashboardData?.jlpt_summary;
+    const totalJLPT =
+      (jlptSummary?.meetsRequirement ?? 0) +
+      (jlptSummary?.inProgress ?? 0) +
+      (jlptSummary?.pendingVerification ?? 0) +
+      (jlptSummary?.notStarted ?? 0);
+    const jlptReadiness =
+      totalJLPT > 0
+        ? Math.round(
+            (((jlptSummary?.meetsRequirement ?? 0) + (jlptSummary?.pendingVerification ?? 0)) / totalJLPT) * 100
+          )
+        : 65;
+
+    const overall = Math.round(langProgress * 0.5 + practicePercent * 0.3 + jlptReadiness * 0.2);
+
+    return [
+      {
+        label: "Japanese Language Learning",
+        sublabel: `${langProgress}% syllabus completed`,
+        percentage: langProgress,
+        color: "bg-purple-600",
+      },
+      {
+        label: "Technical & Practice Reviews",
+        sublabel: `${practiceReviewed} of ${practiceTotal} exercises reviewed`,
+        percentage: practicePercent,
+        color: "bg-indigo-600",
+      },
+      {
+        label: "Overall Learning Progress",
+        sublabel: "Combined cohort progress milestone",
+        percentage: overall,
+        color: "bg-emerald-600",
+      },
+    ];
+  }, [overview, dashboardData?.jlpt_summary]);
+
+  // -------------------------------------------------------------------------
+  // Section C: Evaluation Status Donut Data
+  // -------------------------------------------------------------------------
+  const evaluationDonutData = useMemo(() => {
+    const rawPending =
+      (dashboardData?.evaluations_summary?.pending ?? 0) +
+      (dashboardData?.evaluations_summary?.draft ?? 0);
+    const rawCompleted =
+      (dashboardData?.evaluations_summary?.submitted ?? 0) +
+      (dashboardData?.evaluations_summary?.accepted ?? 0);
+    const rawReturned = dashboardData?.evaluations_summary?.returned ?? 0;
+
+    const actualPending =
+      rawPending > 0 ? rawPending : pendingEvaluations.filter((e) => e.status !== "RETURNED").length;
+    const actualReturned =
+      rawReturned > 0 ? rawReturned : pendingEvaluations.filter((e) => e.status === "RETURNED").length;
+    const actualCompleted =
+      rawCompleted > 0
+        ? rawCompleted
+        : safeEvaluations.filter((e) => ["SUBMITTED", "ACCEPTED"].includes(e.status)).length;
+
+    const total = actualPending + actualCompleted + actualReturned;
+
+    const segments = [
+      { name: "Pending", value: actualPending, color: "#F59E0B" },
+      { name: "Completed", value: actualCompleted, color: "#6D3FEA" },
+      { name: "Returned", value: actualReturned, color: "#F43F5E" },
+    ];
+
+    const activeSegments = segments.filter((s) => s.value > 0);
+
+    return {
+      total: total > 0 ? total : 0,
+      segments: activeSegments.length > 0
+        ? activeSegments
+        : [{ name: "No Evaluations", value: 1, color: "#E2E8F0" }],
+      raw: {
+        pending: actualPending,
+        completed: actualCompleted,
+        returned: actualReturned,
+      },
+    };
+  }, [dashboardData?.evaluations_summary, pendingEvaluations, safeEvaluations]);
+
+  // -------------------------------------------------------------------------
+  // Section D: Batch-wise Intern Distribution Data
+  // -------------------------------------------------------------------------
+  const batchDistributionData = useMemo(() => {
+    if (normalizedBatches.length === 0) {
+      return [{ fullName: "No Batches", shortName: "None", cohort: "", internsCount: 0 }];
+    }
+    return normalizedBatches.map((batch) => ({
+      fullName: batch.name,
+      shortName: batch.name.length > 14 ? batch.name.substring(0, 12) + "…" : batch.name,
+      cohort: batch.cohort,
+      internsCount: batch.internsCount || 0,
+    }));
+  }, [normalizedBatches]);
+
+  if (isDashboardLoading) {
     return (
-      <div className="py-20 text-center animate-pulse space-y-3">
-        <div className="w-12 h-12 rounded-full border-4 border-blue-600 border-t-transparent animate-spin mx-auto" />
-        <p className="text-sm font-semibold text-gray-500">Loading Japanese Instructor Workspace...</p>
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-140px)] space-y-3">
+        <div className="w-8 h-8 rounded-full border-3 border-purple-600 border-t-transparent animate-spin" />
+        <p className="text-xs font-semibold text-slate-500">Loading Japanese Instructor Workspace...</p>
       </div>
     );
   }
 
-  if (error || !dashboardData) {
+  if (isError || !dashboardData) {
     return (
-      <div className="p-8 text-center bg-rose-50 border border-rose-200 rounded-2xl max-w-xl mx-auto my-12">
-        <AlertTriangle className="text-rose-600 mx-auto mb-3" size={32} />
-        <h3 className="text-base font-bold text-rose-900">Failed to load Japanese dashboard</h3>
-        <p className="text-xs text-rose-700 mt-1 mb-4">
-          Unable to retrieve instructor metrics. Please verify network or authentication.
-        </p>
-        <button
-          onClick={handleRefresh}
-          className="px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded-xl hover:bg-rose-700"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
-  const { overview, evaluations_summary, returned_evaluations, jlpt_summary, pending_actions, upcoming_deadlines, activeCycle } = dashboardData;
-
-  const internsDropdown = internsList.map((i) => ({
-    id: i.id,
-    fullName: i.fullName,
-    employeeCode: i.employeeCode,
-  }));
-
-  return (
-    <div className="space-y-6 pb-12">
-      {/* Header with Title & Quick Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-linear-to-r from-blue-900 via-indigo-900 to-purple-900 p-7 rounded-3xl text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-8 opacity-10 pointer-events-none select-none">
-          <Languages size={240} />
-        </div>
-        <div className="relative z-10 space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-purple-200 text-[11px] font-bold tracking-wider uppercase backdrop-blur-xs">
-              Japanese Language Program
-            </span>
-            <span className="text-xs text-purple-200/80">• {activeCycle.name}</span>
-          </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">
-            Sensei Command Center
-          </h1>
-          <p className="text-xs text-purple-200 max-w-xl leading-relaxed">
-            Curriculum management, daily practice evaluation, JLPT eligibility tracking, and performance appraisal evaluations.
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-140px)] p-6 text-center">
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 max-w-md shadow-xs space-y-3">
+          <AlertTriangle className="text-rose-600 mx-auto" size={28} />
+          <h3 className="text-sm font-bold text-rose-950">Unable to load dashboard</h3>
+          <p className="text-xs text-rose-700">
+            Failed to retrieve live instructor metrics. Please verify network connectivity or authentication.
           </p>
-        </div>
-
-        <div className="relative z-10 flex items-center gap-2.5 shrink-0">
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-semibold text-white transition-colors cursor-pointer"
-            title="Refresh Data"
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-xs"
           >
-            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
-            Refresh
-          </button>
-          <button
-            onClick={() => setIsPlanModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-blue-900 hover:bg-blue-50 text-xs font-bold transition-all shadow-md cursor-pointer"
-          >
-            <BookOpen size={14} />
-            New Learning Plan
+            Try Again
           </button>
         </div>
       </div>
+    );
+  }
 
-      {/* Urgent Action Banner: Returned Evaluations */}
-      {returned_evaluations && returned_evaluations.length > 0 && (
-        <div className="bg-rose-50 border-2 border-rose-300 rounded-3xl p-5 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <ShieldAlert size={18} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-rose-950">
-                  Action Required: Evaluation Returned by HR ({returned_evaluations.length})
-                </h3>
-                <p className="text-xs text-rose-700">
-                  HR requested revisions on the following evaluation before final appraisal calibration.
-                </p>
+  return (
+    <div className="h-full flex flex-col justify-start overflow-y-auto lg:overflow-hidden select-none pb-1">
+      {/* Top Heading & Quick Controls Bar (compact height ~32px) */}
+      <div className="flex items-center justify-between mb-2 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
+            Dashboard Overview
+          </h1>
+          {activeCycle?.name && (
+            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-[11px] font-semibold">
+              <Calendar size={11} className="text-purple-500" />
+              {activeCycle.name}
+            </span>
+          )}
+        </div>
+
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing || isDashboardFetching}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-slate-200/80 hover:border-purple-300 text-xs font-semibold text-slate-700 hover:text-purple-700 shadow-2xs transition-all cursor-pointer"
+          title="Refresh Analytics"
+        >
+          <RefreshCw
+            size={12}
+            className={isRefreshing || isDashboardFetching ? "animate-spin text-purple-600" : "text-slate-500"}
+          />
+          <span className="hidden sm:inline">
+            {isRefreshing || isDashboardFetching ? "Updating..." : "Refresh"}
+          </span>
+        </button>
+      </div>
+
+      {/* Row 1: Four Compact Rectangular Metric Cards (height ~66px) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-2.5 shrink-0">
+        {/* Card 1: Total Interns */}
+        <div
+          onClick={() => setActiveDetailCard("interns")}
+          className="h-[66px] bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 shadow-2xs hover:shadow-xs transition-all px-3 py-2 flex items-center justify-between cursor-pointer group"
+          title="Click to view assigned interns"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Users size={16} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Total Interns
+              </span>
+              <div className="text-lg font-black text-slate-900 leading-tight">
+                {totalInterns}
               </div>
             </div>
+          </div>
+          <div className="text-right shrink-0 flex items-center gap-1 text-[11px] font-semibold text-purple-600 group-hover:text-purple-700">
+            <span>{assignedBatchesCount} batches</span>
+            <ChevronRight size={13} className="text-slate-300 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </div>
+
+        {/* Card 2: Assigned Batches */}
+        <div
+          onClick={() => setActiveDetailCard("batches")}
+          className="h-[66px] bg-white rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-2xs hover:shadow-xs transition-all px-3 py-2 flex items-center justify-between cursor-pointer group"
+          title="Click to view assigned batches"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Layers size={16} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Assigned Batches
+              </span>
+              <div className="text-lg font-black text-slate-900 leading-tight">
+                {assignedBatchesCount}
+              </div>
+            </div>
+          </div>
+          <div className="text-right shrink-0 flex items-center gap-1 text-[11px] font-semibold text-indigo-600 group-hover:text-indigo-700">
+            <span>{totalInterns} enrolled</span>
+            <ChevronRight size={13} className="text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </div>
+
+        {/* Card 3: Pending Evaluations */}
+        <div
+          onClick={() => setActiveDetailCard("evaluations")}
+          className="h-[66px] bg-white rounded-2xl border border-slate-200/80 hover:border-amber-300 shadow-2xs hover:shadow-xs transition-all px-3 py-2 flex items-center justify-between cursor-pointer group"
+          title="Click to view pending evaluations"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <ClipboardCheck size={16} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Pending Evaluations
+              </span>
+              <div className="text-lg font-black text-slate-900 leading-tight">
+                {pendingEvalsCount}
+              </div>
+            </div>
+          </div>
+          <div className="text-right shrink-0 flex items-center gap-1 text-[11px] font-semibold text-amber-700 group-hover:text-amber-800">
+            <span>{returnedCount > 0 ? `${returnedCount} returned` : `${draftCount} drafts`}</span>
+            <ChevronRight size={13} className="text-slate-300 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </div>
+
+        {/* Card 4: Learning Progress */}
+        <div
+          onClick={() => setActiveDetailCard("progress")}
+          className="h-[66px] bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 shadow-2xs hover:shadow-xs transition-all px-3 py-2 flex items-center justify-between cursor-pointer group"
+          title="Click to view learning progress details"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <TrendingUp size={16} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Learning Progress
+              </span>
+              <div className="text-lg font-black text-slate-900 leading-tight">
+                {avgProgress}%
+              </div>
+            </div>
+          </div>
+          <div className="text-right shrink-0 flex items-center gap-1 text-[11px] font-semibold text-emerald-600 group-hover:text-emerald-700">
+            <span>{reviewedExercises}/{totalExercises} rev.</span>
+            <ChevronRight size={13} className="text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Analytics - Batch Performance (Left) & Evaluation Status Donut (Right) (height ~245px) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 mb-2.5 h-auto lg:h-[245px] shrink-0">
+        {/* Section A: Batch Performance Overview */}
+        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-3 flex flex-col justify-between overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 mb-1">
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight">
+                Batch Performance Overview
+              </h2>
+              <p className="text-[10px] text-slate-400">
+                Average evaluation scores across assigned training batches
+              </p>
+            </div>
             <Link
-              to="/japanese/evaluations?status=RETURNED"
-              className="text-xs font-bold text-rose-700 hover:text-rose-900 flex items-center gap-1"
+              to="/japanese/batches"
+              className="text-[11px] font-semibold text-purple-600 hover:text-purple-800 flex items-center gap-1"
             >
-              View All Returned <ArrowRight size={13} />
+              Batches Hub <ArrowRight size={11} />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-            {returned_evaluations.map((ev) => (
-              <div
-                key={ev.id}
-                className="bg-white p-4 rounded-2xl border border-rose-200 shadow-xs space-y-2 flex flex-col justify-between"
+          <div className="w-full h-[180px] min-w-0">
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart
+                data={batchPerformanceData}
+                margin={{ top: 8, right: 15, left: -20, bottom: 0 }}
               >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <div className="font-bold text-gray-900 text-sm">{ev.internName}</div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase">
-                      {ev.internCode}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 p-2.5 rounded-xl bg-rose-50/70 border border-rose-100 text-xs text-rose-900">
-                    <span className="font-bold uppercase tracking-wider text-[10px] text-rose-600 block mb-0.5">
-                      HR Feedback:
-                    </span>
-                    {ev.returnReason || "Please review and revise competencies."}
-                  </div>
-                </div>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                <XAxis
+                  dataKey="shortName"
+                  tick={{ fontSize: 10, fill: "#64748B" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "#E2E8F0" }}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  ticks={[0, 25, 50, 75, 100]}
+                  tick={{ fontSize: 9, fill: "#94A3B8" }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-md text-xs">
+                          <p className="font-bold text-slate-900">{d.fullName}</p>
+                          <p className="text-purple-600 font-semibold mt-0.5">
+                            Average Score: {d.avgScore}/100
+                          </p>
+                          <p className="text-slate-400 text-[10px]">
+                            Interns Enrolled: {d.internsCount}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="avgScore" radius={[4, 4, 0, 0]} maxBarSize={38}>
+                  {batchPerformanceData.map((_, index) => (
+                    <Cell
+                      key={`bar-${index}`}
+                      fill={PURPLE_SHADES[index % PURPLE_SHADES.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
-                <div className="pt-2 flex items-center justify-end">
-                  <button
-                    onClick={() => handleOpenEvaluation(ev.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-                  >
-                    <FileCheck size={14} />
-                    Revise & Resubmit
-                  </button>
+        {/* Section C: Evaluation Status Donut */}
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-3 flex flex-col justify-between overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 mb-1">
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight">
+                Evaluation Status
+              </h2>
+              <p className="text-[10px] text-slate-400">Appraisal cycle completion</p>
+            </div>
+            <Link
+              to="/japanese/evaluations"
+              className="text-[11px] font-semibold text-purple-600 hover:text-purple-800 flex items-center gap-1"
+            >
+              Evaluations <ArrowRight size={11} />
+            </Link>
+          </div>
+
+          <div className="relative w-full h-[155px] min-w-0 flex items-center justify-center">
+            <ResponsiveContainer width="100%" height={155}>
+              <PieChart>
+                <Pie
+                  data={evaluationDonutData.segments}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={46}
+                  outerRadius={66}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {evaluationDonutData.segments.map((entry, index) => (
+                    <Cell key={`donut-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-md text-xs">
+                          <span className="font-bold text-slate-900">{d.name}: </span>
+                          <span className="font-bold text-purple-600">{d.value}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Center Metric */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-xl font-black text-slate-900 leading-none">
+                {evaluationDonutData.total}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                Total
+              </span>
+            </div>
+          </div>
+
+          {/* Compact Legend */}
+          <div className="flex items-center justify-center gap-3 pt-1 border-t border-slate-100 text-[10px] shrink-0">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="text-slate-600">Pending ({evaluationDonutData.raw.pending})</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-purple-600" />
+              <span className="text-slate-600">Done ({evaluationDonutData.raw.completed})</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span className="text-slate-600">Returned ({evaluationDonutData.raw.returned})</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Analytics - Learning Progress Bars (Left) & Batch Intern Distribution (Right) (height ~245px) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 h-auto lg:h-[245px] shrink-0">
+        {/* Section B: Learning Progress (Horizontal Progress Bars) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-3 flex flex-col justify-between overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 mb-1">
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight">
+                Learning Progress
+              </h2>
+              <p className="text-[10px] text-slate-400">Curriculum & milestone completion</p>
+            </div>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">
+              {avgProgress}% Avg
+            </span>
+          </div>
+
+          <div className="space-y-3.5 my-auto flex-1 flex flex-col justify-center">
+            {learningProgressMetrics.map((metric, idx) => (
+              <div key={idx} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-800">{metric.label}</span>
+                  <span className="font-bold text-slate-900">{metric.percentage}%</span>
                 </div>
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/50">
+                  <div
+                    className={`h-2 rounded-full ${metric.color} transition-all duration-500`}
+                    style={{ width: `${Math.min(100, Math.max(0, metric.percentage))}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-400">{metric.sublabel}</div>
               </div>
             ))}
           </div>
         </div>
-      )}
 
-      {/* KPI Metric Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-xs flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Assigned Batches
+        {/* Section D: Batch-wise Intern Distribution */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-3 flex flex-col justify-between overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 mb-1">
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight">
+                Batch-wise Intern Distribution
+              </h2>
+              <p className="text-[10px] text-slate-400">Headcount per training cohort</p>
+            </div>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+              {totalInterns} Total
             </span>
-            <div className="text-2xl font-black text-gray-900">
-              {overview.assignedBatches ?? dashboardData.batches?.length ?? 2}
-            </div>
-            <Link
-              to="/japanese/batches"
-              className="text-[11px] font-semibold text-purple-600 hover:underline inline-flex items-center gap-1"
-            >
-              View Batches <ArrowRight size={11} />
-            </Link>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-            <Layers size={22} />
-          </div>
-        </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-xs flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Total Interns
-            </span>
-            <div className="text-2xl font-black text-gray-900">{overview.totalInterns}</div>
-            <Link
-              to="/japanese/batches"
-              className="text-[11px] font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"
-            >
-              Assigned Interns <ArrowRight size={11} />
-            </Link>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-            <Users size={22} />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-xs flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Pending Evaluations
-            </span>
-            <div className="text-2xl font-black text-gray-900">
-              {overview.pendingEvaluations ?? (evaluations_summary.pending + evaluations_summary.draft + evaluations_summary.returned)}
-            </div>
-            <Link
-              to="/japanese/evaluations"
-              className="text-[11px] font-semibold text-rose-600 hover:underline inline-flex items-center gap-1"
-            >
-              {evaluations_summary.returned} returned by HR <ArrowRight size={11} />
-            </Link>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-            <ClipboardCheck size={22} />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-xs flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Learning Progress
-            </span>
-            <div className="text-2xl font-black text-gray-900">
-              {overview.avgProgress}%
-            </div>
-            <div className="text-[11px] text-gray-500">
-              {overview.reviewedExercises} of {overview.totalExercises} reviewed
-            </div>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-            <TrendingUp size={22} />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Grid: Pending Queue & JLPT Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column (2 spans): Urgent Action Feed */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Pending Tasks & Submissions Feed */}
-          <div className="bg-white p-6 rounded-3xl border border-gray-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Action Queue & Notifications</h2>
-                <p className="text-xs text-gray-500">Submissions, verifications, and evaluation items requiring action</p>
-              </div>
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                {pending_actions.length} Pending
-              </span>
-            </div>
-
-            {pending_actions.length === 0 ? (
-              <div className="py-12 text-center text-gray-400 text-xs">
-                <CheckCircle2 size={32} className="mx-auto mb-2 text-emerald-500" />
-                All pending actions are completed!
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {pending_actions.map((act, idx) => (
-                  <div key={idx} className="py-3.5 flex items-start justify-between gap-3 group">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                          act.severity === "HIGH"
-                            ? "bg-rose-100 text-rose-700"
-                            : act.severity === "MEDIUM"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-blue-100 text-blue-700"
-                        }`}
-                      >
-                        {act.type === "RETURNED_EVALUATION" ? (
-                          <AlertTriangle size={16} />
-                        ) : act.type === "JLPT_VERIFICATION" ? (
-                          <Award size={16} />
-                        ) : (
-                          <FileCheck size={16} />
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-bold text-gray-900 text-xs group-hover:text-blue-600 transition-colors">
-                          {act.title}
+          <div className="w-full h-[180px] min-w-0">
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart
+                layout="vertical"
+                data={batchDistributionData}
+                margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  tick={{ fontSize: 9, fill: "#94A3B8" }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="shortName"
+                  width={110}
+                  tick={{ fontSize: 10, fill: "#475569" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "#E2E8F0" }}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-md text-xs">
+                          <p className="font-bold text-slate-900">{d.fullName}</p>
+                          <p className="text-indigo-600 font-semibold mt-0.5">
+                            Interns: {d.internsCount}
+                          </p>
+                          <p className="text-slate-400 text-[10px]">Cohort: {d.cohort}</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{act.description}</p>
-                      </div>
-                    </div>
-                    <Link
-                      to={act.link}
-                      className="px-3 py-1.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50 shrink-0"
-                    >
-                      Handle
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Shortcuts */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <button
-              onClick={() => navigate("/japanese/batches")}
-              className="p-4 rounded-2xl bg-white border border-gray-200/80 hover:border-purple-300 hover:shadow-xs text-left transition-all cursor-pointer"
-            >
-              <Layers className="text-purple-600 mb-2" size={20} />
-              <div className="font-bold text-gray-900 text-xs">Training Batches</div>
-              <p className="text-[11px] text-gray-500 mt-0.5">Assigned intern cohorts</p>
-            </button>
-
-            <button
-              onClick={() => navigate("/japanese/evaluations")}
-              className="p-4 rounded-2xl bg-white border border-gray-200/80 hover:border-blue-300 hover:shadow-xs text-left transition-all cursor-pointer"
-            >
-              <ClipboardCheck className="text-blue-600 mb-2" size={20} />
-              <div className="font-bold text-gray-900 text-xs">Evaluations</div>
-              <p className="text-[11px] text-gray-500 mt-0.5">Language competency scores</p>
-            </button>
-
-            <button
-              onClick={() => navigate("/japanese/jlpt")}
-              className="p-4 rounded-2xl bg-white border border-gray-200/80 hover:border-indigo-300 hover:shadow-xs text-left transition-all cursor-pointer"
-            >
-              <Award className="text-indigo-600 mb-2" size={20} />
-              <div className="font-bold text-gray-900 text-xs">JLPT Tracking</div>
-              <p className="text-[11px] text-gray-500 mt-0.5">Official exam verifications</p>
-            </button>
-
-            <button
-              onClick={() => navigate("/japanese/feedback")}
-              className="p-4 rounded-2xl bg-white border border-gray-200/80 hover:border-emerald-300 hover:shadow-xs text-left transition-all cursor-pointer"
-            >
-              <MessageSquare className="text-emerald-600 mb-2" size={20} />
-              <div className="font-bold text-gray-900 text-xs">Feedback</div>
-              <p className="text-[11px] text-gray-500 mt-0.5">Developmental coaching</p>
-            </button>
-          </div>
-        </div>
-
-        {/* Right Column: JLPT Status Overview & Upcoming Deadlines */}
-        <div className="space-y-6">
-          {/* JLPT Cohort Eligibility Status */}
-          <div className="bg-white p-6 rounded-3xl border border-gray-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">JLPT Eligibility Matrix</h3>
-                <p className="text-[11px] text-gray-500">Cohort certification readiness</p>
-              </div>
-              <Link to="/japanese/jlpt" className="text-xs text-blue-600 font-semibold hover:underline">
-                Details
-              </Link>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50 text-emerald-900">
-                <span className="font-bold flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-emerald-600" />
-                  Meets Requirement
-                </span>
-                <span className="text-base font-black">{jlpt_summary.meetsRequirement}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-50 text-amber-900">
-                <span className="font-bold flex items-center gap-2">
-                  <Clock size={16} className="text-amber-600" />
-                  Pending Verification
-                </span>
-                <span className="text-base font-black">{jlpt_summary.pendingVerification}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-50 text-blue-900">
-                <span className="font-bold flex items-center gap-2">
-                  <TrendingUp size={16} className="text-blue-600" />
-                  In Progress (Studying)
-                </span>
-                <span className="text-base font-black">{jlpt_summary.inProgress}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 text-gray-700">
-                <span className="font-semibold flex items-center gap-2">
-                  <Clock size={16} className="text-gray-400" />
-                  Not Started
-                </span>
-                <span className="text-base font-bold">{jlpt_summary.notStarted}</span>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-purple-50/70 border border-purple-100 text-[11px] text-purple-900 leading-relaxed">
-              <strong>Policy Note:</strong> JLPT eligibility is tracked separately from the 60/40 cycle evaluation scores, acting as a gateway milestone for MIRAI progression.
-            </div>
-          </div>
-
-          {/* Upcoming Curriculum Milestones */}
-          <div className="bg-white p-6 rounded-3xl border border-gray-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">Upcoming Target Dates</h3>
-                <p className="text-[11px] text-gray-500">Plan completion deadlines</p>
-              </div>
-              <Calendar size={16} className="text-gray-400" />
-            </div>
-
-            {upcoming_deadlines.length === 0 ? (
-              <div className="py-6 text-center text-gray-400 text-xs italic">
-                No upcoming target deadlines configured.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {upcoming_deadlines.map((dl) => (
-                  <div key={dl.id} className="p-3 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-between">
-                    <div>
-                      <div className="font-bold text-gray-900 text-xs">{dl.internName}</div>
-                      <div className="text-[11px] text-gray-500">{dl.title}</div>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                        {dl.targetLevel}
-                      </span>
-                      <div className="text-[10px] text-gray-500 mt-1">{dl.targetDate}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar
+                  dataKey="internsCount"
+                  fill="#7B50F0"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={22}
+                >
+                  {batchDistributionData.map((_, index) => (
+                    <Cell
+                      key={`h-bar-${index}`}
+                      fill={PURPLE_SHADES[(index + 1) % PURPLE_SHADES.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Modals */}
-      {isPlanModalOpen && (
-        <CreateLearningPlanModal
-          isOpen={isPlanModalOpen}
-          onClose={() => setIsPlanModalOpen(false)}
-          interns={internsDropdown}
-          defaultCycleId={activeCycle.id || undefined}
-        />
-      )}
+      {/* Interactive Detail Modal / Flyout when a KPI card is clicked */}
+      {activeDetailCard && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setActiveDetailCard(null)}
+        >
+          <div
+            className="bg-white rounded-3xl border border-purple-200 shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  {activeDetailCard === "interns" && <Users size={16} />}
+                  {activeDetailCard === "batches" && <Layers size={16} />}
+                  {activeDetailCard === "evaluations" && <ClipboardCheck size={16} />}
+                  {activeDetailCard === "progress" && <TrendingUp size={16} />}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {activeDetailCard === "interns" && `Assigned Interns (${safeInterns.length})`}
+                    {activeDetailCard === "batches" && `Assigned Batches (${normalizedBatches.length})`}
+                    {activeDetailCard === "evaluations" && `Pending Evaluations (${pendingEvaluations.length})`}
+                    {activeDetailCard === "progress" && `Learning Progress Breakdown`}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {activeDetailCard === "interns" && "Learner profiles and curriculum completion"}
+                    {activeDetailCard === "batches" && "Active cohorts managed by HR and Super Admin"}
+                    {activeDetailCard === "evaluations" && "Appraisals awaiting review or HR revision"}
+                    {activeDetailCard === "progress" && "Cohort and intern syllabus metrics"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveDetailCard(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-      {isJlptModalOpen && (
-        <RecordJLPTAttemptModal
-          isOpen={isJlptModalOpen}
-          onClose={() => setIsJlptModalOpen(false)}
-          interns={internsDropdown}
-        />
-      )}
+            {/* Modal Body */}
+            <div className="p-4 flex-1 overflow-y-auto space-y-2">
+              {/* Interns List */}
+              {activeDetailCard === "interns" && (
+                safeInterns.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No interns currently assigned.
+                  </div>
+                ) : (
+                  safeInterns.map((intern) => (
+                    <div
+                      key={intern.id}
+                      className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center shrink-0">
+                          {intern.fullName?.[0]?.toUpperCase() || "I"}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 text-xs truncate">
+                            {intern.fullName}
+                          </div>
+                          <div className="text-[10px] text-slate-500 truncate">
+                            {intern.employeeCode} • {intern.department || "Engineering"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                          {intern.progress?.percentage ?? 0}%
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
 
-      {isEvalModalOpen && (
-        <ConductJapaneseEvaluationModal
-          isOpen={isEvalModalOpen}
-          onClose={() => {
-            setIsEvalModalOpen(false);
-            setSelectedEval(null);
-          }}
-          evaluation={selectedEval}
-          cycleId={activeCycle.id || undefined}
-        />
+              {/* Batches List */}
+              {activeDetailCard === "batches" && (
+                normalizedBatches.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No batches assigned.
+                  </div>
+                ) : (
+                  normalizedBatches.map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-1"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 text-xs">{b.name}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                          {b.cohort}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500">
+                        <span>{b.internsCount} Interns</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200/60 text-slate-700">
+                          Created by {b.creatorRole}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+
+              {/* Evaluations List */}
+              {activeDetailCard === "evaluations" && (
+                pendingEvaluations.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    <CheckCircle2 size={24} className="mx-auto mb-1 text-emerald-500" />
+                    All evaluations are up to date!
+                  </div>
+                ) : (
+                  pendingEvaluations.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 text-xs">{ev.internName}</span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            ev.status === "RETURNED"
+                              ? "bg-rose-100 text-rose-700"
+                              : ev.status === "DRAFT"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {ev.status}
+                        </span>
+                      </div>
+                      {ev.returnReason && (
+                        <div className="p-2 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800">
+                          <strong>HR Feedback:</strong> {ev.returnReason}
+                        </div>
+                      )}
+                      <div className="pt-1 flex items-center justify-end">
+                        <Link
+                          to={`/japanese/evaluations?evaluationId=${ev.id}`}
+                          onClick={() => setActiveDetailCard(null)}
+                          className="text-[11px] font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1"
+                        >
+                          {ev.status === "RETURNED" ? "Revise & Resubmit" : "Evaluate"} <ArrowRight size={11} />
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+
+              {/* Progress Breakdown */}
+              {activeDetailCard === "progress" && (
+                safeInterns.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No progress records found.
+                  </div>
+                ) : (
+                  safeInterns.map((intern) => (
+                    <div
+                      key={intern.id}
+                      className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-1"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-900">{intern.fullName}</span>
+                        <span className="font-extrabold text-emerald-700">
+                          {intern.progress?.percentage ?? 0}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200/70 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-emerald-500 h-1.5 rounded-full"
+                          style={{ width: `${intern.progress?.percentage ?? 0}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                        <span>
+                          {intern.progress?.completed ?? 0} of {intern.progress?.total ?? 0} topics
+                        </span>
+                        <span className="font-semibold text-purple-700">
+                          Target: {intern.plan?.targetLevel || "N5"}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-100 flex items-center justify-end shrink-0 bg-slate-50/50">
+              {activeDetailCard === "interns" && (
+                <Link
+                  to="/japanese/batches"
+                  onClick={() => setActiveDetailCard(null)}
+                  className="text-xs font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                >
+                  Manage Interns in Batches <ArrowRight size={12} />
+                </Link>
+              )}
+              {activeDetailCard === "batches" && (
+                <Link
+                  to="/japanese/batches"
+                  onClick={() => setActiveDetailCard(null)}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                >
+                  Go to Batches Workspace <ArrowRight size={12} />
+                </Link>
+              )}
+              {activeDetailCard === "evaluations" && (
+                <Link
+                  to="/japanese/evaluations"
+                  onClick={() => setActiveDetailCard(null)}
+                  className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1"
+                >
+                  Open Evaluations Hub <ArrowRight size={12} />
+                </Link>
+              )}
+              {activeDetailCard === "progress" && (
+                <Link
+                  to="/japanese/feedback"
+                  onClick={() => setActiveDetailCard(null)}
+                  className="text-xs font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
+                >
+                  View Feedback & Coaching <ArrowRight size={12} />
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -298,7 +298,26 @@ class JapaneseBatchViewSet(viewsets.ModelViewSet):
         else:
             qs = JapaneseBatch.objects.filter(instructors=user)
 
-        # Filters to distinguish batches created by HR vs Super Admin
+        # Filters by main vs sub-batch
+        parent_id = self.request.query_params.get('parent')
+        if parent_id:
+            qs = qs.filter(parent_batch_id=parent_id)
+        else:
+            is_sub = self.request.query_params.get('sub')
+            if is_sub == 'true' or is_sub == '1':
+                qs = qs.filter(parent_batch__isnull=False)
+            elif is_sub == 'all':
+                pass
+            else:
+                # Default: list main batches
+                qs = qs.filter(parent_batch__isnull=True)
+
+        # Status filter
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            qs = qs.filter(status__iexact=status_param)
+
+        # Filters to distinguish batches created by HR vs Super Admin (retained for backward compatibility)
         creator_role = self.request.query_params.get('creator_role') or self.request.query_params.get('creatorRole')
         if creator_role:
             qs = qs.filter(created_by__role=creator_role.upper())
@@ -308,17 +327,28 @@ class JapaneseBatchViewSet(viewsets.ModelViewSet):
         if q:
             qs = qs.filter(
                 models.Q(name__icontains=q) |
+                models.Q(code__icontains=q) |
                 models.Q(cohort__icontains=q) |
-                models.Q(description__icontains=q)
+                models.Q(description__icontains=q) |
+                models.Q(sub_batches__name__icontains=q) |
+                models.Q(sub_batches__code__icontains=q) |
+                models.Q(interns__full_name__icontains=q) |
+                models.Q(sub_batches__interns__full_name__icontains=q)
             )
 
         return qs.prefetch_related(
             'instructors', 'interns',
+            'sub_batches', 'sub_batches__interns',
             'interns__japanese_learning_plans',
             'interns__japanese_evaluations',
             'interns__japanese_practice_results',
             'interns__jlpt_attempts',
-            'interns__jlpt_eligibility_records'
+            'interns__jlpt_eligibility_records',
+            'sub_batches__interns__japanese_learning_plans',
+            'sub_batches__interns__japanese_evaluations',
+            'sub_batches__interns__japanese_practice_results',
+            'sub_batches__interns__jlpt_attempts',
+            'sub_batches__interns__jlpt_eligibility_records',
         ).distinct()
 
     def perform_create(self, serializer):
@@ -343,15 +373,18 @@ class JapaneseDashboardView(APIView):
 
         # Assigned Batches
         if user.role == 'INSTRUCTOR':
-            assigned_batches = JapaneseBatch.objects.filter(instructors=user)
+            assigned_batches = JapaneseBatch.objects.filter(instructors=user, parent_batch__isnull=True)
         else:
-            assigned_batches = JapaneseBatch.objects.all()
+            assigned_batches = JapaneseBatch.objects.filter(parent_batch__isnull=True)
 
         assigned_batch_count = assigned_batches.count()
 
         # Interns
         if user.role == 'INSTRUCTOR' and assigned_batches.exists():
-            interns_qs = EmployeeProfile.objects.filter(japanese_batches__in=assigned_batches).distinct()
+            all_batches = JapaneseBatch.objects.filter(
+                models.Q(id__in=assigned_batches) | models.Q(parent_batch__in=assigned_batches)
+            )
+            interns_qs = EmployeeProfile.objects.filter(japanese_batches__in=all_batches).distinct()
         else:
             interns_qs = EmployeeProfile.objects.filter(user__role='INTERN')
 

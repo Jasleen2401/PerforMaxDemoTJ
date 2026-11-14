@@ -22,6 +22,7 @@ import {
   Compass,
   User,
   Milestone,
+  Award,
 } from "lucide-react";
 
 interface NavItem {

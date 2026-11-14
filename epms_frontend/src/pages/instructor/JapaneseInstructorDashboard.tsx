@@ -125,7 +125,7 @@ export const JapaneseInstructorDashboard: React.FC = () => {
       }));
     }
     return [];
-  }, [rawBatches, dashboardData?.batches]);
+  }, [rawBatches, dashboardData]);
 
   // Normalized pending evaluations list
   const pendingEvaluations = useMemo(() => {
@@ -197,7 +197,7 @@ export const JapaneseInstructorDashboard: React.FC = () => {
         internsCount: batch.internsCount || 0,
       };
     });
-  }, [normalizedBatches, rawBatches, safeEvaluations, safeInterns, overview?.avgProgress]);
+  }, [normalizedBatches, rawBatches, safeEvaluations, safeInterns, overview]);
 
   // -------------------------------------------------------------------------
   // Section B: Learning Progress Data

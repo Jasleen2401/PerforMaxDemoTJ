@@ -21,7 +21,8 @@ import {
   BookOpen,
   Cpu,
   Layers,
-  Check
+  Check,
+  Milestone
 } from 'lucide-react';
 import { useGetInternJourneyQuery } from '../../features/dashboard/dashboardApi';
 import type { MiraiQuarterItem } from '../../features/dashboard/dashboardTypes';
@@ -64,7 +65,7 @@ export const InternJourneyTab: React.FC<InternJourneyTabProps> = ({ onNavigateTa
     return (
       <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center space-y-4 max-w-xl mx-auto my-8">
         <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
-        <h3 className="text-lg font-semibold text-red-900">Unable to load MIRAI Journey</h3>
+        <h3 className="text-lg font-semibold text-red-900">Unable to load Mirai Projects</h3>
         <p className="text-xs text-red-600">
           We encountered an issue fetching your live four-quarter milestone progression. Please verify your connection or try again.
         </p>
@@ -137,10 +138,10 @@ export const InternJourneyTab: React.FC<InternJourneyTabProps> = ({ onNavigateTa
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 text-purple-200 text-xs font-semibold border border-purple-400/30">
               <Compass className="w-3.5 h-3.5 text-purple-300" />
-              <span>MIRAI Internship Journey • Four-Quarter Progression</span>
+              <span>Mirai Projects • Four-Quarter Progression</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              {intern.name}'s MIRAI Roadmap
+              {intern.name}'s Mirai Projects Roadmap
             </h1>
             <p className="text-purple-200/80 text-xs sm:text-sm max-w-xl">
               End-to-end progression tracking: Q1 Japanese foundations & AI modules, Q2 production sprint onboarding, Q3 verified technical growth, and Q4 full-time conversion.
@@ -194,15 +195,15 @@ export const InternJourneyTab: React.FC<InternJourneyTabProps> = ({ onNavigateTa
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <button
           type="button"
-          onClick={() => handleNav('goals', '/kpi/my')}
+          onClick={() => handleNav('quarters', '/dashboard?tab=quarters')}
           className="bg-white rounded-xl p-4.5 border border-purple-100/90 shadow-2xs flex items-center justify-between text-left hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group"
         >
           <div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-purple-700 transition-colors">
-              Quarterly Goals
+              Quarter Objectives
             </p>
             <h4 className="text-lg font-bold text-slate-900 mt-1">
-              {stats.goalsCompleted} / {stats.goalsTotal} Done
+              {stats.goalsCompleted} / {stats.goalsTotal} Goals Done
             </h4>
             <p className="text-[11px] text-purple-700 font-semibold mt-0.5">
               {stats.goalsWeightedProgress.toFixed(1)}% Weighted Progress
@@ -215,39 +216,39 @@ export const InternJourneyTab: React.FC<InternJourneyTabProps> = ({ onNavigateTa
 
         <button
           type="button"
-          onClick={() => handleNav('tasks', '/manager/tasks')}
+          onClick={() => handleNav('self-review', '/dashboard?tab=self-review')}
           className="bg-white rounded-xl p-4.5 border border-purple-100/90 shadow-2xs flex items-center justify-between text-left hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group"
         >
           <div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-purple-700 transition-colors">
-              Sprint Tasks
+              Self-Review Status
             </p>
             <h4 className="text-lg font-bold text-slate-900 mt-1">
-              {stats.tasksCompleted} / {stats.tasksTotal} Done
+              {stats.selfEvaluationSubmitted ? 'Submitted' : 'Pending Review'}
             </h4>
             <p className="text-[11px] text-blue-700 font-semibold mt-0.5">
-              {stats.tasksUnderReview} Under Mentor Review
+              {stats.selfEvaluationSubmitted ? 'Under Mentor Review' : 'Open for Intern Input'}
             </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-            <Briefcase className="w-5 h-5" />
+            <Award className="w-5 h-5" />
           </div>
         </button>
 
         <button
           type="button"
-          onClick={() => handleNav('evidence', '/manager/evidence')}
+          onClick={() => handleNav('feedback', '/dashboard?tab=feedback')}
           className="bg-white rounded-xl p-4.5 border border-purple-100/90 shadow-2xs flex items-center justify-between text-left hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group"
         >
           <div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-purple-700 transition-colors">
-              Evidence & Artifacts
+              Published Feedback
             </p>
             <h4 className="text-lg font-bold text-slate-900 mt-1">
-              {stats.evidenceTotal} Total Submissions
+              {stats.isResultsPublished ? 'Calibrated' : 'Under Evaluation'}
             </h4>
             <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-              {stats.evidenceApproved} Verified by Mentor
+              {stats.isResultsPublished ? 'Official Scores Released' : 'Privacy Shielded'}
             </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
@@ -255,26 +256,24 @@ export const InternJourneyTab: React.FC<InternJourneyTabProps> = ({ onNavigateTa
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => handleNav('evaluation', '/appraisal')}
-          className="bg-white rounded-xl p-4.5 border border-purple-100/90 shadow-2xs flex items-center justify-between text-left hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group"
+        <div
+          className="bg-white rounded-xl p-4.5 border border-purple-100/90 shadow-2xs flex items-center justify-between text-left"
         >
           <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-purple-700 transition-colors">
-              Performance Status
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Roadmap Progress
             </p>
             <h4 className="text-lg font-bold text-slate-900 mt-1">
-              {stats.isResultsPublished ? 'Calibrated' : 'Active Cycle'}
+              {overallProgressPercent}% Completed
             </h4>
             <p className="text-[11px] text-purple-700 font-semibold mt-0.5">
-              {stats.selfEvaluationSubmitted ? 'Self-Eval Submitted' : 'Self-Eval Pending'}
+              Active in {currentQuarter}
             </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
-            <Award className="w-5 h-5" />
+            <Milestone className="w-5 h-5" />
           </div>
-        </button>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -475,7 +474,7 @@ export const InternJourneyTab: React.FC<InternJourneyTabProps> = ({ onNavigateTa
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button
             type="button"
-            onClick={() => handleNav('evaluation', '/appraisal')}
+            onClick={() => handleNav('self-review', '/dashboard?tab=self-review')}
             className="w-full md:w-auto px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer"
           >
             <ShieldCheck className="w-4 h-4" />

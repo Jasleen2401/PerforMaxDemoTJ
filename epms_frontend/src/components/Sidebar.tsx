@@ -20,8 +20,6 @@ import {
   Database,
   Bell,
   Compass,
-  ClipboardList,
-  Award,
   User,
   Milestone,
 } from "lucide-react";
@@ -115,13 +113,11 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
   const internNav: NavItem[] = [
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, end: true },
-    { label: "My Goals", to: "/dashboard?tab=goals", icon: Target },
-    { label: "My Tasks", to: "/dashboard?tab=tasks", icon: ClipboardList },
-    { label: "MIRAI Journey", to: "/dashboard?tab=journey", icon: Compass },
-    { label: "Performance Reviews", to: "/appraisal", icon: Award },
-    { label: "Continuous Feedback", to: "/continuous-feedback", icon: MessageSquare },
-    { label: "Reminders", to: "/notifications", icon: Bell },
-    { label: "Profile", to: "/profile", icon: User },
+    { label: "Mirai Journey", to: "/dashboard?tab=quarters", icon: Compass },
+    { label: "Self-Review", to: "/dashboard?tab=self-review", icon: ClipboardCheck },
+    { label: "Mirai Projects", to: "/dashboard?tab=journey", icon: Milestone },
+    { label: "Feedback", to: "/dashboard?tab=feedback", icon: MessageSquare },
+    { label: "Profile", to: "/dashboard?tab=profile", icon: User },
   ];
 
   const filteredNav = isInternUser

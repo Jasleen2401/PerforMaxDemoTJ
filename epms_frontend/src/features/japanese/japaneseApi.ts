@@ -30,7 +30,7 @@ export const japaneseApi = api.injectEndpoints({
       { creator_role?: string; q?: string; status?: string; sub?: string } | void
     >({
       query: (params) => ({
-        url: "/japanese/batches/",
+        url: "japanese/batches/",
         params: params || {},
       }),
       transformResponse: (response: any) => {
@@ -46,13 +46,13 @@ export const japaneseApi = api.injectEndpoints({
     }),
 
     getJapaneseBatchById: builder.query<JapaneseBatch, string>({
-      query: (id) => `/japanese/batches/${id}/`,
+      query: (id) => `japanese/batches/${id}/`,
       providesTags: ["JapaneseBatch"],
     }),
 
     getJapaneseDashboard: builder.query<JapaneseDashboardData, { cycle?: string } | void>({
       query: (params) => ({
-        url: "/japanese/dashboard/",
+        url: "japanese/dashboard/",
         params: params || {},
       }),
       providesTags: ["JapaneseDashboard"],
@@ -63,7 +63,7 @@ export const japaneseApi = api.injectEndpoints({
       { q?: string; batch?: string; jlpt_level?: string; status?: string; cycle?: string } | void
     >({
       query: (params) => ({
-        url: "/japanese/assigned-interns/",
+        url: "japanese/assigned-interns/",
         params: params || {},
       }),
       providesTags: ["JapaneseInterns"],
@@ -71,7 +71,7 @@ export const japaneseApi = api.injectEndpoints({
 
     getJapaneseLearningPlans: builder.query<JapaneseLearningPlan[], { intern?: string; cycle?: string } | void>({
       query: (params) => ({
-        url: "/japanese/learning-plans/",
+        url: "japanese/learning-plans/",
         params: params || {},
       }),
       providesTags: ["JapanesePlan"],
@@ -79,7 +79,7 @@ export const japaneseApi = api.injectEndpoints({
 
     createJapaneseLearningPlan: builder.mutation<JapaneseLearningPlan, CreateLearningPlanPayload>({
       query: (body) => ({
-        url: "/japanese/learning-plans/",
+        url: "japanese/learning-plans/",
         method: "POST",
         body,
       }),
@@ -91,7 +91,7 @@ export const japaneseApi = api.injectEndpoints({
       { id: string; data: Partial<CreateLearningPlanPayload> }
     >({
       query: ({ id, data }) => ({
-        url: `/japanese/learning-plans/${id}/`,
+        url: `japanese/learning-plans/${id}/`,
         method: "PATCH",
         body: data,
       }),
@@ -100,7 +100,7 @@ export const japaneseApi = api.injectEndpoints({
 
     deleteJapaneseLearningPlan: builder.mutation<void, string>({
       query: (id) => ({
-        url: `/japanese/learning-plans/${id}/`,
+        url: `japanese/learning-plans/${id}/`,
         method: "DELETE",
       }),
       invalidatesTags: ["JapanesePlan", "JapaneseInterns", "JapaneseDashboard"],
@@ -108,7 +108,7 @@ export const japaneseApi = api.injectEndpoints({
 
     getJapaneseTopics: builder.query<JapaneseTopic[], { plan?: string } | void>({
       query: (params) => ({
-        url: "/japanese/topics/",
+        url: "japanese/topics/",
         params: params || {},
       }),
       providesTags: ["JapanesePlan"],
@@ -116,7 +116,7 @@ export const japaneseApi = api.injectEndpoints({
 
     createJapaneseTopic: builder.mutation<JapaneseTopic, CreateTopicPayload>({
       query: (body) => ({
-        url: "/japanese/topics/",
+        url: "japanese/topics/",
         method: "POST",
         body,
       }),
@@ -125,7 +125,7 @@ export const japaneseApi = api.injectEndpoints({
 
     createJapaneseMaterial: builder.mutation<JapaneseMaterial, CreateMaterialPayload>({
       query: (body) => ({
-        url: "/japanese/materials/",
+        url: "japanese/materials/",
         method: "POST",
         body,
       }),
@@ -134,7 +134,7 @@ export const japaneseApi = api.injectEndpoints({
 
     getJapanesePracticeResults: builder.query<JapanesePracticeResult[], { intern?: string } | void>({
       query: (params) => ({
-        url: "/japanese/practice-results/",
+        url: "japanese/practice-results/",
         params: params || {},
       }),
       providesTags: ["JapanesePractice"],
@@ -145,7 +145,7 @@ export const japaneseApi = api.injectEndpoints({
       { id: string; data: ReviewPracticePayload }
     >({
       query: ({ id, data }) => ({
-        url: `/japanese/practice-results/${id}/review/`,
+        url: `japanese/practice-results/${id}/review/`,
         method: "POST",
         body: data,
       }),
@@ -166,7 +166,7 @@ export const japaneseApi = api.injectEndpoints({
       } | void
     >({
       query: (params) => ({
-        url: "/japanese/jlpt-attempts/",
+        url: "japanese/jlpt-attempts/",
         params: { page_size: 100, ...(params || {}) },
       }),
       transformResponse: (response: any) => {
@@ -183,7 +183,7 @@ export const japaneseApi = api.injectEndpoints({
 
     createJLPTAttempt: builder.mutation<JLPTAttempt, RecordJLPTPayload>({
       query: (body) => ({
-        url: "/japanese/jlpt-attempts/",
+        url: "japanese/jlpt-attempts/",
         method: "POST",
         body,
       }),
@@ -192,7 +192,7 @@ export const japaneseApi = api.injectEndpoints({
 
     verifyJLPTAttempt: builder.mutation<JLPTAttempt, { id: string; data: VerifyJLPTPayload }>({
       query: ({ id, data }) => ({
-        url: `/japanese/jlpt-attempts/${id}/verify/`,
+        url: `japanese/jlpt-attempts/${id}/verify/`,
         method: "POST",
         body: data,
       }),
@@ -212,7 +212,7 @@ export const japaneseApi = api.injectEndpoints({
       } | void
     >({
       query: (params) => ({
-        url: "/japanese/jlpt-eligibility/",
+        url: "japanese/jlpt-eligibility/",
         params: { page_size: 100, ...(params || {}) },
       }),
       transformResponse: (response: any) => {
@@ -240,7 +240,7 @@ export const japaneseApi = api.injectEndpoints({
       } | void
     >({
       query: (params) => ({
-        url: "/japanese/evaluations/",
+        url: "japanese/evaluations/",
         params: { page_size: 100, ...(params || {}) },
       }),
       transformResponse: (response: any) => {
@@ -256,13 +256,13 @@ export const japaneseApi = api.injectEndpoints({
     }),
 
     getJapaneseEvaluationById: builder.query<JapaneseEvaluation, string>({
-      query: (id) => `/japanese/evaluations/${id}/`,
+      query: (id) => `japanese/evaluations/${id}/`,
       providesTags: ["JapaneseEvaluation"],
     }),
 
     createJapaneseEvaluation: builder.mutation<JapaneseEvaluation, SaveEvaluationPayload>({
       query: (body) => ({
-        url: "/japanese/evaluations/",
+        url: "japanese/evaluations/",
         method: "POST",
         body,
       }),
@@ -274,7 +274,7 @@ export const japaneseApi = api.injectEndpoints({
       { id: string; data: Partial<SaveEvaluationPayload> }
     >({
       query: ({ id, data }) => ({
-        url: `/japanese/evaluations/${id}/`,
+        url: `japanese/evaluations/${id}/`,
         method: "PATCH",
         body: data,
       }),
@@ -283,7 +283,7 @@ export const japaneseApi = api.injectEndpoints({
 
     submitJapaneseEvaluation: builder.mutation<JapaneseEvaluation, string>({
       query: (id) => ({
-        url: `/japanese/evaluations/${id}/submit/`,
+        url: `japanese/evaluations/${id}/submit/`,
         method: "POST",
       }),
       invalidatesTags: ["JapaneseEvaluation", "JapaneseInterns", "JapaneseDashboard"],
@@ -291,7 +291,7 @@ export const japaneseApi = api.injectEndpoints({
 
     getJapaneseEvalCriteria: builder.query<JapaneseEvalCriterion[], { cycle?: string } | void>({
       query: (params) => ({
-        url: "/japanese/eval-criteria/",
+        url: "japanese/eval-criteria/",
         params: { page_size: 100, ...(params || {}) },
       }),
       transformResponse: (response: any) => {
@@ -321,7 +321,7 @@ export const japaneseApi = api.injectEndpoints({
       } | void
     >({
       query: (params) => ({
-        url: "/feedback/",
+        url: "feedback/",
         params: { page_size: 100, ...(params || {}) },
       }),
       transformResponse: (response: any) => {
@@ -347,7 +347,7 @@ export const japaneseApi = api.injectEndpoints({
       }
     >({
       query: (body) => ({
-        url: "/feedback/",
+        url: "feedback/",
         method: "POST",
         body,
       }),
@@ -367,7 +367,7 @@ export const japaneseApi = api.injectEndpoints({
       }
     >({
       query: ({ id, data }) => ({
-        url: `/feedback/${id}/`,
+        url: `feedback/${id}/`,
         method: "PATCH",
         body: data,
       }),
@@ -376,7 +376,7 @@ export const japaneseApi = api.injectEndpoints({
 
     publishJapaneseFeedback: builder.mutation<any, string>({
       query: (id) => ({
-        url: `/feedback/${id}/publish/`,
+        url: `feedback/${id}/publish/`,
         method: "POST",
       }),
       invalidatesTags: ["ContinuousFeedback" as any],
@@ -387,7 +387,7 @@ export const japaneseApi = api.injectEndpoints({
       { feedbackId: string; comment: string }
     >({
       query: ({ feedbackId, comment }) => ({
-        url: `/feedback/${feedbackId}/comments/`,
+        url: `feedback/${feedbackId}/comments/`,
         method: "POST",
         body: { comment },
       }),

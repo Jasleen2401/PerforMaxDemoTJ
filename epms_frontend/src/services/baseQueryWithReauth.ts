@@ -67,13 +67,25 @@ const redirectToLogin = () => {
   }
 };
 
+const normalizeArgs = (args: string | FetchArgs): string | FetchArgs => {
+  if (typeof args === "string") {
+    return args.startsWith("/") && !args.startsWith("/api") ? args.slice(1) : args;
+  }
+  if (args && typeof args.url === "string") {
+    const normUrl = args.url.startsWith("/") && !args.url.startsWith("/api") ? args.url.slice(1) : args.url;
+    return { ...args, url: normUrl };
+  }
+  return args;
+};
+
 export const baseQueryWithReauth: BaseQueryFn<
   string | FetchArgs,
   unknown,
   FetchBaseQueryError
 > = async (args, api, extraOptions) => {
-  let result = await baseQuery(args, api, extraOptions);
-  const url = getRequestUrl(args);
+  const safeArgs = normalizeArgs(args);
+  let result = await baseQuery(safeArgs, api, extraOptions);
+  const url = getRequestUrl(safeArgs);
 
   if (!result.error || url === "/auth/refresh-token") {
     return result;

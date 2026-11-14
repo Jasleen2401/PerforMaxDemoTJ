@@ -63,6 +63,7 @@ const proxyConfig = {
   '/360-feedback': apiProxy(true),
   '/calibration': apiProxy(true),
   '/competency': apiProxy(true),
+  '/japanese': apiProxy(true),
   '/scoring-policy': apiProxy(true),
   '/employees': apiProxy(true),
   '/reports': apiProxy(true),

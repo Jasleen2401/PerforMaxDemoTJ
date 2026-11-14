@@ -19,12 +19,12 @@ const DashboardRouter: React.FC = () => {
     return <HrDashboard />;
   }
 
-  if (isManager) {
-    return <ManagerDashboard />;
-  }
-
   if (isInstructor) {
     return <JapaneseInstructorDashboard />;
+  }
+
+  if (isManager) {
+    return <ManagerDashboard />;
   }
 
   return <EmployeeDashboard />;

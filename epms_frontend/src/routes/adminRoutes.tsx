@@ -5,7 +5,7 @@ import DepartmentList from "../pages/admin/DepartmentList";
 import DepartmentMembers from "../pages/admin/DepartmentMembers";
 import JobLevelList from "../pages/admin/JobLevelList";
 import PositionList from "../pages/admin/PositionList";
-import HRDashboard from "../pages/admin/HRDashboard";
+import HrDashboard from "../pages/HrDashboard";
 import TeamList from "../pages/admin/TeamList";
 import RolePermissionManagementPage from "../pages/superadmin/RolePermissionManagementPage";
 import SuperadminNotificationPage from "../pages/superadmin/SuperadminNotificationPage";
@@ -19,7 +19,7 @@ import SystemRecordsPage from "../pages/admin/SystemRecordsPage";
 import AuditLogPage from "../pages/admin/AuditLogPage";
 
 export const adminRoutes = [
-  { path: "/hr", element: <HRDashboard /> },
+  { path: "/hr", element: <HrDashboard /> },
   { path: "/employees", element: <EmployeeList /> },
   { path: "/employees/new", element: <EmployeeForm /> },
   { path: "/employees/edit/:id", element: <EmployeeForm /> },

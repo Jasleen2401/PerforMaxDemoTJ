@@ -223,7 +223,12 @@ const HrDashboard: React.FC = () => {
     if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
       headers.set('Content-Type', 'application/json');
     }
-    return fetch(url, { ...options, headers });
+    // Normalize URL with VITE_API_BASE_URL
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    const finalUrl = (baseUrl && !url.startsWith('http'))
+      ? `${baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`
+      : url;
+    return fetch(finalUrl, { ...options, headers });
   }, [accessToken]);
 
   // ----------------------------------------------------

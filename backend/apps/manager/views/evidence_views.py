@@ -99,8 +99,8 @@ class ManagerEvidenceDecisionView(APIView):
 
         # Map frontend/aliases to valid status
         status_map = {
-            'ACCEPT': EvidenceReviewStatus.VERIFIED,
-            'APPROVED': EvidenceReviewStatus.VERIFIED,
+            'ACCEPT': EvidenceReviewStatus.APPROVED,
+            'APPROVED': EvidenceReviewStatus.APPROVED,
             'VERIFIED': EvidenceReviewStatus.VERIFIED,
             'REQUEST_CHANGES': EvidenceReviewStatus.CHANGES_REQUESTED,
             'CHANGES_REQUESTED': EvidenceReviewStatus.CHANGES_REQUESTED,

@@ -300,15 +300,71 @@ class JapaneseEvaluationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = JapaneseEvaluation.objects.select_related('intern', 'cycle', 'evaluator').prefetch_related('ratings')
+        qs = JapaneseEvaluation.objects.select_related(
+            'intern', 'intern__user', 'cycle', 'evaluator', 'returned_by'
+        ).prefetch_related(
+            'ratings', 'ratings__criterion',
+            'intern__japanese_batches', 'intern__japanese_batches__parent_batch',
+            'intern__japanese_practice_results', 'intern__japanese_practice_results__topic'
+        )
         if user.role == 'INTERN':
             return qs.filter(intern__user=user, status=EvaluationStatus.ACCEPTED)
-        if user.role in ('MANAGER', 'INSTRUCTOR'):
-            return qs.filter(evaluator=user)
-        # HR / Admin see all
+
+        if user.role == 'INSTRUCTOR':
+            assigned_batches = JapaneseBatch.objects.filter(instructors=user)
+            all_batches = JapaneseBatch.objects.filter(
+                models.Q(id__in=assigned_batches) | models.Q(parent_batch__in=assigned_batches)
+            )
+            qs = qs.filter(
+                models.Q(evaluator=user) |
+                models.Q(intern__japanese_batches__in=all_batches)
+            ).distinct()
+
+        # Cycle filter
         cycle_id = self.request.query_params.get('cycle')
         if cycle_id:
             qs = qs.filter(cycle_id=cycle_id)
+
+        # Status filter
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            st = status_param.upper()
+            if st == 'DRAFT':
+                qs = qs.filter(status__in=[EvaluationStatus.DRAFT, EvaluationStatus.PENDING])
+            elif st == 'SUBMITTED':
+                qs = qs.filter(status__in=[EvaluationStatus.SUBMITTED, EvaluationStatus.RESUBMITTED])
+            else:
+                qs = qs.filter(status=st)
+
+        # Batch & Sub-batch filter
+        batch_param = self.request.query_params.get('batch')
+        if batch_param and batch_param.upper() != 'ALL':
+            qs = qs.filter(
+                models.Q(intern__japanese_batches__name__icontains=batch_param) |
+                models.Q(intern__japanese_batches__code__icontains=batch_param)
+            )
+
+        sub_batch_param = self.request.query_params.get('sub_batch')
+        if sub_batch_param and sub_batch_param.upper() != 'ALL':
+            qs = qs.filter(
+                models.Q(intern__japanese_batches__code__iexact=sub_batch_param) |
+                models.Q(intern__japanese_batches__name__icontains=sub_batch_param)
+            )
+
+        # Intern filter
+        intern_id = self.request.query_params.get('intern')
+        if intern_id:
+            qs = qs.filter(intern_id=intern_id)
+
+        # Search filter
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            qs = qs.filter(
+                models.Q(intern__full_name__icontains=q) |
+                models.Q(intern__employee_code__icontains=q) |
+                models.Q(intern__user__email__icontains=q)
+            )
+
         return qs
 
     def perform_create(self, serializer):

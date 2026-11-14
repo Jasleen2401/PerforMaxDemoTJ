@@ -10,6 +10,7 @@ export interface JapaneseEvalRating {
   id?: string;
   criterion: string;
   criterion_name?: string;
+  criterion_description?: string;
   criterion_weight?: number | string;
   score: number | string;
   comments: string;
@@ -31,6 +32,7 @@ export interface JapaneseEvaluation {
   intern_name?: string;
   intern_code?: string;
   intern_email?: string;
+  intern_id?: string;
   cycle: string;
   cycle_name?: string;
   evaluator?: string;
@@ -44,6 +46,27 @@ export interface JapaneseEvaluation {
   developmental_feedback: string;
   is_developmental_feedback_visible: boolean;
   jlpt_status_summary: string;
+  batch_name?: string;
+  batch_code?: string;
+  sub_batch_name?: string;
+  sub_batch_code?: string;
+  learning_progress?: {
+    completed: number;
+    total: number;
+    percentage: number;
+  };
+  submitted_evidence?: Array<{
+    id: string;
+    topic_title: string;
+    material_title: string;
+    status: string;
+    score: number | null;
+    max_score: number;
+    notes: string;
+    submitted_at: string | null;
+    external_url: string;
+    file_evidence: string | null;
+  }>;
   submitted_at?: string | null;
   return_reason?: string;
   returned_at?: string | null;
@@ -51,6 +74,45 @@ export interface JapaneseEvaluation {
   ratings?: JapaneseEvalRating[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface JapaneseFeedbackComment {
+  id: string;
+  feedback: string;
+  author: string;
+  author_id: string;
+  author_name: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface JapaneseFeedback {
+  id: string;
+  sender: string;
+  sender_name: string;
+  sender_designation: string;
+  recipient: string;
+  recipient_name: string;
+  recipient_code?: string;
+  recipient_id?: string;
+  recipient_email?: string;
+  recipient_full_name?: string;
+  batch_name?: string;
+  batch_code?: string;
+  sub_batch_name?: string;
+  sub_batch_code?: string;
+  goal?: string | null;
+  goal_title?: string;
+  feedback_type: string;
+  category: string;
+  message: string;
+  visibility: 'PUBLIC' | 'PRIVATE' | 'MANAGER_ONLY';
+  is_anonymous: boolean;
+  status: 'DRAFT' | 'PUBLISHED';
+  comments: JapaneseFeedbackComment[];
+  comments_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface JapaneseMaterial {

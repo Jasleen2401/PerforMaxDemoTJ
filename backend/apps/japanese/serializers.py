@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.performance.models import PerformanceCycle
 from .models import (
     JapaneseLearningPlan, JapaneseTopic, JapaneseMaterial,
     JapanesePracticeResult, JLPTAttempt, JLPTEligibilityRecord,
@@ -175,6 +176,8 @@ class JapaneseEvalCriterionSerializer(serializers.ModelSerializer):
 
 class JapaneseEvalRatingSerializer(serializers.ModelSerializer):
     criterion_name = serializers.CharField(source='criterion.name', read_only=True)
+    criterion_description = serializers.CharField(source='criterion.description', read_only=True)
+    criterion_weight = serializers.DecimalField(source='criterion.weight', max_digits=5, decimal_places=2, read_only=True)
 
     class Meta:
         model = JapaneseEvalRating
@@ -185,9 +188,22 @@ class JapaneseEvalRatingSerializer(serializers.ModelSerializer):
 class JapaneseEvaluationSerializer(serializers.ModelSerializer):
     ratings = JapaneseEvalRatingSerializer(many=True, read_only=True)
     intern_name = serializers.CharField(source='intern.full_name', read_only=True)
+    intern_code = serializers.CharField(source='intern.employee_code', read_only=True)
+    intern_email = serializers.CharField(source='intern.user.email', read_only=True)
+    intern_id = serializers.CharField(source='intern.id', read_only=True)
     cycle_name = serializers.CharField(source='cycle.name', read_only=True)
     evaluator_username = serializers.CharField(source='evaluator.username', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    batch_name = serializers.SerializerMethodField()
+    batch_code = serializers.SerializerMethodField()
+    sub_batch_name = serializers.SerializerMethodField()
+    sub_batch_code = serializers.SerializerMethodField()
+    learning_progress = serializers.SerializerMethodField()
+    submitted_evidence = serializers.SerializerMethodField()
+    cycle = serializers.PrimaryKeyRelatedField(
+        queryset=PerformanceCycle.objects.all(),
+        required=False
+    )
 
     class Meta:
         model = JapaneseEvaluation
@@ -196,6 +212,107 @@ class JapaneseEvaluationSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at',
             'submitted_at', 'returned_at', 'returned_by',
         ]
+
+    def _get_sub_batch(self, obj):
+        return obj.intern.japanese_batches.filter(parent_batch__isnull=False).first()
+
+    def _get_main_batch(self, obj):
+        sb = self._get_sub_batch(obj)
+        if sb and sb.parent_batch:
+            return sb.parent_batch
+        return obj.intern.japanese_batches.filter(parent_batch__isnull=True).first()
+
+    def get_batch_name(self, obj):
+        mb = self._get_main_batch(obj)
+        return mb.name if mb else ''
+
+    def get_batch_code(self, obj):
+        mb = self._get_main_batch(obj)
+        return mb.code if mb else ''
+
+    def get_sub_batch_name(self, obj):
+        sb = self._get_sub_batch(obj)
+        return sb.name if sb else ''
+
+    def get_sub_batch_code(self, obj):
+        sb = self._get_sub_batch(obj)
+        return sb.code if sb else ''
+
+    def get_learning_progress(self, obj):
+        practice_results = obj.intern.japanese_practice_results.all()
+        total = practice_results.count()
+        completed = practice_results.filter(status='REVIEWED').count()
+        pct = round((completed / max(total, 1)) * 100, 1) if total > 0 else 0.0
+        return {
+            'completed': completed,
+            'total': total,
+            'percentage': pct,
+        }
+
+    def get_submitted_evidence(self, obj):
+        results = []
+        for p in obj.intern.japanese_practice_results.select_related('topic', 'material')[:10]:
+            results.append({
+                'id': str(p.id),
+                'topic_title': p.topic.title if p.topic else 'Japanese Practice',
+                'material_title': p.material.title if p.material else '',
+                'status': p.status,
+                'score': float(p.score) if p.score is not None else None,
+                'max_score': float(p.max_score) if p.max_score is not None else 100.0,
+                'notes': p.notes,
+                'submitted_at': p.submitted_at.isoformat() if p.submitted_at else None,
+                'external_url': p.external_url,
+                'file_evidence': p.file_evidence.url if p.file_evidence else None,
+            })
+        return results
+
+    def _save_ratings(self, evaluation, ratings_data):
+        from decimal import Decimal
+        from .models import JapaneseEvalCriterion, JapaneseEvalRating
+        if not ratings_data:
+            return
+        total_score = Decimal('0.00')
+        total_weight = Decimal('0.00')
+        for item in ratings_data:
+            criterion_id = item.get('criterion')
+            score_val = item.get('score', 0)
+            comments_val = item.get('comments', '')
+            try:
+                crit = JapaneseEvalCriterion.objects.get(id=criterion_id)
+                JapaneseEvalRating.objects.update_or_create(
+                    evaluation=evaluation,
+                    criterion=crit,
+                    defaults={'score': Decimal(str(score_val)), 'comments': comments_val}
+                )
+                weight = crit.weight if crit.weight else Decimal('25.00')
+                total_score += Decimal(str(score_val)) * (weight / Decimal('100.00'))
+                total_weight += weight
+            except (JapaneseEvalCriterion.DoesNotExist, Exception):
+                pass
+        if total_weight > 0:
+            evaluation.overall_language_score = round(total_score, 2)
+            evaluation.save(update_fields=['overall_language_score'])
+
+    def validate(self, attrs):
+        if not attrs.get('cycle'):
+            from apps.performance.models import PerformanceCycle, CycleStatus
+            active_cycle = PerformanceCycle.objects.filter(status=CycleStatus.ACTIVE).first() or PerformanceCycle.objects.first()
+            if active_cycle:
+                attrs['cycle'] = active_cycle
+        return super().validate(attrs)
+
+    def create(self, validated_data):
+        ratings_data = self.initial_data.get('ratings_data', [])
+        evaluation = super().create(validated_data)
+        self._save_ratings(evaluation, ratings_data)
+        return evaluation
+
+    def update(self, instance, validated_data):
+        ratings_data = self.initial_data.get('ratings_data', [])
+        evaluation = super().update(instance, validated_data)
+        if ratings_data:
+            self._save_ratings(evaluation, ratings_data)
+        return evaluation
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

@@ -12,6 +12,8 @@ import type {
   JLPTEligibilityRecord,
   JapaneseEvaluation,
   JapaneseEvalCriterion,
+  JapaneseFeedback,
+  JapaneseFeedbackComment,
   CreateLearningPlanPayload,
   CreateTopicPayload,
   CreateMaterialPayload,
@@ -227,12 +229,29 @@ export const japaneseApi = api.injectEndpoints({
 
     getJapaneseEvaluations: builder.query<
       JapaneseEvaluation[],
-      { intern?: string; cycle?: string; status?: string } | void
+      {
+        intern?: string;
+        cycle?: string;
+        status?: string;
+        batch?: string;
+        sub_batch?: string;
+        q?: string;
+        page_size?: number;
+      } | void
     >({
       query: (params) => ({
         url: "/japanese/evaluations/",
-        params: params || {},
+        params: { page_size: 100, ...(params || {}) },
       }),
+      transformResponse: (response: any) => {
+        if (response && Array.isArray(response.results)) {
+          return response.results;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        return [];
+      },
       providesTags: ["JapaneseEvaluation"],
     }),
 
@@ -273,9 +292,106 @@ export const japaneseApi = api.injectEndpoints({
     getJapaneseEvalCriteria: builder.query<JapaneseEvalCriterion[], { cycle?: string } | void>({
       query: (params) => ({
         url: "/japanese/eval-criteria/",
-        params: params || {},
+        params: { page_size: 100, ...(params || {}) },
       }),
+      transformResponse: (response: any) => {
+        if (response && Array.isArray(response.results)) {
+          return response.results;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        return [];
+      },
       providesTags: ["JapaneseEvaluation"],
+    }),
+
+    // Continuous Developmental Feedback Endpoints
+    getJapaneseFeedbacks: builder.query<
+      JapaneseFeedback[],
+      {
+        recipient?: string;
+        status?: string;
+        visibility?: string;
+        feedback_type?: string;
+        batch?: string;
+        sub_batch?: string;
+        q?: string;
+        page_size?: number;
+      } | void
+    >({
+      query: (params) => ({
+        url: "/feedback/",
+        params: { page_size: 100, ...(params || {}) },
+      }),
+      transformResponse: (response: any) => {
+        if (response && Array.isArray(response.results)) {
+          return response.results;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        return [];
+      },
+      providesTags: ["ContinuousFeedback" as any],
+    }),
+
+    createJapaneseFeedback: builder.mutation<
+      JapaneseFeedback,
+      {
+        recipient: string;
+        feedback_type: string;
+        message: string;
+        visibility: "PUBLIC" | "PRIVATE" | "MANAGER_ONLY";
+        status: "DRAFT" | "PUBLISHED";
+      }
+    >({
+      query: (body) => ({
+        url: "/feedback/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["ContinuousFeedback" as any],
+    }),
+
+    updateJapaneseFeedback: builder.mutation<
+      JapaneseFeedback,
+      {
+        id: string;
+        data: Partial<{
+          feedback_type: string;
+          message: string;
+          visibility: "PUBLIC" | "PRIVATE" | "MANAGER_ONLY";
+          status: "DRAFT" | "PUBLISHED";
+        }>;
+      }
+    >({
+      query: ({ id, data }) => ({
+        url: `/feedback/${id}/`,
+        method: "PATCH",
+        body: data,
+      }),
+      invalidatesTags: ["ContinuousFeedback" as any],
+    }),
+
+    publishJapaneseFeedback: builder.mutation<any, string>({
+      query: (id) => ({
+        url: `/feedback/${id}/publish/`,
+        method: "POST",
+      }),
+      invalidatesTags: ["ContinuousFeedback" as any],
+    }),
+
+    addFeedbackComment: builder.mutation<
+      JapaneseFeedbackComment,
+      { feedbackId: string; comment: string }
+    >({
+      query: ({ feedbackId, comment }) => ({
+        url: `/feedback/${feedbackId}/comments/`,
+        method: "POST",
+        body: { comment },
+      }),
+      invalidatesTags: ["ContinuousFeedback" as any],
     }),
   }),
 });
@@ -304,4 +420,9 @@ export const {
   useUpdateJapaneseEvaluationMutation,
   useSubmitJapaneseEvaluationMutation,
   useGetJapaneseEvalCriteriaQuery,
+  useGetJapaneseFeedbacksQuery,
+  useCreateJapaneseFeedbackMutation,
+  useUpdateJapaneseFeedbackMutation,
+  usePublishJapaneseFeedbackMutation,
+  useAddFeedbackCommentMutation,
 } = japaneseApi;

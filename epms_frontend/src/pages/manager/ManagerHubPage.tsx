@@ -1327,7 +1327,7 @@ export const ManagerHubPage: React.FC = () => {
                       Period: <strong className="text-slate-700">{cy.quarter || cy.evaluationPeriod || 'Q2 2026'}</strong>
                     </div>
                     <div className="text-[10px] text-slate-400 font-mono">
-                      {cy.startDate || '—'} – {cy.endDate || '—'}
+                      {cy.start_date || cy.startDate || '—'} – {cy.end_date || cy.endDate || '—'}
                     </div>
                   </div>
                 ))

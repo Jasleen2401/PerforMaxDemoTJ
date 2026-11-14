@@ -306,16 +306,19 @@ class ManagerSelfAssessmentInspectionView(APIView):
         # Intern self-reflection answers & submission dossier
         from apps.intern.models import InternSelfAppraisalSubmission
         intern_sub = InternSelfAppraisalSubmission.objects.filter(
-            Q(intern=profile) | Q(appraisal=appraisal)
-        ).order_by('-updated_at').first()
+            intern=profile
+        )
+        if appraisal.cycle_id:
+            intern_sub = intern_sub.filter(cycle_id=appraisal.cycle_id)
+        intern_sub = intern_sub.order_by('-updated_at').first()
 
         self_summary = (
-            (intern_sub.summary if intern_sub and intern_sub.summary else None) or
+            (intern_sub.reflection_summary if intern_sub and intern_sub.reflection_summary else None) or
             appraisal.self_comments or
             'Demonstrated solid execution of sprint deliverables, architectural clarity, and cross-team collaboration.'
         )
         self_strengths = (
-            (intern_sub.strengths if intern_sub and intern_sub.strengths else None) or
+            (intern_sub.achievements if intern_sub and intern_sub.achievements else None) or
             'Technical problem solving, API architecture design, and rigorous sprint commitment delivery.'
         )
         self_challenges = (

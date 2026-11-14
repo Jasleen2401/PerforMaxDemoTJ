@@ -1,5 +1,7 @@
+import uuid
 from decimal import Decimal
 from django.utils import timezone
+from django.db import transaction, connection
 from django.db.models import Q
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -8,7 +10,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.performance.models import (
     PerformanceCycle,
+    CycleParticipant,
+    CycleStatus,
     EvaluationCriterion,
+    TechnicalCapabilityReview,
     Appraisal,
     AppraisalRating,
     AppraisalType,
@@ -18,32 +23,400 @@ from apps.performance.models import (
 )
 from apps.performance.serializers import (
     PerformanceCycleSerializer,
+    CycleParticipantSerializer,
+    EligibleInternSerializer,
     EvaluationCriterionSerializer,
     AppraisalSerializer,
     SubmitAppraisalSerializer,
     PerformanceImprovementPlanSerializer,
     RecognitionRewardSerializer,
 )
+from apps.employees.models import EmployeeProfile, EmploymentStatus
+from apps.japanese.models import JapaneseEvaluation
 from apps.performance.services.scoring import ScoringService
 from apps.accounts.permissions import IsHR, IsManager
 from apps.accounts.models import UserRole
 from rest_framework.exceptions import PermissionDenied
 
 class PerformanceCycleViewSet(viewsets.ModelViewSet):
-    queryset = PerformanceCycle.objects.select_related('created_by').prefetch_related('goals').all()
     serializer_class = PerformanceCycleSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status']
     search_fields = ['name', 'description']
     ordering_fields = ['start_date', 'end_date', 'created_at']
 
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return PerformanceCycle.objects.none()
+
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR']
+        if is_hr_admin:
+            return PerformanceCycle.objects.select_related('created_by').prefetch_related('goals', 'participants').all()
+
+        active_statuses = [
+            CycleStatus.ACTIVE,
+            CycleStatus.IN_PROGRESS,
+            CycleStatus.REVIEW_PERIOD,
+            CycleStatus.READY_FOR_HR_REVIEW,
+            CycleStatus.FINALIZED,
+            CycleStatus.PUBLISHED,
+            CycleStatus.CLOSED,
+        ]
+
+        if getattr(user, 'role', '') == 'INTERN':
+            return PerformanceCycle.objects.filter(
+                participants__employee__user=user,
+                status__in=active_statuses
+            ).distinct().select_related('created_by').prefetch_related('goals')
+
+        return PerformanceCycle.objects.filter(
+            status__in=active_statuses
+        ).select_related('created_by').prefetch_related('goals')
+
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'activate', 'enroll_participants', 'unenroll_participant', 'eligible_interns']:
             return [IsHR()]
         return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        cycle = self.get_object()
+        if cycle.status != CycleStatus.DRAFT:
+            return Response(
+                {"detail": f"Only cycles in DRAFT status can be deleted. Current status is '{cycle.get_status_display()}'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        cycle = self.get_object()
+        if cycle.status in [CycleStatus.ACTIVE, CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            if 'technical_weight' in request.data or 'behavioral_weight' in request.data:
+                return Response(
+                    {"detail": "Cannot modify scoring weights on an active or closed cycle."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return super().update(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get'], url_path='readiness', permission_classes=[permissions.IsAuthenticated])
+    def readiness(self, request, pk=None):
+        cycle = self.get_object()
+        errors = []
+        checklist = {}
+
+        # 1. Name & Dates
+        has_name = bool(cycle.name and cycle.name.strip())
+        checklist['name_valid'] = has_name
+        if not has_name:
+            errors.append("Cycle name is required.")
+
+        has_dates = bool(cycle.start_date and cycle.end_date and cycle.end_date >= cycle.start_date)
+        checklist['dates_valid'] = has_dates
+        if not cycle.start_date or not cycle.end_date:
+            errors.append("Cycle start date and end date must both be specified.")
+        elif cycle.end_date < cycle.start_date:
+            errors.append("Cycle end date must be on or after start date.")
+
+        # 2. MIRAI Quarter
+        has_quarter = bool(cycle.mirai_stage)
+        checklist['quarter_designated'] = has_quarter
+        if not has_quarter:
+            errors.append("MIRAI program quarter (Q1–Q4) must be designated.")
+
+        # 3. Weights
+        tw = cycle.technical_weight or Decimal('0.00')
+        bw = cycle.behavioral_weight or Decimal('0.00')
+        weights_sum = tw + bw
+        weights_balanced = (weights_sum == Decimal('100.00'))
+        checklist['weights_balanced'] = weights_balanced
+        if not weights_balanced:
+            errors.append(f"Technical ({tw}%) and Behavioral ({bw}%) weights must sum to exactly 100.00% (currently {weights_sum}%).")
+
+        # 4. Rating Scale
+        scale_valid = bool(cycle.rating_scale_max and cycle.rating_scale_max > Decimal('0.0'))
+        checklist['scale_valid'] = scale_valid
+        if not scale_valid:
+            errors.append("Rating scale maximum must be greater than 0.")
+
+        # 5. Deadlines
+        has_deadlines = bool(cycle.self_assessment_deadline and cycle.evaluator_deadline)
+        checklist['deadlines_populated'] = has_deadlines
+        if not cycle.self_assessment_deadline:
+            errors.append("Self-assessment deadline must be specified before activation.")
+        if not cycle.evaluator_deadline:
+            errors.append("Evaluator review deadline must be specified before activation.")
+
+        deadlines_sequence_valid = True
+        if cycle.start_date and cycle.end_date:
+            if cycle.self_assessment_deadline and not (cycle.start_date <= cycle.self_assessment_deadline <= cycle.end_date):
+                deadlines_sequence_valid = False
+                errors.append("Self-assessment deadline must fall within cycle start and end dates.")
+            if cycle.evaluator_deadline:
+                if not (cycle.start_date <= cycle.evaluator_deadline <= cycle.end_date):
+                    deadlines_sequence_valid = False
+                    errors.append("Evaluator deadline must fall within cycle start and end dates.")
+                if cycle.self_assessment_deadline and cycle.evaluator_deadline < cycle.self_assessment_deadline:
+                    deadlines_sequence_valid = False
+                    errors.append("Evaluator review deadline must be on or after self-assessment deadline.")
+            if cycle.evidence_deadline:
+                if not (cycle.start_date <= cycle.evidence_deadline <= cycle.end_date):
+                    deadlines_sequence_valid = False
+                    errors.append("Evidence deadline must fall within cycle start and end dates.")
+        checklist['deadlines_sequence_valid'] = deadlines_sequence_valid
+
+        # 6. Participants
+        participant_count = cycle.participants.count()
+        has_participants = (participant_count >= 1)
+        checklist['participants_enrolled'] = has_participants
+        checklist['participant_count'] = participant_count
+        if not has_participants:
+            errors.append("Cannot activate cycle: At least one intern must be enrolled in the cohort.")
+
+        # 7. Explicit Japanese Mandatory Decision (Mandatory or Not Mandatory)
+        japanese_configured = (cycle.japanese_evaluation_mandatory is not None)
+        checklist['japanese_mandatory_explicit'] = japanese_configured
+        if not japanese_configured:
+            errors.append("Japanese evaluation requirement must be explicitly configured as either Mandatory or Not Mandatory before activation.")
+
+        is_ready = (len(errors) == 0)
+        return Response({
+            "cycle_id": str(cycle.id),
+            "cycle_name": cycle.name,
+            "current_status": cycle.status,
+            "is_ready": is_ready,
+            "readiness_errors": errors,
+            "checklist": checklist
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='activate', permission_classes=[IsHR])
+    def activate(self, request, pk=None):
+        cycle = self.get_object()
+        readiness_resp = self.readiness(request, pk=pk)
+        readiness_data = readiness_resp.data
+
+        if not readiness_data.get('is_ready', False):
+            return Response({
+                "error": "ACTIVATION_READINESS_FAILED",
+                "message": "Cycle does not meet all activation readiness requirements.",
+                "readiness_errors": readiness_data.get('readiness_errors', [])
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Default evidence deadline to self_assessment_deadline if omitted
+        if not cycle.evidence_deadline and cycle.self_assessment_deadline:
+            cycle.evidence_deadline = cycle.self_assessment_deadline
+
+        cycle.status = CycleStatus.ACTIVE
+        cycle.save()
+
+        return Response({
+            "message": "Performance cycle successfully activated.",
+            "status": cycle.status,
+            "activated_at": timezone.now().isoformat(),
+            "data": PerformanceCycleSerializer(cycle).data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='participants', permission_classes=[permissions.IsAuthenticated])
+    def list_participants(self, request, pk=None):
+        cycle = self.get_object()
+        user = request.user
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR']
+
+        qs = CycleParticipant.objects.filter(cycle=cycle).select_related(
+            'employee', 'employee__user', 'employee__department', 'employee__manager', 'added_by', 'cycle'
+        )
+
+        if not is_hr_admin:
+            if getattr(user, 'role', '') == 'MANAGER':
+                qs = qs.filter(employee__manager=user)
+            elif getattr(user, 'role', '') == 'INTERN':
+                qs = qs.filter(employee__user=user)
+            else:
+                qs = qs.none()
+
+        serializer = CycleParticipantSerializer(qs, many=True)
+        return Response({
+            "count": qs.count(),
+            "results": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='enroll', permission_classes=[IsHR])
+    def enroll_participants(self, request, pk=None):
+        cycle = self.get_object()
+        if cycle.status not in [CycleStatus.DRAFT, CycleStatus.VALIDATING]:
+            return Response(
+                {"detail": f"Cannot enroll participants into a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        raw_employee_ids = request.data.get('employee_ids', [])
+        if not isinstance(raw_employee_ids, list) or len(raw_employee_ids) == 0:
+            return Response(
+                {"detail": "employee_ids must be a non-empty list of employee UUIDs."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Database engine lock where supported (e.g. PostgreSQL)
+        if connection.features.has_select_for_update:
+            PerformanceCycle.objects.select_for_update().get(id=cycle.id)
+
+        existing_enrolled = set(
+            CycleParticipant.objects.filter(cycle=cycle).values_list('employee_id', flat=True)
+        )
+
+        valid_employees = {
+            emp.id: emp for emp in EmployeeProfile.objects.filter(id__in=raw_employee_ids).select_related('user', 'department', 'manager')
+        }
+
+        results = []
+        enrolled_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        for emp_id_str in raw_employee_ids:
+            try:
+                emp_uuid = uuid.UUID(str(emp_id_str))
+            except (ValueError, TypeError):
+                results.append({
+                    "employee_id": str(emp_id_str),
+                    "status": "FAILED",
+                    "reason": "Invalid UUID format"
+                })
+                failed_count += 1
+                continue
+
+            emp = valid_employees.get(emp_uuid)
+            if not emp:
+                results.append({
+                    "employee_id": str(emp_id_str),
+                    "status": "FAILED",
+                    "reason": "EmployeeProfile not found"
+                })
+                failed_count += 1
+                continue
+
+            is_intern = bool(getattr(emp, 'user', None) and emp.user.role == 'INTERN')
+            is_active = emp.employment_status in [EmploymentStatus.ACTIVE, EmploymentStatus.PROBATION]
+            if not (is_intern and is_active):
+                results.append({
+                    "employee_id": str(emp_id_str),
+                    "employee_name": emp.full_name,
+                    "status": "FAILED",
+                    "reason": f"Employee is not an eligible intern (Role: {getattr(emp.user, 'role', 'None')}, Status: {emp.employment_status})"
+                })
+                failed_count += 1
+                continue
+
+            if emp_uuid in existing_enrolled:
+                results.append({
+                    "employee_id": str(emp_id_str),
+                    "employee_name": emp.full_name,
+                    "status": "SKIPPED",
+                    "reason": "Already enrolled in this cycle"
+                })
+                skipped_count += 1
+                continue
+
+            try:
+                with transaction.atomic():
+                    part = CycleParticipant.objects.create(
+                        cycle=cycle,
+                        employee=emp,
+                        added_by=request.user
+                    )
+                    existing_enrolled.add(emp_uuid)
+                    enrolled_count += 1
+                    results.append({
+                        "employee_id": str(emp_id_str),
+                        "employee_name": emp.full_name,
+                        "status": "ENROLLED",
+                        "mentor_assigned": bool(emp.manager_id),
+                        "participant_id": str(part.id)
+                    })
+            except Exception as e:
+                skipped_count += 1
+                results.append({
+                    "employee_id": str(emp_id_str),
+                    "employee_name": emp.full_name,
+                    "status": "SKIPPED",
+                    "reason": f"Constraint conflict or duplicate: {str(e)}"
+                })
+
+        return Response({
+            "cycle_id": str(cycle.id),
+            "enrolled_count": enrolled_count,
+            "skipped_count": skipped_count,
+            "failed_count": failed_count,
+            "results": results
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['delete'], url_path=r'participants/(?P<participant_id>[^/.]+)', permission_classes=[IsHR])
+    def unenroll_participant(self, request, pk=None, participant_id=None):
+        cycle = self.get_object()
+        if cycle.status not in [CycleStatus.DRAFT, CycleStatus.VALIDATING]:
+            return Response(
+                {"detail": f"Cannot unenroll participants from a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            participant = CycleParticipant.objects.get(cycle=cycle, id=participant_id)
+        except CycleParticipant.DoesNotExist:
+            return Response({"detail": "Participant not found in this cycle."}, status=status.HTTP_404_NOT_FOUND)
+
+        employee = participant.employee
+        has_appraisal = Appraisal.objects.filter(cycle=cycle, employee=employee).exists()
+        has_ratings = AppraisalRating.objects.filter(appraisal__cycle=cycle, appraisal__employee=employee).exists()
+        has_tech_review = TechnicalCapabilityReview.objects.filter(cycle=cycle, employee=employee).exists()
+        has_japanese = JapaneseEvaluation.objects.filter(cycle=cycle, intern=employee).exists()
+
+        if has_appraisal or has_ratings or has_tech_review or has_japanese:
+            return Response(
+                {
+                    "error": "HISTORICAL_RECORDS_EXIST",
+                    "detail": (
+                        f"Cannot unenroll participant '{employee.full_name}' ({employee.employee_code}): "
+                        "formal evaluation, rating, or appraisal records have already been generated for this cycle."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
+        participant.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], url_path='eligible-interns', permission_classes=[IsHR])
+    def eligible_interns(self, request):
+        qs = EmployeeProfile.objects.filter(
+            user__role='INTERN',
+            employment_status__in=[EmploymentStatus.ACTIVE, EmploymentStatus.PROBATION]
+        ).select_related('user', 'department', 'manager')
+
+        exclude_cycle_id = request.query_params.get('exclude_cycle_id')
+        if exclude_cycle_id:
+            enrolled_emp_ids = CycleParticipant.objects.filter(cycle_id=exclude_cycle_id).values_list('employee_id', flat=True)
+            qs = qs.exclude(id__in=enrolled_emp_ids)
+
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(employee_code__icontains=search) |
+                Q(user__email__icontains=search)
+            )
+
+        department = request.query_params.get('department')
+        if department:
+            qs = qs.filter(Q(department__id=department) | Q(department__name__icontains=department))
+
+        serializer = EligibleInternSerializer(qs, many=True)
+        return Response({
+            "count": qs.count(),
+            "results": serializer.data
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='create-template', permission_classes=[permissions.IsAuthenticated])
     def create_template(self, request):
@@ -285,3 +658,69 @@ class RecognitionRewardViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsManager()]
         return [permissions.IsAuthenticated()]
+
+
+class CycleParticipantViewSet(viewsets.ModelViewSet):
+    serializer_class = CycleParticipantSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return CycleParticipant.objects.none()
+
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR']
+        qs = CycleParticipant.objects.select_related(
+            'cycle', 'employee', 'employee__user', 'employee__department', 'employee__manager', 'added_by'
+        )
+
+        cycle_id = self.request.query_params.get('cycle_id')
+        if cycle_id:
+            qs = qs.filter(cycle_id=cycle_id)
+
+        if is_hr_admin:
+            return qs
+
+        if getattr(user, 'role', '') == 'MANAGER':
+            return qs.filter(employee__manager=user)
+
+        if getattr(user, 'role', '') == 'INTERN':
+            return qs.filter(employee__user=user)
+
+        return qs.none()
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsHR()]
+        return [permissions.IsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        participant = self.get_object()
+        cycle = participant.cycle
+        employee = participant.employee
+
+        if cycle.status not in [CycleStatus.DRAFT, CycleStatus.VALIDATING]:
+            return Response(
+                {"detail": f"Cannot unenroll participants from a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        has_appraisal = Appraisal.objects.filter(cycle=cycle, employee=employee).exists()
+        has_ratings = AppraisalRating.objects.filter(appraisal__cycle=cycle, appraisal__employee=employee).exists()
+        has_tech_review = TechnicalCapabilityReview.objects.filter(cycle=cycle, employee=employee).exists()
+        has_japanese = JapaneseEvaluation.objects.filter(cycle=cycle, intern=employee).exists()
+
+        if has_appraisal or has_ratings or has_tech_review or has_japanese:
+            return Response(
+                {
+                    "error": "HISTORICAL_RECORDS_EXIST",
+                    "detail": (
+                        f"Cannot unenroll participant '{employee.full_name}' ({employee.employee_code}): "
+                        "formal evaluation, rating, or appraisal records have already been generated for this cycle."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
+        participant.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

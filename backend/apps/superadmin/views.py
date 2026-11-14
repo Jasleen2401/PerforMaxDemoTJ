@@ -30,7 +30,10 @@ class SuperAdminDashboardView(APIView):
 
     def get(self, request):
         total_users = User.objects.count()
-        total_interns = User.objects.filter(role=UserRole.INTERN).count()
+        emp_roles = [UserRole.INTERN]
+        if hasattr(UserRole, 'EMPLOYEE'):
+            emp_roles.append(getattr(UserRole, 'EMPLOYEE'))
+        total_employees = User.objects.filter(role__in=emp_roles).count()
         total_managers = User.objects.filter(role=UserRole.MANAGER).count()
         total_hr = User.objects.filter(role=UserRole.HR).count()
         total_departments = Department.objects.count()
@@ -45,7 +48,8 @@ class SuperAdminDashboardView(APIView):
             'data': {
                 'metrics': {
                     'totalUsers': total_users,
-                    'totalInterns': total_interns,
+                    'totalEmployees': total_employees,
+                    'totalInterns': total_employees,
                     'totalManagers': total_managers,
                     'totalHr': total_hr,
                     'totalDepartments': total_departments,
@@ -540,6 +544,8 @@ class SuperAdminImpersonateView(APIView):
     def post(self, request):
         target_user_id = request.data.get('user_id') or request.data.get('userId')
         employee_id = request.data.get('employee_id') or request.data.get('employeeId')
+        email = request.data.get('email')
+        username = request.data.get('username')
 
         target_user = None
         if target_user_id:
@@ -557,6 +563,12 @@ class SuperAdminImpersonateView(APIView):
                     target_user = User.objects.select_related('profile').get(id=employee_id)
                 except (User.DoesNotExist, ValueError):
                     target_user = None
+
+        if not target_user and email:
+            target_user = User.objects.select_related('profile').filter(email__iexact=str(email).strip()).first()
+
+        if not target_user and username:
+            target_user = User.objects.select_related('profile').filter(username__iexact=str(username).strip()).first()
 
         if not target_user:
             return Response(
@@ -646,7 +658,7 @@ class SuperAdminImpersonateView(APIView):
             'phoneNo': getattr(profile, 'phone_number', '') if profile else '',
             'profileImage': profile_img,
             'positionName': position_name,
-            'positionId': profile.position.id if (profile and profile.position) else 1,
+            'positionId': getattr(profile, 'position', None).id if (profile and getattr(profile, 'position', None)) else 1,
             'levelName': target_user.role,
             'levelRank': 1,
             'currentDepartmentName': dept_name,

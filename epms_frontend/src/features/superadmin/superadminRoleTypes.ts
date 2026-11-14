@@ -53,6 +53,8 @@ export interface UpdateFullMatrixRequest {
 export interface ImpersonateUserRequest {
   userId?: string;
   employeeId?: string | number;
+  email?: string;
+  username?: string;
 }
 
 export interface ImpersonateUserResponse {

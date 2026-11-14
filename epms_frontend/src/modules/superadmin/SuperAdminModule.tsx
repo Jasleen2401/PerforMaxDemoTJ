@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ShieldCheck, Users, FileClock, BarChart3, Settings2, Lock, Bell } from "lucide-react";
+import { ShieldCheck, Users, FileClock, Database, Settings2, Bell, Building2, LogIn } from "lucide-react";
 
 export const SuperAdminModule = () => {
   return (
@@ -20,11 +20,17 @@ export const SuperAdminModule = () => {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         <Link to="/employees" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all group">
           <Users className="text-indigo-600 mb-3" size={24} />
           <h3 className="font-semibold text-slate-900 group-hover:text-indigo-600">Employee Directory & Access</h3>
-          <p className="text-xs text-slate-500 mt-1">Manage all 80+ employees, lock/unlock accounts, assign roles.</p>
+          <p className="text-xs text-slate-500 mt-1">Manage all employees, lock/unlock accounts, assign roles.</p>
+        </Link>
+
+        <Link to="/admin/records" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all group">
+          <Database className="text-indigo-600 mb-3" size={24} />
+          <h3 className="font-semibold text-slate-900 group-hover:text-indigo-600">Record Management</h3>
+          <p className="text-xs text-slate-500 mt-1">Review system records and route exceptions to management workflows.</p>
         </Link>
 
         <Link to="/audit-logs" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all group">
@@ -36,13 +42,25 @@ export const SuperAdminModule = () => {
         <Link to="/superadmin/roles-permissions" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all group">
           <Settings2 className="text-indigo-600 mb-3" size={24} />
           <h3 className="font-semibold text-slate-900 group-hover:text-indigo-600">Role & Permission Management</h3>
-          <p className="text-xs text-slate-500 mt-1">Assign user roles, configure granular RBAC permission matrices, and manage access policies.</p>
+          <p className="text-xs text-slate-500 mt-1">Assign user roles and configure granular RBAC permission matrices.</p>
         </Link>
 
         <Link to="/superadmin/notifications" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all group">
           <Bell className="text-indigo-600 mb-3" size={24} />
           <h3 className="font-semibold text-slate-900 group-hover:text-indigo-600">Announcement Hub</h3>
-          <p className="text-xs text-slate-500 mt-1">Broadcast targeted announcements to Everyone, HR, Mentors, Interns, or specific users with scheduling.</p>
+          <p className="text-xs text-slate-500 mt-1">Broadcast targeted announcements to Everyone, HR, Mentors, or Interns.</p>
+        </Link>
+
+        <Link to="/departments" className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all group">
+          <Building2 className="text-indigo-600 mb-3" size={24} />
+          <h3 className="font-semibold text-slate-900 group-hover:text-indigo-600">Departments & Structure</h3>
+          <p className="text-xs text-slate-500 mt-1">Manage departmental hierarchies, teams, and organizational divisions.</p>
+        </Link>
+
+        <Link to="/dashboard?tab=impersonate" className="p-5 bg-gradient-to-br from-purple-50/50 via-white to-indigo-50/30 rounded-2xl border border-purple-200 hover:border-purple-400 shadow-xs hover:shadow-md transition-all group">
+          <LogIn className="text-purple-600 mb-3" size={24} />
+          <h3 className="font-semibold text-slate-900 group-hover:text-purple-600">Login As (Demo Personas)</h3>
+          <p className="text-xs text-slate-500 mt-1">One-click switch to demo HR, Mentor, or Intern personas from the dashboard.</p>
         </Link>
       </div>
     </div>

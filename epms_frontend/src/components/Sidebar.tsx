@@ -51,6 +51,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: "My KPI Journey", to: "/kpi/my-journey", icon: Milestone },
 ];
 
+const SUPERADMIN_NAV_ITEMS: NavItem[] = [
+  { label: "Admin Dashboard", to: "/dashboard", icon: LayoutDashboard },
+  { label: "Employee Directory", to: "/employees", icon: Users },
+  { label: "Role & Permissions", to: "/superadmin/roles-permissions", icon: ShieldCheck },
+  { label: "Record Management", to: "/admin/records", icon: Database },
+  { label: "Security Audit Logs", to: "/audit-logs", icon: History },
+  { label: "Org & Departments", to: "/departments", icon: Building2 },
+  { label: "Announcement Hub", to: "/superadmin/notifications", icon: Bell },
+];
+
 const HR_ORG_ITEMS: NavItem[] = [
   { label: "Employees Directory", to: "/employees", icon: Users },
   { label: "Departments", to: "/departments", icon: Building2 },
@@ -172,37 +182,63 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
       {/* Navigation Sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
-        {/* Core Intelligence */}
-        <div>
-          <div className="px-3 pb-1.5 text-[10px] font-bold tracking-widest text-white/40 uppercase">
-            Workspace
-          </div>
-          <div className="space-y-0.5">
-            {filteredNav.map((item) => {
-              const currentUrl = location.pathname + (location.search || "");
-              const isActive = item.to.includes("?")
-                ? currentUrl === item.to
-                : item.end
-                ? location.pathname === item.to && !location.search
-                : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard");
+        {isAdmin ? (
+          <div>
+            <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-white/50 uppercase">
+              Admin Workspace
+            </div>
+            <div className="space-y-1">
+              {SUPERADMIN_NAV_ITEMS.map((item) => {
+                const isActive = item.end
+                  ? location.pathname === item.to
+                  : location.pathname.startsWith(item.to);
 
-              return (
-                <NavLink
-                  key={item.label}
-                  to={item.to}
-                  className={navItemClass(isActive)}
-                  onClick={handleNavClick}
-                >
-                  <item.icon size={16} className={iconClass(isActive)} />
-                  <span className="truncate">{item.label}</span>
-                </NavLink>
-              );
-            })}
+                return (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    className={navItemClass(isActive)}
+                    onClick={handleNavClick}
+                  >
+                    <item.icon size={16} className={iconClass(isActive)} />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <div className="px-3 pb-1.5 text-[10px] font-bold tracking-widest text-white/40 uppercase">
+              Workspace
+            </div>
+            <div className="space-y-0.5">
+              {filteredNav.map((item) => {
+                const currentUrl = location.pathname + (location.search || "");
+                const isActive = item.to.includes("?")
+                  ? currentUrl === item.to
+                  : item.end
+                  ? location.pathname === item.to && !location.search
+                  : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard");
 
-        {/* Appraisal Configuration Accordion */}
-        {(isAdmin || isHR) && (
+                return (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    className={navItemClass(isActive)}
+                    onClick={handleNavClick}
+                  >
+                    <item.icon size={16} className={iconClass(isActive)} />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Traditional Review Accordion */}
+        {!isAdmin && (isHR || isManager) && (
           <div>
             <button
               onClick={() => setTradReviewOpen(!tradReviewOpen)}
@@ -266,7 +302,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
         )}
         {/* Goals & KPI Management Accordion */}
-        {!isInternUser && perfSubItems.length > 0 && (
+        {!isAdmin && !isInternUser && perfSubItems.length > 0 && (
           <div>
             <button
               onClick={() => setPerfOpen(!perfOpen)}
@@ -311,7 +347,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
         )}
 
         {/* Organization Hub */}
-        {(isAdmin || isHR) && (
+        {!isAdmin && isHR && (
           <div>
             <button
               onClick={() => setMgmtOpen(!mgmtOpen)}
@@ -331,7 +367,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
             {mgmtOpen && (
               <div className="ml-5 pl-2.5 mt-1 border-l border-white/20 space-y-0.5">
-                {(isAdmin ? SUPERADMIN_ORG_ITEMS : HR_ORG_ITEMS).map((item) => {
+                {HR_ORG_ITEMS.map((item) => {
                   const isActive = item.end
                     ? location.pathname === item.to
                     : location.pathname.startsWith(item.to);

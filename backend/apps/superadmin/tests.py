@@ -427,7 +427,7 @@ class SuperAdminImpersonateViewTests(TestCase):
             email='emp-imp@test.com',
             username='emp_imp',
             password='EmpPassword123!',
-            role=UserRole.EMPLOYEE,
+            role=getattr(UserRole, 'EMPLOYEE', UserRole.INTERN),
         )
         self.employee_profile = EmployeeProfile.objects.create(
             user=self.employee_user,

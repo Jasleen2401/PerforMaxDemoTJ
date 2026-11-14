@@ -187,6 +187,24 @@ class InternSelfAppraisalSubmission(models.Model):
     )
     is_submitted = models.BooleanField(default=False, db_index=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    workflow_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('NOT_STARTED', 'Not Started'),
+            ('IN_PROGRESS', 'In Progress'),
+            ('SUBMITTED', 'Submitted'),
+            ('UNDER_REVIEW', 'Under Review'),
+            ('RETURNED', 'Returned'),
+            ('PUBLISHED', 'Published'),
+        ],
+        default='IN_PROGRESS',
+        db_index=True
+    )
+    quarter_code = models.CharField(max_length=10, blank=True, default='Q2')
+    competency_ratings = models.JSONField(default=dict, blank=True)
+    evidence_attachments = models.JSONField(default=list, blank=True)
+    reviewer_comments = models.TextField(blank=True, default="")
+    returned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

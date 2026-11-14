@@ -37,6 +37,8 @@ urlpatterns = [
 
     # Self-Rating & Reflection
     path('self-appraisal/', views.InternSelfAppraisalView.as_view(), name='self_appraisal'),
+    path('self-appraisal/return/', views.InternReturnSelfAppraisalView.as_view(), name='self_appraisal_return'),
+    path('self-appraisal/status/', views.InternWorkflowStatusUpdateView.as_view(), name='self_appraisal_status'),
     path('evaluation/', views.InternSelfAppraisalView.as_view(), name='self_evaluation'),
 
     # Published Feedback, Scores, Classification, Improvement Areas & Reply

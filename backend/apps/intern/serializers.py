@@ -401,6 +401,8 @@ class InternSelfAppraisalSerializer(serializers.ModelSerializer):
             'id', 'cycle', 'cycle_name', 'self_rating', 'achievements',
             'challenges', 'skills_acquired', 'mentorship_needs',
             'reflection_summary', 'is_submitted', 'submitted_at',
+            'workflow_status', 'quarter_code', 'competency_ratings',
+            'evidence_attachments', 'reviewer_comments', 'returned_at',
             'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'cycle', 'cycle_name', 'submitted_at', 'created_at', 'updated_at')
@@ -418,6 +420,12 @@ class InternSelfAppraisalSerializer(serializers.ModelSerializer):
         ret['skillsAcquired'] = instance.skills_acquired
         ret['mentorshipNeeds'] = instance.mentorship_needs
         ret['reflectionSummary'] = instance.reflection_summary
+        ret['workflowStatus'] = instance.workflow_status
+        ret['quarterCode'] = instance.quarter_code
+        ret['competencyRatings'] = instance.competency_ratings or {}
+        ret['evidenceAttachments'] = instance.evidence_attachments or []
+        ret['reviewerComments'] = instance.reviewer_comments or ""
+        ret['returnedAt'] = instance.returned_at.isoformat() if instance.returned_at else None
         return ret
 
 

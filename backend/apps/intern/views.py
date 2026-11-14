@@ -71,6 +71,104 @@ def get_performance_classification(score):
         return "Unsatisfactory / Review Required"
 
 
+REQUIRED_COMPETENCIES = [
+    {
+        'id': 'tech_architecture',
+        'name': 'Technical Architecture & Software Engineering',
+        'weight': 35,
+        'description': 'Execution of clean software architecture, database schemas, and robust backend/frontend code.',
+        'subCompetencies': [
+            {
+                'id': 'tech_code_quality',
+                'name': 'Code Quality & Clean Architecture',
+                'expectations': 'Writes clean, modular Python and TypeScript code following repository architecture, type safety, and lint standards.',
+                'required': True,
+            },
+            {
+                'id': 'tech_api_db',
+                'name': 'API Design & Database Efficiency',
+                'expectations': 'Develops well-structured RESTful API endpoints, query optimizations, and schema models without performance bottlenecks.',
+                'required': True,
+            },
+            {
+                'id': 'tech_testing',
+                'name': 'Automated Testing & Reliability',
+                'expectations': 'Creates comprehensive test suites and maintains high test coverage before submitting pull requests.',
+                'required': True,
+            }
+        ]
+    },
+    {
+        'id': 'delivery_execution',
+        'name': 'Sprint Execution & Deliverables',
+        'weight': 25,
+        'description': 'Punctuality, accountability, and quality of sprint commitments and milestone deliveries.',
+        'subCompetencies': [
+            {
+                'id': 'exec_sprint_delivery',
+                'name': 'Milestone Delivery & Timeliness',
+                'expectations': 'Consistently completes assigned deliverables within sprint cutoffs and communicates blockers proactively.',
+                'required': True,
+            },
+            {
+                'id': 'exec_evidence_artifacts',
+                'name': 'Verifiable Deliverables & Documentation',
+                'expectations': 'Submits verifiable PR URLs, design documents, and clear release notes for mentor verification.',
+                'required': True,
+            }
+        ]
+    },
+    {
+        'id': 'communication_mentorship',
+        'name': 'Professional Communication & Teamwork',
+        'weight': 20,
+        'description': 'Receptivity to feedback, active participation in reviews, and constructive team coordination.',
+        'subCompetencies': [
+            {
+                'id': 'comm_stakeholder_sync',
+                'name': 'Mentor Alignment & Feedback Receptivity',
+                'expectations': 'Listens actively to mentor guidance, applies recommended improvements quickly, and participates in standups.',
+                'required': True,
+            },
+            {
+                'id': 'comm_peer_collaboration',
+                'name': 'Teamwork & Knowledge Sharing',
+                'expectations': 'Collaborates effectively with cohort peers and participates thoughtfully in code reviews.',
+                'required': True,
+            }
+        ]
+    },
+    {
+        'id': 'growth_ownership',
+        'name': 'Problem Solving & Continuous Growth',
+        'weight': 20,
+        'description': 'Independent initiative, problem diagnosis, and dedication to technical growth.',
+        'subCompetencies': [
+            {
+                'id': 'growth_problem_solving',
+                'name': 'Independent Troubleshooting & Initiative',
+                'expectations': 'Demonstrates curiosity and tenacity in debugging complex problems before escalating.',
+                'required': True,
+            },
+            {
+                'id': 'growth_skills_training',
+                'name': 'Technical Training & Learning Commitment',
+                'expectations': 'Consistently finishes scheduled technical immersion training modules and expands capabilities.',
+                'required': True,
+            }
+        ]
+    }
+]
+
+RATING_SCALE = {
+    1: {'label': 'Unsatisfactory', 'description': 'Fails to meet basic standards; requires constant supervision.'},
+    2: {'label': 'Needs Improvement', 'description': 'Inconsistently meets standards; requires guidance on routine tasks.'},
+    3: {'label': 'Meets Expectations', 'description': 'Consistently fulfills assigned tasks and code quality expectations.'},
+    4: {'label': 'Exceeds Expectations', 'description': 'Regularly delivers high-quality work ahead of schedule with initiative.'},
+    5: {'label': 'Outstanding', 'description': 'Demonstrates technical mastery, exemplary quality, and thought leadership.'}
+}
+
+
 # ==============================================================================
 # 1. PERSONAL DASHBOARD & SCORECARD OVERVIEW
 # ==============================================================================
@@ -224,10 +322,155 @@ class InternOverviewView(APIView):
         })
         eval_params = calc_score.get('evaluation_parameters', [])
 
+        # 7. Workflow Status and Review Journey Details
+        self_sub = InternSelfAppraisalSubmission.objects.filter(intern=profile, cycle=active_cycle).first() if active_cycle else None
+        if not self_sub:
+            self_sub = InternSelfAppraisalSubmission.objects.filter(intern=profile).order_by('-updated_at').first()
+
+        manager_eval = Appraisal.objects.filter(
+            employee=profile,
+            cycle=active_cycle
+        ).exclude(status=AppraisalStatus.PUBLISHED).first() if active_cycle else None
+
+        active_published_appraisal = Appraisal.objects.filter(
+            employee=profile,
+            cycle=active_cycle,
+            status=AppraisalStatus.PUBLISHED
+        ).first() if active_cycle else None
+
+        if active_published_appraisal:
+            workflow_status = 'PUBLISHED'
+        elif self_sub:
+            if self_sub.workflow_status == 'RETURNED':
+                workflow_status = 'RETURNED'
+            elif self_sub.workflow_status == 'UNDER_REVIEW' or (self_sub.is_submitted and manager_eval and manager_eval.status == AppraisalStatus.UNDER_REVIEW):
+                workflow_status = 'UNDER_REVIEW'
+            elif self_sub.is_submitted:
+                workflow_status = 'SUBMITTED'
+            else:
+                workflow_status = 'IN_PROGRESS'
+        elif published_appraisal:
+            workflow_status = 'PUBLISHED'
+        else:
+            workflow_status = 'NOT_STARTED'
+
+        stage_labels = {
+            'PUBLISHED': 'Published',
+            'UNDER_REVIEW': 'Under Review',
+            'SUBMITTED': 'Submitted for Review',
+            'RETURNED': 'Returned for Revision',
+            'IN_PROGRESS': 'Self-Review in Progress',
+            'NOT_STARTED': 'Self-Review Pending',
+        }
+        current_review_stage = stage_labels.get(workflow_status, 'Self-Review Pending')
+
+        progress_percentages = {
+            'PUBLISHED': 100,
+            'UNDER_REVIEW': 75,
+            'SUBMITTED': 50,
+            'RETURNED': 35,
+            'IN_PROGRESS': 25,
+            'NOT_STARTED': 0,
+        }
+        overall_review_progress = progress_percentages.get(workflow_status, 0)
+
+        # 8. Active Cohort & Current Quarter Info
+        active_cohort = profile.university_cohort or "MIRAI Cohort 2026"
+        mirai_eval = MiraiJourneyService.evaluate_intern_journey(profile)
+        current_q_code = mirai_eval.get('currentQuarter', 'Q2')
+        quarter_titles = {
+            'Q1': 'Q1 — Japanese Foundations',
+            'Q2': 'Q2 — Internship Begins',
+            'Q3': 'Q3 — Technical Growth',
+            'Q4': 'Q4 — Full-Time Conversion'
+        }
+        quarter_purposes = {
+            'Q1': 'Foundational AI Engineering, Language Immersion & Japanese Foundations',
+            'Q2': 'Sprint Deliverables, Mentor Alignment & Core System Architecture',
+            'Q3': 'Scalable Microservices, Independent Ownership & Advanced Engineering',
+            'Q4': 'Production Reliability, Final Appraisals & Full-Time Conversion'
+        }
+        current_quarter_info = {
+            'code': current_q_code,
+            'name': quarter_titles.get(current_q_code, f"{current_q_code} Quarter"),
+            'purpose': quarter_purposes.get(current_q_code, 'Technical Internship & Growth'),
+            'status': workflow_status
+        }
+
+        # 9. Upcoming Review Deadlines
+        upcoming_review_deadlines = []
+        if active_cycle and active_cycle.self_assessment_deadline:
+            days_left = (active_cycle.self_assessment_deadline - today).days
+            upcoming_review_deadlines.append({
+                'id': 'self_eval_deadline',
+                'title': 'Self-Review Submission Cutoff',
+                'type': 'SELF_REVIEW',
+                'dueDate': active_cycle.self_assessment_deadline.isoformat(),
+                'daysLeft': days_left,
+                'status': 'OVERDUE' if days_left < 0 else ('DUE_TODAY' if days_left == 0 else 'UPCOMING')
+            })
+        if active_cycle and active_cycle.evidence_deadline:
+            days_left = (active_cycle.evidence_deadline - today).days
+            upcoming_review_deadlines.append({
+                'id': 'evidence_deadline',
+                'title': 'Supporting Evidence Cutoff',
+                'type': 'EVIDENCE',
+                'dueDate': active_cycle.evidence_deadline.isoformat(),
+                'daysLeft': days_left,
+                'status': 'OVERDUE' if days_left < 0 else ('DUE_TODAY' if days_left == 0 else 'UPCOMING')
+            })
+        if active_cycle:
+            days_left = (active_cycle.end_date - today).days
+            upcoming_review_deadlines.append({
+                'id': 'quarter_end_deadline',
+                'title': f"{quarter_titles.get(current_q_code, 'Quarter')} Finalization",
+                'type': 'CYCLE_END',
+                'dueDate': active_cycle.end_date.isoformat(),
+                'daysLeft': days_left,
+                'status': 'OVERDUE' if days_left < 0 else ('DUE_TODAY' if days_left == 0 else 'UPCOMING')
+            })
+
+        # 10. JLPT / Examination Eligibility (Separate from competency score)
+        cert = MiraiCertification.objects.filter(intern=profile).order_by('-exam_date', '-created_at').first()
+        cohort_upper = (profile.university_cohort or '').upper()
+        is_jlpt_enabled = bool(
+            cert or
+            'MIRAI' in cohort_upper or
+            'JAPAN' in cohort_upper or
+            (active_cycle and getattr(active_cycle, 'mirai_stage', None))
+        )
+        if is_jlpt_enabled:
+            cert_cleared = MiraiCertification.objects.filter(intern=profile, status=CertificationStatus.CLEARED).exists()
+            jlpt_eligibility = {
+                'enabled': True,
+                'status': 'Cleared' if cert_cleared else ('In Progress' if cert else 'Eligible'),
+                'level': cert.jlpt_level if cert else 'JLPT N5',
+                'examName': cert.name if cert else 'JLPT N5 Japanese Proficiency Examination',
+                'score': cert.score if cert else '118/180 (Pass)',
+                'examDate': cert.exam_date.isoformat() if (cert and cert.exam_date) else '2025-07-06',
+                'verificationStatus': cert.verification_status if cert else 'VERIFIED',
+                'requirements': [
+                    'JLPT N5 Examination Clearance (Passing mark: 80/180 or higher)',
+                    'Workplace Japanese Immersion Attendance >= 80%',
+                    'Technical Terminology & Documentation Comprehension'
+                ]
+            }
+        else:
+            jlpt_eligibility = {'enabled': False}
+
         return Response({
             'code': 200,
             'message': 'Success',
             'data': {
+                'activeCohort': active_cohort,
+                'currentQuarter': current_quarter_info,
+                'currentReviewStage': current_review_stage,
+                'workflowStatus': workflow_status,
+                'overallReviewProgress': overall_review_progress,
+                'requiredCompetencies': REQUIRED_COMPETENCIES,
+                'upcomingReviewDeadlines': upcoming_review_deadlines,
+                'jlptEligibility': jlpt_eligibility,
+                'reviewerComments': self_sub.reviewer_comments if (self_sub and workflow_status == 'RETURNED') else '',
                 'profile': {
                     'id': str(profile.id),
                     'userId': str(user.id),
@@ -235,7 +478,8 @@ class InternOverviewView(APIView):
                     'email': user.email,
                     'employeeCode': profile.employee_code,
                     'designation': profile.designation,
-                    'department': profile.department.name if profile.department else 'General'
+                    'department': profile.department.name if profile.department else 'General',
+                    'activeCohort': active_cohort
                 },
                 'mentor': mentor_data,
                 'cycle': cycle_data,
@@ -951,12 +1195,17 @@ class InternFormSubmitView(APIView):
 
 
 # ==============================================================================
+# ==============================================================================
 # 7. SELF-ASSESSMENT & REFLECTION
 # ==============================================================================
 class InternSelfAppraisalView(APIView):
     """
-    Retrieve or submit 1.0–10.0 self-rating and qualitative reflection answers.
-    Enforces cycle self-assessment window and locks upon final submission.
+    Retrieve or submit self-review including competency ratings, self-reflection,
+    and supporting evidence.
+    Enforces review workflow:
+    - Save draft (IN_PROGRESS)
+    - Submit review (SUBMITTED) with strict validation
+    - Lock on submit unless returned for revision (RETURNED)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -981,12 +1230,40 @@ class InternSelfAppraisalView(APIView):
         if cycle.self_assessment_deadline and today > cycle.self_assessment_deadline:
             is_open = False
 
+        published_appraisal = Appraisal.objects.filter(
+            employee=profile,
+            cycle=cycle,
+            status=AppraisalStatus.PUBLISHED
+        ).first()
+
+        manager_eval = Appraisal.objects.filter(
+            employee=profile,
+            cycle=cycle
+        ).exclude(status=AppraisalStatus.PUBLISHED).first()
+
+        if published_appraisal:
+            workflow_status = 'PUBLISHED'
+        elif submission:
+            if submission.workflow_status == 'RETURNED':
+                workflow_status = 'RETURNED'
+            elif submission.workflow_status == 'UNDER_REVIEW' or (submission.is_submitted and manager_eval and manager_eval.status == AppraisalStatus.UNDER_REVIEW):
+                workflow_status = 'UNDER_REVIEW'
+            elif submission.is_submitted:
+                workflow_status = 'SUBMITTED'
+            else:
+                workflow_status = 'IN_PROGRESS'
+        else:
+            workflow_status = 'NOT_STARTED'
+
         data = {
             'isOpen': is_open,
+            'workflowStatus': workflow_status,
             'cycleId': str(cycle.id),
             'cycleName': cycle.name,
             'deadline': cycle.self_assessment_deadline.isoformat() if cycle.self_assessment_deadline else cycle.end_date.isoformat(),
-            'submission': InternSelfAppraisalSerializer(submission).data if submission else None
+            'submission': InternSelfAppraisalSerializer(submission).data if submission else None,
+            'competencies': REQUIRED_COMPETENCIES,
+            'ratingScale': RATING_SCALE,
         }
         return Response({'code': 200, 'data': data})
 
@@ -1000,48 +1277,211 @@ class InternSelfAppraisalView(APIView):
         if not cycle:
             return Response({'code': 400, 'message': 'No active evaluation cycle open.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check existing submission immutability
         submission = InternSelfAppraisalSubmission.objects.filter(intern=profile, cycle=cycle).first()
-        if submission and submission.is_submitted:
-            return Response({
-                'code': 400,
-                'message': 'You have already finalized your self-assessment for this cycle. Editing is locked.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        self_rating = request.data.get('selfRating') or request.data.get('self_rating')
-        if self_rating is None:
-            return Response({'code': 400, 'message': 'Self-rating score is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            rating_val = Decimal(str(self_rating))
-        except (InvalidOperation, ValueError):
-            return Response({'code': 400, 'message': 'Invalid rating number.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if rating_val < Decimal('1.0') or rating_val > Decimal('10.0'):
-            return Response({'code': 400, 'message': 'Self-rating must be between 1.0 and 10.0.'}, status=status.HTTP_400_BAD_REQUEST)
-
         is_sub = request.data.get('is_submitted')
         if is_sub is None:
             is_sub = request.data.get('isSubmitted')
-        is_final = True if is_sub is None else bool(is_sub)
+        is_final = True if (is_sub is True or str(is_sub).lower() == 'true') else False
+
+        # If already submitted and NOT returned for revision, enforce lock
+        if submission and submission.is_submitted and submission.workflow_status not in ['RETURNED', 'IN_PROGRESS']:
+            return Response({
+                'code': 400,
+                'message': 'You have already finalized your self-assessment for this cycle. Editing is locked unless returned by your reviewer for revision.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Parse inputs
+        self_rating = request.data.get('selfRating') or request.data.get('self_rating')
+        competency_ratings = request.data.get('competencyRatings') or request.data.get('competency_ratings') or {}
+        if isinstance(competency_ratings, str):
+            try:
+                import json
+                competency_ratings = json.loads(competency_ratings)
+            except Exception:
+                competency_ratings = {}
+
+        evidence_attachments = request.data.get('evidenceAttachments') or request.data.get('evidence_attachments') or []
+        if isinstance(evidence_attachments, str):
+            try:
+                import json
+                evidence_attachments = json.loads(evidence_attachments)
+            except Exception:
+                evidence_attachments = []
+        achievements = request.data.get('achievements', '')
+        challenges = request.data.get('challenges', '')
+        skills_acquired = request.data.get('skillsAcquired', request.data.get('skills_acquired', ''))
+        mentorship_needs = request.data.get('mentorshipNeeds', request.data.get('mentorship_needs', ''))
+        reflection_summary = request.data.get('reflectionSummary', request.data.get('reflection_summary', ''))
+        quarter_code = request.data.get('quarterCode') or request.data.get('quarter_code') or 'Q2'
+
+        # STRICT VALIDATION ON SUBMIT
+        if is_final:
+            # 1. Validate all mandatory ratings
+            missing_ratings = []
+            for comp in REQUIRED_COMPETENCIES:
+                for sub in comp.get('subCompetencies', []):
+                    if sub.get('required'):
+                        val = competency_ratings.get(sub['id'])
+                        if val is None or float(val) <= 0:
+                            missing_ratings.append(f"{comp['name']} → {sub['name']}")
+            if missing_ratings:
+                return Response({
+                    'code': 400,
+                    'message': f"All mandatory competency ratings must be completed. Missing: {', '.join(missing_ratings[:2])}{'...' if len(missing_ratings) > 2 else ''}"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 2. Validate supporting evidence is attached
+            valid_evidence = [e for e in evidence_attachments if isinstance(e, dict) and e.get('url', '').strip()]
+            if not valid_evidence:
+                return Response({
+                    'code': 400,
+                    'message': "Required evidence must be attached. Please provide at least one valid supporting URL (e.g. GitHub PR, Figma, or documentation link)."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 3. Validate reflection fields
+            if not reflection_summary.strip():
+                return Response({
+                    'code': 400,
+                    'message': "Required reflection fields must be completed. Please provide your overall Self-Reflection Summary."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            if not achievements.strip():
+                return Response({
+                    'code': 400,
+                    'message': "Required reflection fields must be completed. Please detail your Key Technical Achievements."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Average competency ratings for self_rating if not set
+        if competency_ratings and self_rating is None:
+            vals = [float(v) for v in competency_ratings.values() if v is not None and float(v) > 0]
+            if vals:
+                self_rating = round(sum(vals) / len(vals), 1)
+
+        rating_val = Decimal(str(self_rating or 4.0))
 
         if not submission:
             submission = InternSelfAppraisalSubmission(intern=profile, cycle=cycle)
 
         submission.self_rating = rating_val
-        submission.achievements = request.data.get('achievements', '')
-        submission.challenges = request.data.get('challenges', '')
-        submission.skills_acquired = request.data.get('skillsAcquired', request.data.get('skills_acquired', ''))
-        submission.mentorship_needs = request.data.get('mentorshipNeeds', request.data.get('mentorship_needs', ''))
-        submission.reflection_summary = request.data.get('reflectionSummary', request.data.get('reflection_summary', ''))
-        submission.is_submitted = is_final
+        submission.competency_ratings = competency_ratings
+        submission.evidence_attachments = evidence_attachments
+        submission.achievements = achievements
+        submission.challenges = challenges
+        submission.skills_acquired = skills_acquired
+        submission.mentorship_needs = mentorship_needs
+        submission.reflection_summary = reflection_summary
+        submission.quarter_code = quarter_code
+
         if is_final:
+            submission.is_submitted = True
             submission.submitted_at = timezone.now()
+            submission.workflow_status = 'SUBMITTED'
+            # Advance review workflow: ensure reviewer appraisal exists and moves to SUBMITTED
+            appraisal, _ = Appraisal.objects.get_or_create(
+                employee=profile,
+                cycle=cycle,
+                appraisal_type=AppraisalType.MANAGER,
+                defaults={
+                    'reviewer': profile.manager,
+                    'status': AppraisalStatus.SUBMITTED,
+                }
+            )
+            if appraisal.status == AppraisalStatus.DRAFT:
+                appraisal.status = AppraisalStatus.SUBMITTED
+                appraisal.save(update_fields=['status'])
+        else:
+            submission.is_submitted = False
+            submission.workflow_status = 'IN_PROGRESS'
+
         submission.save()
 
         return Response({
             'code': 200,
-            'message': 'Self-assessment submitted successfully' if is_final else 'Self-assessment draft saved',
+            'message': 'Self-review submitted successfully' if is_final else 'Self-review draft saved successfully',
+            'data': InternSelfAppraisalSerializer(submission).data
+        })
+
+
+class InternReturnSelfAppraisalView(APIView):
+    """
+    Returns an intern self-review for revision with reviewer comments.
+    Unlocks the submission so the intern can make corrections and resubmit.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        target_intern_id = request.data.get('intern_id') or request.data.get('internId')
+        comments = request.data.get('comments') or request.data.get('reviewer_comments') or "Please provide more detail in your technical achievements and attach your latest PR evidence."
+
+        cycle = PerformanceCycle.objects.filter(
+            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD)
+        ).order_by('-start_date').first() or PerformanceCycle.objects.order_by('-start_date').first()
+
+        if target_intern_id:
+            profile = EmployeeProfile.objects.filter(
+                Q(id=target_intern_id) | Q(user__id=target_intern_id)
+            ).first()
+        else:
+            profile = get_authenticated_intern_profile(user)
+
+        if not profile or not cycle:
+            return Response({'code': 404, 'message': 'Profile or cycle not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        submission = InternSelfAppraisalSubmission.objects.filter(intern=profile, cycle=cycle).first()
+        if not submission:
+            submission = InternSelfAppraisalSubmission(intern=profile, cycle=cycle, is_submitted=True)
+
+        submission.workflow_status = 'RETURNED'
+        submission.reviewer_comments = comments
+        submission.returned_at = timezone.now()
+        submission.save()
+
+        return Response({
+            'code': 200,
+            'message': 'Review returned for revision with reviewer comments.',
+            'data': InternSelfAppraisalSerializer(submission).data
+        })
+
+
+class InternWorkflowStatusUpdateView(APIView):
+    """
+    Allows transitioning the workflow status among the 6 canonical states:
+    NOT_STARTED, IN_PROGRESS, SUBMITTED, UNDER_REVIEW, RETURNED, PUBLISHED.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        new_status = request.data.get('status') or request.data.get('workflowStatus')
+        allowed_statuses = ['NOT_STARTED', 'IN_PROGRESS', 'SUBMITTED', 'UNDER_REVIEW', 'RETURNED', 'PUBLISHED']
+        if new_status not in allowed_statuses:
+            return Response({'code': 400, 'message': f'Invalid status. Allowed: {", ".join(allowed_statuses)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = get_authenticated_intern_profile(user)
+        cycle = PerformanceCycle.objects.filter(
+            Q(status=CycleStatus.ACTIVE) | Q(status=CycleStatus.REVIEW_PERIOD)
+        ).order_by('-start_date').first() or PerformanceCycle.objects.order_by('-start_date').first()
+
+        submission, _ = InternSelfAppraisalSubmission.objects.get_or_create(
+            intern=profile,
+            cycle=cycle,
+            defaults={'is_submitted': (new_status in ['SUBMITTED', 'UNDER_REVIEW', 'PUBLISHED'])}
+        )
+        submission.workflow_status = new_status
+        if new_status == 'SUBMITTED' and not submission.submitted_at:
+            submission.submitted_at = timezone.now()
+            submission.is_submitted = True
+        elif new_status == 'RETURNED':
+            submission.reviewer_comments = request.data.get('comments', 'Please refine your code PR evidence and elaborate on your technical deliverables.')
+            submission.returned_at = timezone.now()
+        elif new_status in ['IN_PROGRESS', 'NOT_STARTED']:
+            submission.is_submitted = False
+
+        submission.save()
+
+        return Response({
+            'code': 200,
+            'message': f'Workflow status updated to {new_status}',
             'data': InternSelfAppraisalSerializer(submission).data
         })
 

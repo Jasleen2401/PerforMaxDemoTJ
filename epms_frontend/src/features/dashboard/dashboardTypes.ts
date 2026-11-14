@@ -264,31 +264,116 @@ export interface InternPublishedResults {
   scoreBreakdown?: any;
 }
 
+export interface CompetencySubItem {
+  id: string;
+  name: string;
+  expectations: string;
+  required: boolean;
+}
+
+export interface CompetencyItem {
+  id: string;
+  name: string;
+  weight: number;
+  description: string;
+  subCompetencies: CompetencySubItem[];
+}
+
+export interface RatingScaleItem {
+  label: string;
+  description: string;
+}
+
+export interface EvidenceAttachmentItem {
+  id?: string;
+  title?: string;
+  url: string;
+  description?: string;
+  uploadedAt?: string;
+}
+
 export interface InternOverviewData {
-  personalScorecard: InternScorecardResponse;
-  mentor: InternMentorInfo;
-  cycle: InternCycleInfo;
-  deadlines: InternDeadlineItem[];
-  publishedResults: InternPublishedResults;
+  activeCohort?: string;
+  currentQuarter?: {
+    code: 'Q1' | 'Q2' | 'Q3' | 'Q4' | string;
+    name: string;
+    purpose: string;
+    status: string;
+  };
+  currentReviewStage?: string;
+  workflowStatus?: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'UNDER_REVIEW' | 'RETURNED' | 'PUBLISHED' | string;
+  overallReviewProgress?: number;
+  requiredCompetencies?: CompetencyItem[];
+  upcomingReviewDeadlines?: InternDeadlineItem[];
+  jlptEligibility?: {
+    enabled: boolean;
+    status?: string;
+    level?: string;
+    examName?: string;
+    score?: string;
+    examDate?: string;
+    verificationStatus?: string;
+    requirements?: string[];
+  };
+  reviewerComments?: string;
+  profile?: {
+    id: string;
+    userId: string;
+    name: string;
+    email: string;
+    employeeCode: string;
+    designation: string;
+    department: string;
+    activeCohort: string;
+  };
+  personalScorecard?: InternScorecardResponse;
+  mentor?: InternMentorInfo;
+  cycle?: InternCycleInfo;
+  deadlines?: InternDeadlineItem[];
+  publishedResults?: InternPublishedResults;
 }
 
 export interface InternSelfAppraisalData {
-  isEnabled: boolean;
-  isSubmitted: boolean;
-  submittedAt: string | null;
-  selfRating: number;
-  achievements: string;
-  challenges: string;
-  skillsAcquired: string;
-  mentorshipNeeds: string;
-  reflectionSummary: string;
-  hrQuestions: Array<{
+  isOpen?: boolean;
+  isEnabled?: boolean;
+  workflowStatus?: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'UNDER_REVIEW' | 'RETURNED' | 'PUBLISHED' | string;
+  cycleId?: string;
+  cycleName?: string;
+  deadline?: string;
+  competencies?: CompetencyItem[];
+  ratingScale?: Record<number, RatingScaleItem>;
+  submission?: {
+    id?: string;
+    selfRating?: number;
+    workflowStatus?: string;
+    quarterCode?: string;
+    competencyRatings?: Record<string, number>;
+    evidenceAttachments?: EvidenceAttachmentItem[];
+    achievements?: string;
+    challenges?: string;
+    skillsAcquired?: string;
+    mentorshipNeeds?: string;
+    reflectionSummary?: string;
+    reviewerComments?: string;
+    returnedAt?: string | null;
+    isSubmitted?: boolean;
+    submittedAt?: string | null;
+    updatedAt?: string;
+  } | null;
+  isSubmitted?: boolean;
+  submittedAt?: string | null;
+  selfRating?: number;
+  achievements?: string;
+  challenges?: string;
+  skillsAcquired?: string;
+  mentorshipNeeds?: string;
+  reflectionSummary?: string;
+  hrQuestions?: Array<{
     id: string;
     category: string;
     question: string;
     placeholder: string;
   }>;
-  cycleName: string;
 }
 
 export interface InternPublishedFeedbackData {
@@ -527,6 +612,11 @@ export interface MiraiQuarterItem {
   id: string;
   quarterCode: 'Q1' | 'Q2' | 'Q3' | 'Q4';
   title: string;
+  quarterName?: string;
+  purpose?: string;
+  submissionDueDate?: string | null;
+  requiredCompetencies?: CompetencyItem[];
+  ratingScale?: Record<number, RatingScaleItem>;
   status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
   startDate: string | null;
   endDate: string | null;

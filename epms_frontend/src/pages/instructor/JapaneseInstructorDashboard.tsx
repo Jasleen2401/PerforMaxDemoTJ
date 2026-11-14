@@ -131,30 +131,20 @@ export const JapaneseInstructorDashboard: React.FC = () => {
   const pendingEvaluations = useMemo(() => {
     if (safeEvaluations.length > 0) {
       return safeEvaluations
-        .filter((ev) => ["RETURNED", "DRAFT", "PENDING"].includes(ev.status))
+        .filter((ev) => ["DRAFT", "PENDING"].includes(ev.status))
         .map((ev) => ({
           id: ev.id,
           internName: ev.intern_name || "Intern",
           internCode: ev.intern_code || "",
-          status: ev.status,
-          returnReason: ev.return_reason || "",
+          status: ev.status === "DRAFT" ? "DRAFT" : "PENDING",
         }));
     }
-    if (dashboardData?.returned_evaluations && Array.isArray(dashboardData.returned_evaluations) && dashboardData.returned_evaluations.length > 0) {
-      return dashboardData.returned_evaluations.map((ev) => ({
-        id: ev.id,
-        internName: ev.internName,
-        internCode: ev.internCode,
-        status: ev.status,
-        returnReason: ev.returnReason,
-      }));
-    }
     return [];
-  }, [safeEvaluations, dashboardData?.returned_evaluations]);
+  }, [safeEvaluations]);
 
-  const returnedCount =
-    dashboardData?.evaluations_summary?.returned ??
-    pendingEvaluations.filter((e) => e.status === "RETURNED").length;
+  const pendingCount =
+    dashboardData?.evaluations_summary?.pending ??
+    pendingEvaluations.filter((e) => e.status === "PENDING").length;
   const draftCount =
     dashboardData?.evaluations_summary?.draft ??
     pendingEvaluations.filter((e) => e.status === "DRAFT").length;
@@ -262,29 +252,27 @@ export const JapaneseInstructorDashboard: React.FC = () => {
   // Section C: Evaluation Status Donut Data
   // -------------------------------------------------------------------------
   const evaluationDonutData = useMemo(() => {
-    const rawPending =
-      (dashboardData?.evaluations_summary?.pending ?? 0) +
-      (dashboardData?.evaluations_summary?.draft ?? 0);
-    const rawCompleted =
-      (dashboardData?.evaluations_summary?.submitted ?? 0) +
-      (dashboardData?.evaluations_summary?.accepted ?? 0);
-    const rawReturned = dashboardData?.evaluations_summary?.returned ?? 0;
+    const rawPending = dashboardData?.evaluations_summary?.pending ?? 0;
+    const rawDraft = dashboardData?.evaluations_summary?.draft ?? 0;
+    const rawSubmitted = dashboardData?.evaluations_summary?.submitted ?? 0;
+    const rawCompleted = dashboardData?.evaluations_summary?.accepted ?? 0;
 
     const actualPending =
-      rawPending > 0 ? rawPending : pendingEvaluations.filter((e) => e.status !== "RETURNED").length;
-    const actualReturned =
-      rawReturned > 0 ? rawReturned : pendingEvaluations.filter((e) => e.status === "RETURNED").length;
+      rawPending > 0 ? rawPending : safeEvaluations.filter((e) => e.status === "PENDING").length;
+    const actualDraft =
+      rawDraft > 0 ? rawDraft : safeEvaluations.filter((e) => e.status === "DRAFT").length;
+    const actualSubmitted =
+      rawSubmitted > 0 ? rawSubmitted : safeEvaluations.filter((e) => e.status === "SUBMITTED" || e.status === "RESUBMITTED").length;
     const actualCompleted =
-      rawCompleted > 0
-        ? rawCompleted
-        : safeEvaluations.filter((e) => ["SUBMITTED", "ACCEPTED"].includes(e.status)).length;
+      rawCompleted > 0 ? rawCompleted : safeEvaluations.filter((e) => e.status === "ACCEPTED").length;
 
-    const total = actualPending + actualCompleted + actualReturned;
+    const total = actualPending + actualDraft + actualSubmitted + actualCompleted;
 
     const segments = [
       { name: "Pending", value: actualPending, color: "#F59E0B" },
-      { name: "Completed", value: actualCompleted, color: "#6D3FEA" },
-      { name: "Returned", value: actualReturned, color: "#F43F5E" },
+      { name: "Draft", value: actualDraft, color: "#8B5CF6" },
+      { name: "Submitted", value: actualSubmitted, color: "#3B82F6" },
+      { name: "Completed", value: actualCompleted, color: "#10B981" },
     ];
 
     const activeSegments = segments.filter((s) => s.value > 0);
@@ -296,11 +284,12 @@ export const JapaneseInstructorDashboard: React.FC = () => {
         : [{ name: "No Evaluations", value: 1, color: "#E2E8F0" }],
       raw: {
         pending: actualPending,
+        draft: actualDraft,
+        submitted: actualSubmitted,
         completed: actualCompleted,
-        returned: actualReturned,
       },
     };
-  }, [dashboardData?.evaluations_summary, pendingEvaluations, safeEvaluations]);
+  }, [dashboardData?.evaluations_summary, safeEvaluations]);
 
   // -------------------------------------------------------------------------
   // Section D: Batch-wise Intern Distribution Data
@@ -450,7 +439,7 @@ export const JapaneseInstructorDashboard: React.FC = () => {
             </div>
           </div>
           <div className="text-right shrink-0 flex items-center gap-1 text-[11px] font-semibold text-amber-700 group-hover:text-amber-800">
-            <span>{returnedCount > 0 ? `${returnedCount} returned` : `${draftCount} drafts`}</span>
+            <span>{draftCount > 0 ? `${draftCount} drafts` : `${pendingCount} pending`}</span>
             <ChevronRight size={13} className="text-slate-300 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all" />
           </div>
         </div>
@@ -621,12 +610,16 @@ export const JapaneseInstructorDashboard: React.FC = () => {
               <span className="text-slate-600">Pending ({evaluationDonutData.raw.pending})</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-600" />
-              <span className="text-slate-600">Done ({evaluationDonutData.raw.completed})</span>
+              <span className="w-2 h-2 rounded-full bg-purple-500" />
+              <span className="text-slate-600">Draft ({evaluationDonutData.raw.draft})</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span className="text-slate-600">Returned ({evaluationDonutData.raw.returned})</span>
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-slate-600">Submitted ({evaluationDonutData.raw.submitted})</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-slate-600">Done ({evaluationDonutData.raw.completed})</span>
             </div>
           </div>
         </div>
@@ -866,28 +859,21 @@ export const JapaneseInstructorDashboard: React.FC = () => {
                         <span className="font-bold text-slate-900 text-xs">{ev.internName}</span>
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                            ev.status === "RETURNED"
-                              ? "bg-rose-100 text-rose-700"
-                              : ev.status === "DRAFT"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-blue-100 text-blue-700"
+                            ev.status === "DRAFT"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-amber-100 text-amber-700"
                           }`}
                         >
                           {ev.status}
                         </span>
                       </div>
-                      {ev.returnReason && (
-                        <div className="p-2 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800">
-                          <strong>HR Feedback:</strong> {ev.returnReason}
-                        </div>
-                      )}
                       <div className="pt-1 flex items-center justify-end">
                         <Link
                           to={`/japanese/evaluations?evaluationId=${ev.id}`}
                           onClick={() => setActiveDetailCard(null)}
-                          className="text-[11px] font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1"
+                          className="text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1"
                         >
-                          {ev.status === "RETURNED" ? "Revise & Resubmit" : "Evaluate"} <ArrowRight size={11} />
+                          {ev.status === "DRAFT" ? "Continue Draft" : "Evaluate"} <ArrowRight size={11} />
                         </Link>
                       </div>
                     </div>

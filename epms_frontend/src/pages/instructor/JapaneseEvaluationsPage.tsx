@@ -6,24 +6,21 @@ import {
   Search,
   Filter,
   CheckCircle2,
-  AlertCircle,
   FileCheck,
   Send,
   Plus,
-  ShieldAlert,
   ArrowRight,
   RefreshCw,
   Clock,
   ExternalLink,
   Award,
   Layers,
-  UserCheck,
+  FileEdit,
   X,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import {
   useGetJapaneseEvaluationsQuery,
-  useGetJapaneseInternsQuery,
   useGetJapaneseBatchesQuery,
 } from "../../features/japanese/japaneseApi";
 import { ConductJapaneseEvaluationModal } from "../../components/instructor/ConductJapaneseEvaluationModal";
@@ -93,13 +90,13 @@ export const JapaneseEvaluationsPage: React.FC = () => {
 
   // Status-based counts
   const counts = useMemo(() => {
-    const returned = evaluations.filter((e) => e.status === "RETURNED").length;
-    const drafts = evaluations.filter((e) => e.status === "DRAFT" || e.status === "PENDING").length;
+    const pending = evaluations.filter((e) => e.status === "PENDING").length;
+    const drafts = evaluations.filter((e) => e.status === "DRAFT").length;
     const submitted = evaluations.filter(
       (e) => e.status === "SUBMITTED" || e.status === "RESUBMITTED"
     ).length;
     const accepted = evaluations.filter((e) => e.status === "ACCEPTED").length;
-    return { returned, drafts, submitted, accepted, total: evaluations.length };
+    return { pending, drafts, submitted, accepted, total: evaluations.length };
   }, [evaluations]);
 
   // Main batches and sub-batches
@@ -120,8 +117,8 @@ export const JapaneseEvaluationsPage: React.FC = () => {
   const filteredEvaluations = useMemo(() => {
     return evaluations.filter((ev) => {
       // Status filter
-      if (activeStatus === "RETURNED" && ev.status !== "RETURNED") return false;
-      if (activeStatus === "DRAFT" && ev.status !== "DRAFT" && ev.status !== "PENDING") return false;
+      if (activeStatus === "PENDING" && ev.status !== "PENDING") return false;
+      if (activeStatus === "DRAFT" && ev.status !== "DRAFT") return false;
       if (
         activeStatus === "SUBMITTED" &&
         ev.status !== "SUBMITTED" &&
@@ -161,8 +158,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
           ev.intern_name?.toLowerCase().includes(term) ||
           ev.intern_code?.toLowerCase().includes(term) ||
           ev.intern_email?.toLowerCase().includes(term);
-        const reasonMatch = ev.return_reason?.toLowerCase().includes(term);
-        if (!internMatch && !reasonMatch) return false;
+        if (!internMatch) return false;
       }
 
       return true;
@@ -196,7 +192,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold text-slate-900">Language Evaluations</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Evaluate intern Japanese proficiency, manage evaluation drafts, and review revisions returned by HR.
+            Evaluate intern Japanese proficiency, manage evaluation drafts, and submit evaluations for review.
           </p>
         </div>
 
@@ -226,78 +222,53 @@ export const JapaneseEvaluationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Returned Evaluations Priority Alert Banner */}
-      {counts.returned > 0 && activeStatus !== "RETURNED" && (
-        <div className="bg-rose-50/90 border border-rose-200 rounded-3xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-              <ShieldAlert size={20} />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-rose-900">
-                {counts.returned} Evaluation{counts.returned > 1 ? "s" : ""} Returned by HR for Revision
-              </div>
-              <p className="text-[11px] text-rose-700">
-                Action required: Update remarks, calibration scores, or specific guidance and resubmit to HR.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => handleStatusFilterChange("RETURNED")}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer shrink-0 transition-all"
-          >
-            Review Returned ({counts.returned})
-          </button>
-        </div>
-      )}
-
       {/* 4 Interactive Overview Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Returned by HR */}
+        {/* Pending Evaluations */}
         <div
           onClick={() =>
-            handleStatusFilterChange(activeStatus === "RETURNED" ? "ALL" : "RETURNED")
+            handleStatusFilterChange(activeStatus === "PENDING" ? "ALL" : "PENDING")
           }
           className={`cursor-pointer transition-all rounded-3xl p-5 border shadow-xs ${
-            activeStatus === "RETURNED"
-              ? "bg-rose-50 border-rose-300 ring-2 ring-rose-400"
-              : "bg-white border-slate-200/80 hover:border-rose-200 hover:bg-rose-50/30"
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
-              Returned by HR
-            </span>
-            <div className="w-7 h-7 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
-              <ShieldAlert size={14} />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-rose-900">{counts.returned}</div>
-          <div className="text-[11px] text-rose-600 mt-1 font-medium">
-            {counts.returned > 0 ? "Requires revision & resubmission" : "No revisions pending"}
-          </div>
-        </div>
-
-        {/* Drafts / Pending */}
-        <div
-          onClick={() => handleStatusFilterChange(activeStatus === "DRAFT" ? "ALL" : "DRAFT")}
-          className={`cursor-pointer transition-all rounded-3xl p-5 border shadow-xs ${
-            activeStatus === "DRAFT"
+            activeStatus === "PENDING"
               ? "bg-amber-50 border-amber-300 ring-2 ring-amber-400"
-              : "bg-white border-slate-200/80 hover:border-amber-200 hover:bg-amber-50/30"
+              : "bg-white border-slate-200/80 hover:border-amber-200 hover:bg-amber-50/20"
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
-              Draft / In Progress
+              Pending Evaluations
             </span>
             <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
               <Clock size={14} />
             </div>
           </div>
-          <div className="text-2xl font-black text-amber-900">{counts.drafts}</div>
+          <div className="text-2xl font-black text-amber-900">{counts.pending}</div>
           <div className="text-[11px] text-amber-600 mt-1 font-medium">
-            Unfinished evaluation drafts
+            Awaiting language assessment
+          </div>
+        </div>
+
+        {/* Draft Evaluations */}
+        <div
+          onClick={() => handleStatusFilterChange(activeStatus === "DRAFT" ? "ALL" : "DRAFT")}
+          className={`cursor-pointer transition-all rounded-3xl p-5 border shadow-xs ${
+            activeStatus === "DRAFT"
+              ? "bg-purple-50 border-purple-300 ring-2 ring-purple-400"
+              : "bg-white border-slate-200/80 hover:border-purple-200 hover:bg-purple-50/20"
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-purple-800 uppercase tracking-wider">
+              Draft Evaluations
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+              <FileEdit size={14} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-purple-900">{counts.drafts}</div>
+          <div className="text-[11px] text-purple-600 mt-1 font-medium">
+            Saved in-progress drafts
           </div>
         </div>
 
@@ -309,12 +280,12 @@ export const JapaneseEvaluationsPage: React.FC = () => {
           className={`cursor-pointer transition-all rounded-3xl p-5 border shadow-xs ${
             activeStatus === "SUBMITTED"
               ? "bg-blue-50 border-blue-300 ring-2 ring-blue-400"
-              : "bg-white border-slate-200/80 hover:border-blue-200 hover:bg-blue-50/30"
+              : "bg-white border-slate-200/80 hover:border-blue-200 hover:bg-blue-50/20"
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">
-              Submitted to HR
+              Submitted Evaluations
             </span>
             <div className="w-7 h-7 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
               <Send size={14} />
@@ -322,7 +293,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
           </div>
           <div className="text-2xl font-black text-blue-900">{counts.submitted}</div>
           <div className="text-[11px] text-blue-600 mt-1 font-medium">
-            Awaiting HR review & acceptance
+            Submitted for review
           </div>
         </div>
 
@@ -334,12 +305,12 @@ export const JapaneseEvaluationsPage: React.FC = () => {
           className={`cursor-pointer transition-all rounded-3xl p-5 border shadow-xs ${
             activeStatus === "ACCEPTED"
               ? "bg-emerald-50 border-emerald-300 ring-2 ring-emerald-400"
-              : "bg-white border-slate-200/80 hover:border-emerald-200 hover:bg-emerald-50/30"
+              : "bg-white border-slate-200/80 hover:border-emerald-200 hover:bg-emerald-50/20"
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-              Accepted / Published
+              Accepted / Completed
             </span>
             <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
               <CheckCircle2 size={14} />
@@ -362,7 +333,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by intern name, employee ID, email, or notes..."
+              placeholder="Search by intern name, employee ID, or email..."
               className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl border border-slate-200 focus:border-purple-500 focus:outline-none bg-slate-50/60"
             />
           </div>
@@ -410,10 +381,10 @@ export const JapaneseEvaluationsPage: React.FC = () => {
               className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:border-purple-500 focus:outline-none"
             >
               <option value="ALL">All Statuses ({counts.total})</option>
-              <option value="RETURNED">Returned by HR ({counts.returned})</option>
-              <option value="DRAFT">Draft / Pending ({counts.drafts})</option>
-              <option value="SUBMITTED">Submitted to HR ({counts.submitted})</option>
-              <option value="ACCEPTED">Accepted / Published ({counts.accepted})</option>
+              <option value="PENDING">Pending ({counts.pending})</option>
+              <option value="DRAFT">Draft ({counts.drafts})</option>
+              <option value="SUBMITTED">Submitted ({counts.submitted})</option>
+              <option value="ACCEPTED">Accepted ({counts.accepted})</option>
             </select>
           </div>
 
@@ -488,14 +459,14 @@ export const JapaneseEvaluationsPage: React.FC = () => {
                   <th className="py-4 px-4">Performance Cycle</th>
                   <th className="py-4 px-4">Overall Score</th>
                   <th className="py-4 px-4">Criteria Rated</th>
-                  <th className="py-4 px-4">Status & Notes</th>
+                  <th className="py-4 px-4">Status</th>
                   <th className="py-4 px-6 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredEvaluations.map((ev) => {
-                  const isReturned = ev.status === "RETURNED";
-                  const isDraft = ev.status === "DRAFT" || ev.status === "PENDING";
+                  const isDraft = ev.status === "DRAFT";
+                  const isPending = ev.status === "PENDING";
                   const isAccepted = ev.status === "ACCEPTED";
                   const isSubmitted = ev.status === "SUBMITTED" || ev.status === "RESUBMITTED";
 
@@ -507,9 +478,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
                   return (
                     <tr
                       key={ev.id}
-                      className={`hover:bg-slate-50/60 transition-colors ${
-                        isReturned ? "bg-rose-50/35" : ""
-                      }`}
+                      className="hover:bg-slate-50/60 transition-colors"
                     >
                       {/* Intern column */}
                       <td className="py-4 px-6">
@@ -561,7 +530,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
 
                       {/* Cycle */}
                       <td className="py-4 px-4 text-slate-700 font-medium">
-                        {ev.cycle_name || "H1 2025 Performance Appraisal"}
+                        {ev.cycle_name || "Active Performance Cycle"}
                       </td>
 
                       {/* Overall Score */}
@@ -582,7 +551,7 @@ export const JapaneseEvaluationsPage: React.FC = () => {
                             <span className="text-[10.5px] text-slate-400">/ 10.0</span>
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic text-[11px]">Unscored Draft</span>
+                          <span className="text-slate-400 italic text-[11px]">Unscored</span>
                         )}
                       </td>
 
@@ -594,36 +563,25 @@ export const JapaneseEvaluationsPage: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Status & Return Notes */}
+                      {/* Status */}
                       <td className="py-4 px-4">
-                        <div className="space-y-1">
-                          <span
-                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                              isReturned
-                                ? "bg-rose-100 text-rose-700 border border-rose-200"
-                                : isAccepted
-                                ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                                : isSubmitted
-                                ? "bg-blue-100 text-blue-700 border border-blue-200"
-                                : "bg-amber-100 text-amber-700 border border-amber-200"
-                            }`}
-                          >
-                            {isReturned && <ShieldAlert size={11} />}
-                            {isAccepted && <CheckCircle2 size={11} />}
-                            {isSubmitted && <Send size={11} />}
-                            {isDraft && <Clock size={11} />}
-                            {ev.status_display || ev.status}
-                          </span>
-
-                          {isReturned && ev.return_reason && (
-                            <div
-                              className="text-[11px] text-rose-700 bg-rose-100/60 p-1.5 rounded-lg border border-rose-200 line-clamp-2 max-w-xs"
-                              title={ev.return_reason}
-                            >
-                              <strong>HR Note:</strong> {ev.return_reason}
-                            </div>
-                          )}
-                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                            isAccepted
+                              ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                              : isSubmitted
+                              ? "bg-blue-100 text-blue-700 border border-blue-200"
+                              : isPending
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : "bg-purple-100 text-purple-700 border border-purple-200"
+                          }`}
+                        >
+                          {isAccepted && <CheckCircle2 size={11} />}
+                          {isSubmitted && <Send size={11} />}
+                          {isPending && <Clock size={11} />}
+                          {isDraft && <FileEdit size={11} />}
+                          {isDraft ? "Draft" : ev.status_display || ev.status}
+                        </span>
                       </td>
 
                       {/* Actions */}
@@ -631,18 +589,18 @@ export const JapaneseEvaluationsPage: React.FC = () => {
                         <button
                           onClick={() => handleOpenEvaluation(ev)}
                           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5 ${
-                            isReturned
-                              ? "bg-rose-600 hover:bg-rose-700 text-white"
-                              : isDraft
+                            isDraft
+                              ? "bg-purple-600 hover:bg-purple-700 text-white"
+                              : isPending
                               ? "bg-amber-500 hover:bg-amber-600 text-white"
-                              : "bg-purple-600 hover:bg-purple-700 text-white"
+                              : "bg-slate-700 hover:bg-slate-800 text-white"
                           }`}
                         >
                           <FileCheck size={13} />
-                          {isReturned
-                            ? "Revise & Resubmit"
-                            : isDraft
+                          {isDraft
                             ? "Continue Draft"
+                            : isPending
+                            ? "Start Evaluation"
                             : "View Evaluation"}
                         </button>
                       </td>

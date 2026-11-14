@@ -575,32 +575,35 @@ class JapaneseDashboardView(APIView):
         if cycle:
             eligibility_qs = eligibility_qs.filter(cycle=cycle)
 
-        # Returned evaluations (urgent attention)
-        returned_evals = [
-            {
-                'id': str(ev.id),
-                'internId': str(ev.intern.id),
-                'internName': ev.intern.full_name or ev.intern.user.username,
-                'internCode': ev.intern.employee_code,
-                'cycleName': ev.cycle.name,
-                'status': ev.status,
-                'returnReason': ev.return_reason,
-                'returnedAt': ev.returned_at.isoformat() if ev.returned_at else None,
-            }
-            for ev in evals_qs.filter(status='RETURNED')
-        ]
+        # Returned evaluations (urgent attention for HR/Admin; excluded from Instructor persona)
+        returned_evals = []
+        if request.user.role != 'INSTRUCTOR':
+            returned_evals = [
+                {
+                    'id': str(ev.id),
+                    'internId': str(ev.intern.id),
+                    'internName': ev.intern.full_name or ev.intern.user.username,
+                    'internCode': ev.intern.employee_code,
+                    'cycleName': ev.cycle.name,
+                    'status': ev.status,
+                    'returnReason': ev.return_reason,
+                    'returnedAt': ev.returned_at.isoformat() if ev.returned_at else None,
+                }
+                for ev in evals_qs.filter(status='RETURNED')
+            ]
 
         # Pending Actions
         pending_actions = []
-        for ev in returned_evals:
-            pending_actions.append({
-                'type': 'RETURNED_EVALUATION',
-                'title': f'Evaluation Returned: {ev["internName"]}',
-                'description': ev['returnReason'] or 'HR requested revisions on this evaluation.',
-                'link': f'/japanese/evaluations?evaluationId={ev["id"]}',
-                'severity': 'HIGH',
-                'date': ev['returnedAt'],
-            })
+        if request.user.role != 'INSTRUCTOR':
+            for ev in returned_evals:
+                pending_actions.append({
+                    'type': 'RETURNED_EVALUATION',
+                    'title': f'Evaluation Returned: {ev["internName"]}',
+                    'description': ev['returnReason'] or 'HR requested revisions on this evaluation.',
+                    'link': f'/japanese/evaluations?evaluationId={ev["id"]}',
+                    'severity': 'HIGH',
+                    'date': ev['returnedAt'],
+                })
 
         for p in practice_qs.filter(status='SUBMITTED')[:5]:
             pending_actions.append({
@@ -663,9 +666,9 @@ class JapaneseDashboardView(APIView):
             'evaluations_summary': {
                 'total': evals_qs.count(),
                 'pending': evals_qs.filter(status=EvaluationStatus.PENDING).count(),
-                'draft': evals_qs.filter(status=EvaluationStatus.DRAFT).count(),
-                'submitted': evals_qs.filter(status=EvaluationStatus.SUBMITTED).count(),
-                'returned': evals_qs.filter(status=EvaluationStatus.RETURNED).count(),
+                'draft': evals_qs.filter(status__in=[EvaluationStatus.DRAFT, EvaluationStatus.RETURNED] if request.user.role == 'INSTRUCTOR' else [EvaluationStatus.DRAFT]).count(),
+                'submitted': evals_qs.filter(status__in=[EvaluationStatus.SUBMITTED, EvaluationStatus.RESUBMITTED]).count(),
+                'returned': 0 if request.user.role == 'INSTRUCTOR' else evals_qs.filter(status=EvaluationStatus.RETURNED).count(),
                 'accepted': evals_qs.filter(status=EvaluationStatus.ACCEPTED).count(),
             },
             'returned_evaluations': returned_evals,
@@ -782,10 +785,10 @@ class JapaneseInternsView(APIView):
                 },
                 'evaluation': {
                     'id': str(evaluation.id) if evaluation else None,
-                    'status': evaluation.status if evaluation else 'NOT_ASSIGNED',
-                    'statusDisplay': evaluation.get_status_display() if evaluation else 'Not Assigned',
+                    'status': ('DRAFT' if (request.user.role == 'INSTRUCTOR' and evaluation.status == 'RETURNED') else evaluation.status) if evaluation else 'NOT_ASSIGNED',
+                    'statusDisplay': ('Draft' if (request.user.role == 'INSTRUCTOR' and evaluation.status == 'RETURNED') else evaluation.get_status_display()) if evaluation else 'Not Assigned',
                     'overallScore': float(evaluation.overall_language_score) if evaluation and evaluation.overall_language_score is not None else None,
-                    'returnReason': evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else '',
+                    'returnReason': '' if request.user.role == 'INSTRUCTOR' else (evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else ''),
                 } if evaluation else None,
                 'jlpt': {
                     'requiredLevel': eligibility.required_level if eligibility else (plan.target_jlpt_level if plan else 'N4'),

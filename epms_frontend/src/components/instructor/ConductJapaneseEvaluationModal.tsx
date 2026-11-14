@@ -6,7 +6,6 @@ import {
   AlertCircle,
   Save,
   Send,
-  ShieldAlert,
   FileText,
   ExternalLink,
   ChevronDown,
@@ -140,8 +139,6 @@ export const ConductJapaneseEvaluationModal: React.FC<ConductJapaneseEvaluationM
   const displayCode = evaluation?.intern_code || currentIntern?.employeeCode || "";
   const displayBatch = evaluation?.batch_name || currentIntern?.batchName || "";
   const displaySubBatch = evaluation?.sub_batch_code || currentIntern?.subBatchCode || "";
-  const isReturned = evaluation?.status === "RETURNED";
-  const isResubmission = isReturned || evaluation?.status === "RESUBMITTED";
   const submittedEvidence = evaluation?.submitted_evidence || [];
 
   const handleScoreChange = (critId: string, val: number) => {
@@ -198,7 +195,7 @@ export const ConductJapaneseEvaluationModal: React.FC<ConductJapaneseEvaluationM
       }
 
       let evalId = evaluation?.id;
-      const targetStatus: EvaluationStatus = isReturned ? "RESUBMITTED" : "SUBMITTED";
+      const targetStatus: EvaluationStatus = "SUBMITTED";
       const payload = buildPayload(targetStatus);
 
       if (evalId) {
@@ -211,11 +208,7 @@ export const ConductJapaneseEvaluationModal: React.FC<ConductJapaneseEvaluationM
       if (evalId) {
         await submitEval(evalId).unwrap();
       }
-      toast.success(
-        isReturned
-          ? "Evaluation resubmitted to HR successfully!"
-          : "Evaluation submitted to HR review queue!"
-      );
+      toast.success("Evaluation submitted to HR review queue!");
       setShowConfirmSubmit(false);
       onClose();
     } catch (err: any) {
@@ -240,16 +233,18 @@ export const ConductJapaneseEvaluationModal: React.FC<ConductJapaneseEvaluationM
                 <h2 className="text-base font-bold text-slate-900">Japanese Language Evaluation</h2>
                 <span
                   className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                    evaluation?.status === "RETURNED"
-                      ? "bg-rose-100 text-rose-700 border border-rose-200"
-                      : evaluation?.status === "SUBMITTED" || evaluation?.status === "RESUBMITTED"
+                    evaluation?.status === "SUBMITTED" || evaluation?.status === "RESUBMITTED"
                       ? "bg-blue-100 text-blue-700 border border-blue-200"
                       : evaluation?.status === "ACCEPTED"
                       ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                      : "bg-amber-100 text-amber-700 border border-amber-200"
+                      : evaluation?.status === "PENDING"
+                      ? "bg-amber-100 text-amber-700 border border-amber-200"
+                      : "bg-purple-100 text-purple-700 border border-purple-200"
                   }`}
                 >
-                  {evaluation?.status_display || evaluation?.status || "Draft"}
+                  {evaluation?.status === "DRAFT"
+                    ? "Draft"
+                    : evaluation?.status_display || evaluation?.status || "Draft"}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -288,23 +283,6 @@ export const ConductJapaneseEvaluationModal: React.FC<ConductJapaneseEvaluationM
                   </option>
                 ))}
               </select>
-            </div>
-          )}
-          {/* Urgent Return Alert if status is RETURNED */}
-          {isReturned && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3">
-              <ShieldAlert className="text-rose-600 shrink-0 mt-0.5" size={20} />
-              <div className="space-y-1">
-                <div className="font-bold text-rose-900 text-sm">
-                  Evaluation Returned by HR for Revision
-                </div>
-                <p className="text-rose-800 leading-relaxed font-medium">
-                  {evaluation?.return_reason || "HR has requested revisions before accepting this evaluation."}
-                </p>
-                <p className="text-[11px] text-rose-600">
-                  Please update your criterion ratings or comments below, then click "Resubmit to HR".
-                </p>
-              </div>
             </div>
           )}
 
@@ -587,7 +565,7 @@ export const ConductJapaneseEvaluationModal: React.FC<ConductJapaneseEvaluationM
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
               >
                 <Send size={14} />
-                {isResubmission ? "Resubmit to HR" : "Submit Evaluation to HR"}
+                Submit Evaluation to HR
               </button>
             </div>
           </div>

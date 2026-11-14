@@ -112,7 +112,6 @@ export const JapaneseInternsPage: React.FC = () => {
             <option value="">All Evaluation Statuses</option>
             <option value="PENDING">Pending</option>
             <option value="DRAFT">Draft</option>
-            <option value="RETURNED">Returned by HR</option>
             <option value="SUBMITTED">Submitted</option>
             <option value="ACCEPTED">Accepted</option>
           </select>
@@ -131,13 +130,11 @@ export const JapaneseInternsPage: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {interns.map((intern) => {
-            const isReturned = intern.evaluation?.status === "RETURNED";
+            const isDraft = intern.evaluation?.status === "DRAFT";
             return (
               <div
                 key={intern.id}
-                className={`bg-white rounded-3xl border p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4 ${
-                  isReturned ? "border-rose-300 ring-1 ring-rose-300" : "border-gray-200/80"
-                }`}
+                className="bg-white rounded-3xl border border-gray-200/80 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
               >
                 {/* Intern Profile Header */}
                 <div>
@@ -158,28 +155,18 @@ export const JapaneseInternsPage: React.FC = () => {
 
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                        isReturned
-                          ? "bg-rose-100 text-rose-700 border border-rose-200"
-                          : intern.evaluation?.status === "ACCEPTED"
+                        intern.evaluation?.status === "ACCEPTED"
                           ? "bg-emerald-100 text-emerald-700"
                           : intern.evaluation?.status === "SUBMITTED"
                           ? "bg-blue-100 text-blue-700"
-                          : "bg-gray-100 text-gray-600"
+                          : isDraft
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-amber-100 text-amber-700"
                       }`}
                     >
-                      {intern.evaluation?.statusDisplay || intern.evaluation?.status || "Pending"}
+                      {intern.evaluation?.status === "DRAFT" ? "Draft" : intern.evaluation?.statusDisplay || intern.evaluation?.status || "Pending"}
                     </span>
                   </div>
-
-                  {/* Return Reason Alert */}
-                  {isReturned && (
-                    <div className="mt-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] leading-tight flex items-start gap-1.5">
-                      <AlertCircle size={14} className="text-rose-600 shrink-0 mt-0.5" />
-                      <div>
-                        <strong>HR Return Note:</strong> {intern.evaluation?.returnReason}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Plan & Target Info */}
                   <div className="mt-4 pt-3 border-t border-gray-100 space-y-2 text-xs">
@@ -233,14 +220,10 @@ export const JapaneseInternsPage: React.FC = () => {
 
                   <button
                     onClick={() => handleEvaluate(intern)}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                      isReturned
-                        ? "bg-rose-600 hover:bg-rose-700 text-white"
-                        : "bg-blue-600 hover:bg-blue-700 text-white"
-                    }`}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer bg-purple-600 hover:bg-purple-700 text-white"
                   >
                     <FileCheck size={14} />
-                    {isReturned ? "Revise" : "Evaluate"}
+                    {isDraft ? "Continue Draft" : "Evaluate"}
                   </button>
                 </div>
               </div>

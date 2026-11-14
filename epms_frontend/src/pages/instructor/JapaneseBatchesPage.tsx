@@ -603,21 +603,25 @@ export const JapaneseBatchesPage: React.FC = () => {
 
                                 {/* Evaluation Status */}
                                 <td className="py-3">
-                                  <span
-                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                                      intern.evaluation?.status === "RETURNED"
-                                        ? "bg-rose-100 text-rose-700"
-                                        : intern.evaluation?.status === "DRAFT"
-                                        ? "bg-amber-100 text-amber-700"
-                                        : intern.evaluation?.status === "ACCEPTED"
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : intern.evaluation?.status === "SUBMITTED"
-                                        ? "bg-blue-100 text-blue-700"
-                                        : "bg-slate-100 text-slate-600"
-                                    }`}
-                                  >
-                                    {intern.evaluation?.status || "PENDING"}
-                                  </span>
+                                  {(() => {
+                                    const rawStatus = intern.evaluation?.status || "PENDING";
+                                    const displayStatus = rawStatus === "RETURNED" ? "DRAFT" : rawStatus;
+                                    return (
+                                      <span
+                                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                          displayStatus === "DRAFT"
+                                            ? "bg-purple-100 text-purple-700"
+                                            : displayStatus === "ACCEPTED"
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : displayStatus === "SUBMITTED"
+                                            ? "bg-blue-100 text-blue-700"
+                                            : "bg-amber-100 text-amber-700"
+                                        }`}
+                                      >
+                                        {displayStatus}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
 
                                 {/* Action: View Profile */}

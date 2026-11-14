@@ -322,6 +322,14 @@ class JapaneseEvaluationSerializer(serializers.ModelSerializer):
             user = request.user
             if user.role == 'INTERN' and instance.status not in ('ACCEPTED',):
                 data.pop('instructor_remarks', None)
+            if user.role == 'INSTRUCTOR':
+                # Remove HR return details from Japanese Instructor persona
+                data.pop('return_reason', None)
+                data.pop('returned_by', None)
+                data.pop('returned_at', None)
+                if data.get('status') == 'RETURNED':
+                    data['status'] = 'DRAFT'
+                    data['status_display'] = 'Draft'
         return data
 
 
@@ -406,6 +414,16 @@ class JapaneseBatchSerializer(serializers.ModelSerializer):
         total_practice = practice_results.count()
         progress_pct = round((completed_practice / max(total_practice, 1)) * 100, 1) if total_practice > 0 else 0.0
 
+        request = self.context.get('request')
+        is_instructor = request and hasattr(request, 'user') and request.user.role == 'INSTRUCTOR'
+        eval_status = evaluation.status if evaluation else 'NOT_ASSIGNED'
+        eval_status_display = evaluation.get_status_display() if evaluation else 'Not Assigned'
+        eval_return_reason = evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else ''
+        if is_instructor and eval_status == 'RETURNED':
+            eval_status = 'DRAFT'
+            eval_status_display = 'Draft'
+            eval_return_reason = ''
+
         return {
             'id': str(p.id),
             'userId': str(p.user.id),
@@ -431,10 +449,10 @@ class JapaneseBatchSerializer(serializers.ModelSerializer):
             },
             'evaluation': {
                 'id': str(evaluation.id) if evaluation else None,
-                'status': evaluation.status if evaluation else 'NOT_ASSIGNED',
-                'statusDisplay': evaluation.get_status_display() if evaluation else 'Not Assigned',
+                'status': eval_status,
+                'statusDisplay': eval_status_display,
                 'overallScore': float(evaluation.overall_language_score) if evaluation and evaluation.overall_language_score is not None else None,
-                'returnReason': evaluation.return_reason if evaluation and evaluation.status == 'RETURNED' else '',
+                'returnReason': eval_return_reason,
             } if evaluation else None,
             'jlpt': {
                 'requiredLevel': eligibility.required_level if eligibility else (plan.target_jlpt_level if plan else 'N4'),

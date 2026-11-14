@@ -1,353 +1,602 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import {
-  Shield,
   ShieldCheck,
   Users,
-  LayoutDashboard,
   Lock,
   Activity,
-  Calendar,
   Bell,
   Building2,
-  BarChart3,
-  ArrowRight,
   RefreshCw,
   CheckCircle2,
+  LogIn,
+  Loader2,
+  Database,
+  History,
+  Search,
+  Sparkles,
+  ArrowRight,
+  Shield,
+  UserCheck,
 } from 'lucide-react';
-import { useGetAdminDashboardQuery } from '../features/dashboard/dashboardApi';
-import DashboardStatCard from '../components/dashboard/DashboardStatCard';
-import ChartCard from '../components/dashboard/ChartCard';
-import ActivityFeed from '../components/dashboard/ActivityFeed';
-import QuickActionPanel, { type Action } from '../components/dashboard/QuickActionPanel';
-import { alertColors } from '../constants/dashboardColors';
-import { formatAuditDateTime, formatAuditDateValue } from '../utils/timeUtils';
+import {
+  useGetAdminDashboardQuery,
+  useGetUnreadNotificationsCountQuery,
+} from '../features/dashboard/dashboardApi';
+import { useAuth } from '../hooks/useAuth';
+import { useAppDispatch } from '../hooks/reduxHooks';
+import { startImpersonation } from '../features/auth/authSlice';
+import {
+  useImpersonateUserMutation,
+  useGetSuperAdminUsersQuery,
+} from '../features/superadmin/superadminRoleApi';
+import { toast } from 'react-toastify';
+import { formatAuditDateTime } from '../utils/timeUtils';
 
-const PIE_COLORS = ['#639922', '#E24B4A', '#BA7517'];
+interface DemoPersona {
+  roleTitle: string;
+  badgeLabel: string;
+  name: string;
+  designation: string;
+  email: string;
+  username: string;
+  badgeColor: string;
+  avatarColor: string;
+  borderColor: string;
+  summary: string;
+}
 
-const AdminDashboard: React.FC = () => {
+const DEMO_PERSONAS: DemoPersona[] = [
+  {
+    roleTitle: 'HR Partner',
+    badgeLabel: 'PEOPLE OPS',
+    name: 'Sarah Davis',
+    designation: 'Senior HR Business Partner',
+    email: 'sarah.hr@company.com',
+    username: 'hr_sarah',
+    badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    avatarColor: 'bg-indigo-100 text-indigo-800',
+    borderColor: 'border-indigo-200 hover:border-indigo-400',
+    summary: 'Appraisal cycles, form templates, and 360 feedback reviews.',
+  },
+  {
+    roleTitle: 'Tech Manager / Mentor',
+    badgeLabel: 'TEAM EVALUATOR',
+    name: 'Marcus Rodriguez',
+    designation: 'Engineering Manager & Mentor',
+    email: 'marcus.tech@company.com',
+    username: 'manager_marcus',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
+    avatarColor: 'bg-amber-100 text-amber-800',
+    borderColor: 'border-amber-200 hover:border-amber-400',
+    summary: 'Goal alignments, 1-on-1 check-ins, and milestone ratings.',
+  },
+  {
+    roleTitle: 'Employee / Intern',
+    badgeLabel: 'CONTRIBUTOR',
+    name: 'Alex Chen',
+    designation: 'Software Engineering Intern',
+    email: 'alex.dev@company.com',
+    username: 'intern_alex',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    avatarColor: 'bg-emerald-100 text-emerald-800',
+    borderColor: 'border-emerald-200 hover:border-emerald-400',
+    summary: 'Milestone evidence, daily sprint tasks, and self-evaluations.',
+  },
+];
+
+export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { data, isLoading, error, refetch, isFetching } = useGetAdminDashboardQuery();
+  const dispatch = useAppDispatch();
+  const { user: currentUser } = useAuth();
 
-  if (isLoading) {
-    return (
-      <div className="py-24 text-center space-y-3">
-        <div className="w-10 h-10 border-3 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p style={{ color: '#9EA3B0', fontSize: 13 }}>Initializing system administration telemetry…</p>
-      </div>
-    );
-  }
+  const [activeImpersonating, setActiveImpersonating] = useState<string | null>(null);
+  const [searchMember, setSearchMember] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  if (error) {
-    return (
-      <div className="py-16 text-center space-y-3">
-        <p style={{ color: '#791F1F', fontSize: 14, fontWeight: 500 }}>Error loading administrative telemetry.</p>
-        <button
-          onClick={() => refetch()}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold"
-        >
-          Retry Connection
-        </button>
-      </div>
-    );
-  }
+  const {
+    data: adminData,
+    refetch: refetchAdmin,
+    isFetching: isAdminFetching,
+  } = useGetAdminDashboardQuery();
 
-  const userStats = [
-    { name: 'Active', value: data?.activeUsers ?? 0 },
-    { name: 'Locked', value: data?.lockedAccounts ?? 0 },
-    { name: 'Inactive', value: Math.max(0, (data?.totalEmployees ?? 0) - (data?.activeUsers ?? 0) - (data?.lockedAccounts ?? 0)) },
-  ];
+  const { data: unreadNotifs } = useGetUnreadNotificationsCountQuery();
+  const { data: orgUsers = [], isLoading: isOrgUsersLoading } = useGetSuperAdminUsersQuery();
+  const [impersonateUser] = useImpersonateUserMutation();
 
-  const quickActions: Action[] = [
-    {
-      id: '1',
-      label: 'Announcement Hub',
-      icon: <Bell size={18} />,
-      onClick: () => navigate('/superadmin/notifications'),
-      color: 'bg-purple-100 text-purple-700',
-    },
-    {
-      id: '2',
-      label: 'Roles & Access',
-      icon: <ShieldCheck size={18} />,
-      onClick: () => navigate('/superadmin/roles-permissions'),
-      color: 'bg-emerald-100 text-emerald-700',
-    },
-    {
-      id: '3',
-      label: 'Employee Directory',
-      icon: <Users size={18} />,
-      onClick: () => navigate('/employees'),
-      color: 'bg-blue-100 text-blue-700',
-    },
-    {
-      id: '4',
-      label: 'Org Departments',
-      icon: <Building2 size={18} />,
-      onClick: () => navigate('/departments'),
-      color: 'bg-indigo-100 text-indigo-700',
-    },
-    {
-      id: '5',
-      label: 'Performance Analytics',
-      icon: <BarChart3 size={18} />,
-      onClick: () => navigate('/analytics'),
-      color: 'bg-amber-100 text-amber-700',
-    },
-  ];
+  const handleLoginAs = async (target: {
+    userId?: string;
+    employeeId?: string | number;
+    email?: string;
+    username?: string;
+    name: string;
+  }) => {
+    const key = target.email || target.username || String(target.userId || target.employeeId);
+    if (activeImpersonating) return;
+    setActiveImpersonating(key);
+
+    try {
+      const res = await impersonateUser({
+        userId: target.userId,
+        employeeId: target.employeeId,
+        email: target.email,
+        username: target.username,
+      }).unwrap();
+
+      dispatch(startImpersonation(res));
+      toast.success(`Logged in as ${target.name}`);
+      navigate('/dashboard');
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || 'Failed to switch user account.';
+      toast.error(msg);
+    } finally {
+      setActiveImpersonating(null);
+    }
+  };
+
+  const filteredMembers = useMemo(() => {
+    if (!searchMember.trim()) return [];
+    const q = searchMember.toLowerCase();
+    return orgUsers
+      .filter((u) => {
+        if (u.role === 'SUPER_ADMIN' || u.isSuperUser) return false;
+        if (String(u.id) === String(currentUser?.id)) return false;
+        return (
+          u.fullName?.toLowerCase().includes(q) ||
+          u.username?.toLowerCase().includes(q) ||
+          u.email?.toLowerCase().includes(q) ||
+          u.designation?.toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 5);
+  }, [searchMember, orgUsers, currentUser?.id]);
+
+  const activeCount = adminData?.activeUsers ?? 0;
+  const lockedCount = adminData?.lockedAccounts ?? 0;
+  const totalEmployees = adminData?.totalEmployees ?? 0;
+  const activeRate = totalEmployees > 0 ? Math.round((activeCount / totalEmployees) * 100) : 100;
 
   return (
-    <div className="space-y-5">
-      {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-200/80 flex items-center justify-center shrink-0">
-            <Shield size={18} className="text-purple-700" aria-hidden="true" />
-          </div>
+    <div className="min-h-screen bg-[#f8f9fe] p-4 sm:p-6 lg:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* ── 1. Top Clean Header ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
           <div>
-            <h1 style={{ fontSize: 18, fontWeight: 600, color: '#111827' }}>System Administration</h1>
-            <p style={{ fontSize: 13, color: '#9EA3B0', marginTop: 1 }}>Global system health, governance, and security overview.</p>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center shrink-0">
+                <Shield className="text-purple-700" size={20} />
+              </span>
+              Super Admin Control Center
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              User Impersonation • Enterprise Access Security • System Health
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* System Online Pill */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>System Operational</span>
+            </div>
+
+            {/* Notifications Pill */}
+            <button
+              onClick={() => navigate('/superadmin/notifications')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-purple-700 hover:border-purple-300 transition-colors text-xs font-medium cursor-pointer shadow-2xs"
+            >
+              <Bell size={14} />
+              <span>Announcements</span>
+              {Boolean(unreadNotifs?.unread_count) && (
+                <span className="bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                  {unreadNotifs?.unread_count}
+                </span>
+              )}
+            </button>
+
+            {/* Refresh Telemetry */}
+            <button
+              onClick={() => refetchAdmin()}
+              disabled={isAdminFetching}
+              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={isAdminFetching ? 'animate-spin text-purple-600' : ''} />
+            </button>
+
+            {/* Admin Badge */}
+            <span className="px-3 py-1.5 rounded-xl bg-purple-700 text-white text-xs font-bold uppercase tracking-wider shadow-2xs">
+              Super Admin
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all shadow-xs"
-            title="Refresh dashboard metrics"
-          >
-            <RefreshCw size={13} className={isFetching ? 'animate-spin text-purple-600' : 'text-slate-500'} />
-            <span>{isFetching ? 'Syncing…' : 'Refresh'}</span>
-          </button>
-          <button
-            onClick={() => navigate('/superadmin/notifications')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-all shadow-xs"
-          >
-            <Bell size={13} />
-            <span>Broadcast Alert</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Interactive Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashboardStatCard
-          title="Total Employees"
-          value={data?.totalEmployees ?? 0}
-          icon={<Users size={16} />}
-          color="blue"
-          subtitle="View employee roster →"
-          onClick={() => navigate('/employees')}
-        />
-        <DashboardStatCard
-          title="Departments"
-          value={data?.totalDepartments ?? 0}
-          icon={<LayoutDashboard size={16} />}
-          color="indigo"
-          subtitle="Manage departments →"
-          onClick={() => navigate('/departments')}
-        />
-        <DashboardStatCard
-          title="Active cycles"
-          value={data?.activeCycles ?? 0}
-          icon={<Calendar size={16} />}
-          color="green"
-          subtitle="Cycle timelines →"
-          onClick={() => navigate('/financial-years')}
-        />
-        <DashboardStatCard
-          title="Locked accounts"
-          value={data?.lockedAccounts ?? 0}
-          icon={<Lock size={16} />}
-          color="red"
-          subtitle="Access & RBAC →"
-          onClick={() => navigate('/superadmin/roles-permissions')}
-        />
-      </div>
-
-      {/* Quick Actions Panel */}
-      <QuickActionPanel actions={quickActions} />
-
-      {/* Charts & Security Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* User Account Status Chart */}
-        <div className="lg:col-span-1">
-          <ChartCard title="User account status">
-            <div className="flex flex-col h-full justify-between">
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={userStats} cx="50%" cy="50%" innerRadius={55} outerRadius={75} paddingAngle={4} dataKey="value">
-                      {userStats.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 8, border: '0.5px solid #E4E6EC', boxShadow: 'none', fontSize: 12 }} />
-                    <Legend verticalAlign="bottom" height={36} iconSize={10} wrapperStyle={{ fontSize: 11, color: '#9EA3B0' }} />
-                  </PieChart>
-                </ResponsiveContainer>
+        {/* ── 2. Featured Section: Login As (Demo Personas) ── */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-purple-50 text-purple-700">
+                  <LogIn size={16} />
+                </span>
+                <h3 className="text-base font-bold text-slate-900">
+                  Login As (View-As Mode)
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                  One-Click Access
+                </span>
               </div>
-
-              {/* Clickable Quick Filters */}
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <button
-                  onClick={() => navigate('/employees')}
-                  className="flex items-center gap-1.5 text-slate-600 hover:text-purple-700 font-medium py-1 px-2 rounded-md hover:bg-slate-50 transition-colors"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>{data?.activeUsers ?? 0} Active</span>
-                  <ArrowRight size={11} className="opacity-60" />
-                </button>
-                <button
-                  onClick={() => navigate('/superadmin/roles-permissions')}
-                  className="flex items-center gap-1.5 text-slate-600 hover:text-purple-700 font-medium py-1 px-2 rounded-md hover:bg-slate-50 transition-colors"
-                >
-                  <span className="w-2 h-2 rounded-full bg-rose-500" />
-                  <span>{data?.lockedAccounts ?? 0} Locked</span>
-                  <ArrowRight size={11} className="opacity-60" />
-                </button>
-              </div>
-            </div>
-          </ChartCard>
-        </div>
-
-        {/* Security Alerts Panel */}
-        <div className="lg:col-span-2" style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Shield size={16} style={{ color: '#791F1F' }} aria-hidden="true" />
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Security Alerts</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Experience Performax from the perspective of each role. A sticky top banner allows you to return to Admin anytime.
+              </p>
             </div>
           </div>
 
-          <div className="space-y-3 overflow-y-auto max-h-64">
-            {data?.securityAlerts && data.securityAlerts.length > 0 ? (
-              data.securityAlerts.map((alert, idx) => {
-                const colors = alertColors[alert.severity] || alertColors.LOW;
-                return (
-                  <div
-                    key={idx}
-                    className="flex items-start gap-3"
-                    style={{ background: colors.bg, border: `0.5px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}
-                  >
-                    <div style={{ background: colors.bg, borderRadius: 6, padding: 4, flexShrink: 0 }}>
-                      <Activity size={13} style={{ color: colors.text }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap justify-between gap-1" style={{ marginBottom: 2 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: colors.text }}>{alert.event}</span>
-                        <span style={{ fontSize: 11, color: colors.text, opacity: 0.7, fontFamily: 'monospace' }}>
-                          {formatAuditDateTime(alert.timestamp)}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: 12, color: colors.text, opacity: 0.85 }}>{alert.details}</p>
-                      <span style={{ fontSize: 11, fontWeight: 500, color: colors.text, marginTop: 4, display: 'inline-block' }}>
-                        Severity: {alert.severity}
+          {/* 3 Featured Persona Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {DEMO_PERSONAS.map((persona) => {
+              const isCurrentBusy =
+                activeImpersonating === persona.email || activeImpersonating === persona.username;
+
+              return (
+                <div
+                  key={persona.email}
+                  className={`flex flex-col justify-between rounded-xl p-4 border ${persona.borderColor} bg-slate-50/40 hover:bg-white hover:shadow-xs transition-all`}
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${persona.badgeColor}`}>
+                        {persona.badgeLabel}
+                      </span>
+                      <span className="text-xs font-medium text-slate-400">
+                        {persona.roleTitle}
                       </span>
                     </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${persona.avatarColor} shrink-0`}>
+                        {persona.name.split(' ').map((n) => n[0]).join('')}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate">
+                          {persona.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {persona.email}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      {persona.summary}
+                    </p>
                   </div>
-                );
-              })
-            ) : (
-              <div className="flex flex-col items-center justify-center py-7 px-4 text-center">
-                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2.5">
-                  <CheckCircle2 size={24} />
+
+                  <div className="pt-3 mt-3 border-t border-slate-200/60">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleLoginAs({
+                          email: persona.email,
+                          username: persona.username,
+                          name: `${persona.name} (${persona.roleTitle})`,
+                        })
+                      }
+                      disabled={isCurrentBusy || !!activeImpersonating}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-800 border border-purple-200 font-semibold text-xs transition-colors shadow-2xs disabled:opacity-60 cursor-pointer"
+                    >
+                      {isCurrentBusy ? (
+                        <Loader2 size={13} className="animate-spin text-purple-700" />
+                      ) : (
+                        <LogIn size={13} />
+                      )}
+                      <span>Login As {persona.name.split(' ')[0]}</span>
+                    </button>
+                  </div>
                 </div>
-                <h4 className="text-sm font-semibold text-slate-800">All Systems Normal & Fully Secure</h4>
-                <p className="text-xs text-slate-500 max-w-md mt-1 mb-4 leading-relaxed">
-                  No active security breaches, locked account anomalies, or unauthorized privilege elevation detected across the enterprise perimeter.
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    onClick={() => navigate('/superadmin/roles-permissions')}
-                    className="text-xs font-semibold px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors flex items-center gap-1"
-                  >
-                    <ShieldCheck size={13} />
-                    <span>RBAC Permissions Matrix</span>
-                  </button>
-                </div>
+              );
+            })}
+          </div>
+
+          {/* Quick Search for Any Member */}
+          <div className="pt-2 border-t border-slate-100 relative">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchMember}
+                  onChange={(e) => {
+                    setSearchMember(e.target.value);
+                    setIsSearchOpen(true);
+                  }}
+                  onFocus={() => setIsSearchOpen(true)}
+                  placeholder="Or search any employee to login as them (e.g. Elena, Liam, Maya)..."
+                  className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:border-purple-400 transition-colors"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/employees')}
+                className="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold whitespace-nowrap cursor-pointer"
+              >
+                Full Employee List →
+              </button>
+            </div>
+
+            {/* Instant Search Dropdown */}
+            {isSearchOpen && searchMember.trim() && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-lg z-30 p-2 space-y-1 max-h-64 overflow-y-auto">
+                {filteredMembers.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-slate-400">
+                    No matching users found.
+                  </div>
+                ) : (
+                  filteredMembers.map((m) => {
+                    const isBusy = activeImpersonating === m.email || activeImpersonating === m.id;
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-slate-700 flex items-center justify-center text-[11px] shrink-0">
+                            {(m.fullName || m.username || 'U')[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-semibold text-slate-900 truncate block">
+                              {m.fullName || m.username}
+                            </span>
+                            <span className="text-[11px] text-slate-400 truncate block">
+                              {m.email} &bull; {m.role}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSearchOpen(false);
+                            handleLoginAs({
+                              userId: m.id,
+                              email: m.email,
+                              username: m.username,
+                              name: m.fullName || m.username,
+                            });
+                          }}
+                          disabled={isBusy}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-semibold hover:bg-purple-100 transition-colors shrink-0 cursor-pointer"
+                        >
+                          {isBusy ? <Loader2 size={12} className="animate-spin" /> : <LogIn size={12} />}
+                          <span>Login As</span>
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Active cycle info */}
-      {data?.activeCycleName && (
-        <div style={{ background: '#FFFFFF', border: '0.5px solid #E4E6EC', borderRadius: 12, padding: '16px 18px' }}>
+        {/* ── 3. Core Admin Navigation Modules (4 Clean Cards) ── */}
+        <div>
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Calendar size={15} className="text-purple-600" />
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Active Appraisal Cycle</p>
-            </div>
-            <button
-              onClick={() => navigate('/financial-years')}
-              className="text-xs font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-1 hover:underline"
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <ShieldCheck size={16} className="text-purple-600" />
+              Core Governance Modules
+            </h3>
+            <span className="text-xs text-slate-400">Quick direct access</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Module 1: Employees */}
+            <div
+              onClick={() => navigate('/employees')}
+              className="p-5 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
             >
-              <span>Manage Quarters & Cycles</span>
-              <ArrowRight size={12} />
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/70 p-3.5 rounded-xl border border-slate-100">
-            <div>
-              <span style={{ fontSize: 11, color: '#9EA3B0', display: 'block', marginBottom: 2 }}>Cycle name</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{data.activeCycleName}</span>
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                  <Users size={20} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
+                  Employee Directory
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Manage accounts, passwords, activate/deactivate, and lock access.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700">
+                  {activeCount} Active / {totalEmployees} Total
+                </span>
+                <span className="text-purple-600 font-bold group-hover:translate-x-0.5 transition-transform">
+                  →
+                </span>
+              </div>
             </div>
-            <div>
-              <span style={{ fontSize: 11, color: '#9EA3B0', display: 'block', marginBottom: 2 }}>Start date</span>
-              <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{formatAuditDateValue(data.cycleStartDate)}</span>
+
+            {/* Module 2: Roles & Permissions */}
+            <div
+              onClick={() => navigate('/superadmin/roles-permissions')}
+              className="p-5 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                  <ShieldCheck size={20} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
+                  Roles & Permissions (RBAC)
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Configure granular role matrices for HR, Managers, and Interns.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700">
+                  Granular RBAC
+                </span>
+                <span className="text-purple-600 font-bold group-hover:translate-x-0.5 transition-transform">
+                  →
+                </span>
+              </div>
             </div>
-            <div>
-              <span style={{ fontSize: 11, color: '#9EA3B0', display: 'block', marginBottom: 2 }}>End date</span>
-              <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{formatAuditDateValue(data.cycleEndDate)}</span>
+
+            {/* Module 3: Record Management */}
+            <div
+              onClick={() => navigate('/admin/records')}
+              className="p-5 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                  <Database size={20} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
+                  Record Management
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Review system records, attention queues, and exception routing.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700">
+                  System Records
+                </span>
+                <span className="text-purple-600 font-bold group-hover:translate-x-0.5 transition-transform">
+                  →
+                </span>
+              </div>
+            </div>
+
+            {/* Module 4: Audit Logs */}
+            <div
+              onClick={() => navigate('/audit-logs')}
+              className="p-5 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                  <History size={20} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
+                  System Audit Logs
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Immutable security action logs with actor identities and IP addresses.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700">
+                  Immutable Trail
+                </span>
+                <span className="text-purple-600 font-bold group-hover:translate-x-0.5 transition-transform">
+                  →
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Security metrics */}
-      {(data?.failedLoginsLast24h !== undefined || data?.accountsCreatedThisMonth !== undefined) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <DashboardStatCard
-            title="Failed logins (24h)"
-            value={data?.failedLoginsLast24h ?? 0}
-            icon={<Activity size={15} />}
-            color="red"
-            subtitle="Perimeter security status"
-          />
-          <DashboardStatCard
-            title="Accounts created (this month)"
-            value={data?.accountsCreatedThisMonth ?? 0}
-            icon={<Users size={15} />}
-            color="green"
-            subtitle="View employee roster →"
-            onClick={() => navigate('/employees')}
-          />
-          <DashboardStatCard
-            title="Accounts deactivated (this month)"
-            value={data?.accountsDeactivatedThisMonth ?? 0}
-            icon={<Lock size={15} />}
-            color="orange"
-            subtitle="Review inactive users →"
-            onClick={() => navigate('/superadmin/roles-permissions')}
-          />
+        {/* ── 4. Clean System Health & Recent Activity ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Account Health Summary */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-4">
+            <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Activity size={15} className="text-purple-600" />
+              Account Health Overview
+            </h4>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span className="text-slate-600">Active Accounts</span>
+                  <span className="text-emerald-700 font-bold">{activeCount} ({activeRate}%)</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{ width: `${activeRate}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span className="text-slate-600">Locked / Suspended</span>
+                  <span className="text-rose-700 font-bold">{lockedCount}</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full bg-rose-500 rounded-full transition-all"
+                    style={{ width: `${totalEmployees > 0 ? (lockedCount / totalEmployees) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-center text-xs">
+                <div className="p-2 rounded-xl bg-slate-50">
+                  <span className="text-[11px] text-slate-400">Total Departments</span>
+                  <div className="font-bold text-slate-900 text-base mt-0.5">
+                    {adminData?.totalDepartments ?? 0}
+                  </div>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-50">
+                  <span className="text-[11px] text-slate-400">Managers / Mentors</span>
+                  <div className="font-bold text-slate-900 text-base mt-0.5">
+                    {adminData?.totalManagers ?? 0}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Security Activity Stream */}
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Shield size={15} className="text-purple-600" />
+                Security & Administrative Stream
+              </h4>
+              <button
+                type="button"
+                onClick={() => navigate('/audit-logs')}
+                className="text-xs font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer"
+              >
+                <span>View Full Trail</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {adminData?.recentActivities && adminData.recentActivities.length > 0 ? (
+                adminData.recentActivities.slice(0, 4).map((act, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 border border-slate-100 text-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
+                      <div className="truncate">
+                        <span className="font-semibold text-slate-900">{act.action}</span>
+                        <span className="text-slate-500 ml-1.5 font-normal">by {act.user}</span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-mono shrink-0 ml-2">
+                      {formatAuditDateTime(act.timestamp)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-slate-500 p-3 rounded-xl bg-slate-50">
+                  <CheckCircle2 size={15} className="text-emerald-500" />
+                  <span>No security alerts or unusual activity detected. All systems operating normally.</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* Activity feed */}
-      <ActivityFeed
-        activities={
-          data?.recentActivities?.map((act, idx) => ({
-            id: idx,
-            user: act.user,
-            action: act.action,
-            module: act.module,
-            timestamp: act.timestamp,
-          })) ?? []
-        }
-      />
+      </div>
     </div>
   );
 };

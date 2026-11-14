@@ -169,7 +169,7 @@ const ManagerEvaluation = () => {
           <strong> {formData.employeeName || 'This employee'}</strong> is not currently assigned to you.
         </p>
         <button
-          onClick={() => navigate('/manager')}
+          onClick={() => navigate('/manager/mentees')}
           className="px-4 py-2 bg-indigo-600 text-white font-semibold text-xs rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer"
         >
           Return to Mentor Hub
@@ -211,7 +211,7 @@ const ManagerEvaluation = () => {
               try {
                 await downloadReport({
                   endpoint: 'manager-evaluation',
-                  params: { appraisalId: Number(id), format: 'pdf' },
+                  params: { appraisalId: id, format: 'pdf' },
                   fileName: `Manager_Evaluation_${formData.employeeName ?? 'Form'}.pdf`,
                 }).unwrap();
               } catch (err: any) {
@@ -312,15 +312,15 @@ const ManagerEvaluation = () => {
               <div className="text-xs text-slate-600 space-y-2">
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Self Summary:</span>
-                  <p className="italic text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.summary || 'No written summary submitted yet.'}</p>
+                  <p className="italic text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.summary || inspectionData?.selfReflection?.summary || inspectionData?.selfReflection?.selfComments || 'No written summary submitted yet.'}</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Perceived Strengths:</span>
-                  <p className="text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.strengths || 'None specified'}</p>
+                  <p className="text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.strengths || inspectionData?.selfReflection?.strengths || 'None specified'}</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Reported Challenges:</span>
-                  <p className="text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.challenges || 'None specified'}</p>
+                  <p className="text-slate-700 mt-0.5">{inspectionData?.selfAssessment?.challenges || inspectionData?.selfReflection?.challenges || 'None specified'}</p>
                 </div>
               </div>
             </div>

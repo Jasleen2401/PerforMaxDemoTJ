@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 urlpatterns = [
@@ -47,6 +48,9 @@ urlpatterns = [
     path('intern/', include('apps.intern.urls')),
     path('api/interns/', include('apps.intern.urls')),
     path('interns/', include('apps.intern.urls')),
+
+    # Root Redirect to Frontend
+    path('', RedirectView.as_view(url='http://localhost:5173/', permanent=False)),
 
     # Frontend Compatibility Endpoints (Dashboards, Departments, Employees, Appraisals)
     path('api/', include('apps.frontend_compat.urls')),

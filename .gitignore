@@ -45,4 +45,7 @@ docker-compose.override.yml
 .ai/
 .agent/
 .claude/
+.vercel/
 t_pms/
+backend/package-lock.json
+

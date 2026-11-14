@@ -406,3 +406,108 @@ class SuperAdminRolePermissionTests(TestCase):
 
         audit = AuditLog.objects.filter(action='ROLE_PERMISSIONS_UPDATED', entity_id='MANAGER').first()
         self.assertIsNotNone(audit)
+
+
+class SuperAdminImpersonateViewTests(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.super_admin = User.objects.create_user(
+            email='superadmin-imp@test.com',
+            username='admin_imp',
+            password='AdminPassword123!',
+            role=UserRole.SUPER_ADMIN,
+        )
+        self.other_admin = User.objects.create_user(
+            email='otheradmin-imp@test.com',
+            username='other_admin_imp',
+            password='AdminPassword123!',
+            role=UserRole.SUPER_ADMIN,
+        )
+        self.employee_user = User.objects.create_user(
+            email='emp-imp@test.com',
+            username='emp_imp',
+            password='EmpPassword123!',
+            role=getattr(UserRole, 'EMPLOYEE', UserRole.INTERN),
+        )
+        self.employee_profile = EmployeeProfile.objects.create(
+            user=self.employee_user,
+            employee_code='IMP-001',
+            first_name='Impersonated',
+            last_name='User',
+        )
+
+    def test_impersonate_requires_superadmin(self):
+        from apps.superadmin.views import SuperAdminImpersonateView
+        request = self.factory.post(
+            '/api/superadmin/impersonate/',
+            {'userId': str(self.employee_user.id)},
+            format='json'
+        )
+        force_authenticate(request, user=self.employee_user)
+        response = SuperAdminImpersonateView.as_view()(request)
+        self.assertEqual(response.status_code, 403)
+
+    def test_cannot_impersonate_self(self):
+        from apps.superadmin.views import SuperAdminImpersonateView
+        request = self.factory.post(
+            '/api/superadmin/impersonate/',
+            {'userId': str(self.super_admin.id)},
+            format='json'
+        )
+        force_authenticate(request, user=self.super_admin)
+        response = SuperAdminImpersonateView.as_view()(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Cannot impersonate yourself', response.data['message'])
+
+    def test_cannot_impersonate_another_superadmin(self):
+        from apps.superadmin.views import SuperAdminImpersonateView
+        request = self.factory.post(
+            '/api/superadmin/impersonate/',
+            {'userId': str(self.other_admin.id)},
+            format='json'
+        )
+        force_authenticate(request, user=self.super_admin)
+        response = SuperAdminImpersonateView.as_view()(request)
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('Cannot impersonate another Super Admin', response.data['message'])
+
+    def test_successful_impersonation_and_exit(self):
+        from apps.superadmin.views import SuperAdminImpersonateView, SuperAdminImpersonateExitView
+        from apps.audit.models import AuditLog
+
+        # Start Impersonation
+        request = self.factory.post(
+            '/api/superadmin/impersonate/',
+            {'employeeId': str(self.employee_profile.id)},
+            format='json'
+        )
+        force_authenticate(request, user=self.super_admin)
+        response = SuperAdminImpersonateView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('accessToken', response.data['data'])
+        self.assertIn('refreshToken', response.data['data'])
+        self.assertEqual(response.data['data']['user']['email'], self.employee_user.email)
+        self.assertEqual(response.data['data']['impersonator']['username'], self.super_admin.username)
+
+        # Verify IMPERSONATION_START audit log
+        start_audit = AuditLog.objects.filter(
+            action='IMPERSONATION_START',
+            entity_id=str(self.employee_user.id)
+        ).first()
+        self.assertIsNotNone(start_audit)
+        self.assertEqual(start_audit.actor, self.super_admin)
+
+        # Exit Impersonation
+        exit_request = self.factory.post(
+            '/api/superadmin/impersonate/exit/',
+            {'target_username': self.employee_user.username},
+            format='json'
+        )
+        force_authenticate(exit_request, user=self.super_admin)
+        exit_response = SuperAdminImpersonateExitView.as_view()(exit_request)
+        self.assertEqual(exit_response.status_code, 200)
+
+        end_audit = AuditLog.objects.filter(action='IMPERSONATION_END').first()
+        self.assertIsNotNone(end_audit)
+        self.assertEqual(end_audit.actor, self.super_admin)

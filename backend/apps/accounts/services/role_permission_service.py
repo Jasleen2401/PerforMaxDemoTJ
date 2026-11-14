@@ -33,6 +33,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[Tuple[str, str]]] = {
         ('PIP_CREATE', 'Initiate performance improvement plans'),
         ('MEETING_MANAGE', 'Conduct and document 1-on-1 sync meetings'),
         ('APPRAISAL_VIEW_TEAM', 'View appraisals for direct reports'),
+        ('KPI_VIEW_OWN', 'View own goals and KRAs'),
+        ('KPI_VIEW_ALL', 'View team and organizational KPIs'),
         ('FEEDBACK_VIEW', 'Access continuous feedback for team and peers'),
         ('FEEDBACK_GIVE', 'Give, draft, and publish continuous performance feedback'),
     ],
@@ -255,6 +257,19 @@ class RolePermissionService:
             effective.add('ALL')
             effective.add('FEEDBACK_VIEW')
             effective.add('FEEDBACK_GIVE')
+
+        if user.role == UserRole.MANAGER:
+            effective.update([
+                'APPRAISAL_VIEW_TEAM',
+                'KPI_VIEW_OWN',
+                'KPI_VIEW_ALL',
+                'GOAL_ASSIGN',
+                'EVIDENCE_REVIEW',
+                'APPRAISAL_EVALUATE',
+                'MEETING_MANAGE',
+                'FEEDBACK_VIEW',
+                'FEEDBACK_GIVE'
+            ])
 
         return sorted(list(effective))
 

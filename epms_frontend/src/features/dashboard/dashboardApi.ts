@@ -162,13 +162,42 @@ export const dashboardApi = api.injectEndpoints({
       transformResponse: (res: any) => res?.data ?? res,
       providesTags: ["Appraisal"],
     }),
-    submitInternSelfAppraisal: builder.mutation<any, { selfRating?: number; achievements?: string; challenges?: string; skillsAcquired?: string; mentorshipNeeds?: string; reflectionSummary?: string; isDraft?: boolean }>({
+    submitInternSelfAppraisal: builder.mutation<any, {
+      selfRating?: number;
+      competencyRatings?: Record<string, number>;
+      evidenceAttachments?: Array<{ url: string; description?: string }>;
+      achievements?: string;
+      challenges?: string;
+      skillsAcquired?: string;
+      mentorshipNeeds?: string;
+      reflectionSummary?: string;
+      quarterCode?: string;
+      is_submitted?: boolean;
+      isSubmitted?: boolean;
+      isDraft?: boolean;
+    }>({
       query: (body) => ({
         url: "/intern/self-appraisal/",
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Appraisal", "Profile"],
+      invalidatesTags: ["Appraisal", "Profile", "GoalSet"],
+    }),
+    returnInternSelfAppraisal: builder.mutation<any, { reviewerComments: string; quarterCode?: string }>({
+      query: (body) => ({
+        url: "/intern/self-appraisal/return/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Appraisal", "Profile", "GoalSet"],
+    }),
+    updateInternWorkflowStatus: builder.mutation<any, { workflowStatus: string; reviewerComments?: string; quarterCode?: string }>({
+      query: (body) => ({
+        url: "/intern/self-appraisal/status/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Appraisal", "Profile", "GoalSet"],
     }),
     getInternPublishedFeedback: builder.query<InternPublishedFeedbackData, void>({
       query: () => "/intern/published-feedback/",
@@ -293,6 +322,8 @@ export const {
   useSubmitInternEvidenceMutation,
   useGetInternSelfAppraisalQuery,
   useSubmitInternSelfAppraisalMutation,
+  useReturnInternSelfAppraisalMutation,
+  useUpdateInternWorkflowStatusMutation,
   useGetInternPublishedFeedbackQuery,
   useReplyToMentorFeedbackMutation,
   useGetInternAppraisalsQuery,

@@ -20,8 +20,6 @@ import {
   Database,
   Bell,
   Compass,
-  ClipboardList,
-  Award,
   User,
   Milestone,
 } from "lucide-react";
@@ -49,6 +47,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Performance Analytics", to: "/analytics", icon: BarChart3 },
   { label: "My Goals & KRAs", to: "/kpi/my", icon: Target },
   { label: "My KPI Journey", to: "/kpi/my-journey", icon: Milestone },
+];
+
+const SUPERADMIN_NAV_ITEMS: NavItem[] = [
+  { label: "Admin Dashboard", to: "/dashboard", icon: LayoutDashboard },
+  { label: "Employee Directory", to: "/employees", icon: Users },
+  { label: "Role & Permissions", to: "/superadmin/roles-permissions", icon: ShieldCheck },
+  { label: "Record Management", to: "/admin/records", icon: Database },
+  { label: "Security Audit Logs", to: "/audit-logs", icon: History },
+  { label: "Org & Departments", to: "/departments", icon: Building2 },
+  { label: "Announcement Hub", to: "/superadmin/notifications", icon: Bell },
 ];
 
 const HR_ORG_ITEMS: NavItem[] = [
@@ -94,24 +102,22 @@ const Sidebar = ({ onClose }: SidebarProps) => {
       case "Assigned Mentees":    return isManager || isHR;
       case "Performance Appraisals": return isAdmin || isManager || isHR;
       case "Performance Pulse":   return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
-      case "Team Pulse":          return hasPermission("APPRAISAL_VIEW_TEAM") && !isAdmin && !isHR;
+      case "Team Pulse":          return (isManager || hasPermission("APPRAISAL_VIEW_TEAM")) && !isAdmin && !isHR;
       case "Continuous Feedback": return true;
       case "Performance Analytics": return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
-      case "My Goals & KRAs":     return !isAdmin && !isHR && hasPermission("KPI_VIEW_OWN");
-      case "My KPI Journey":      return !isAdmin && !isHR && hasPermission("KPI_VIEW_OWN") && !!user?.id;
+      case "My Goals & KRAs":     return !isAdmin && !isHR && (isManager || hasPermission("KPI_VIEW_OWN"));
+      case "My KPI Journey":      return !isAdmin && !isHR && (isManager || hasPermission("KPI_VIEW_OWN")) && !!user?.id;
       default:                    return true;
     }
   });
 
   const internNav: NavItem[] = [
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, end: true },
-    { label: "My Goals", to: "/dashboard?tab=goals", icon: Target },
-    { label: "My Tasks", to: "/dashboard?tab=tasks", icon: ClipboardList },
-    { label: "MIRAI Journey", to: "/dashboard?tab=journey", icon: Compass },
-    { label: "Performance Reviews", to: "/appraisal", icon: Award },
-    { label: "Continuous Feedback", to: "/continuous-feedback", icon: MessageSquare },
-    { label: "Reminders", to: "/notifications", icon: Bell },
-    { label: "Profile", to: "/profile", icon: User },
+    { label: "Mirai Journey", to: "/dashboard?tab=quarters", icon: Compass },
+    { label: "Self-Review", to: "/dashboard?tab=self-review", icon: ClipboardCheck },
+    { label: "Mirai Projects", to: "/dashboard?tab=journey", icon: Milestone },
+    { label: "Feedback", to: "/dashboard?tab=feedback", icon: MessageSquare },
+    { label: "Profile", to: "/dashboard?tab=profile", icon: User },
   ];
 
   const instructorNav: NavItem[] = [
@@ -182,37 +188,63 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
       {/* Navigation Sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
-        {/* Core Intelligence */}
-        <div>
-          <div className="px-3 pb-1.5 text-[10px] font-bold tracking-widest text-white/40 uppercase">
-            Workspace
-          </div>
-          <div className="space-y-0.5">
-            {filteredNav.map((item) => {
-              const currentUrl = location.pathname + (location.search || "");
-              const isActive = item.to.includes("?")
-                ? currentUrl === item.to
-                : item.end
-                ? location.pathname === item.to && !location.search
-                : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard" && item.to !== "/japanese/dashboard");
+        {isAdmin ? (
+          <div>
+            <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-white/50 uppercase">
+              Admin Workspace
+            </div>
+            <div className="space-y-1">
+              {SUPERADMIN_NAV_ITEMS.map((item) => {
+                const isActive = item.end
+                  ? location.pathname === item.to
+                  : location.pathname.startsWith(item.to);
 
-              return (
-                <NavLink
-                  key={item.label}
-                  to={item.to}
-                  className={navItemClass(isActive)}
-                  onClick={handleNavClick}
-                >
-                  <item.icon size={16} className={iconClass(isActive)} />
-                  <span className="truncate">{item.label}</span>
-                </NavLink>
-              );
-            })}
+                return (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    className={navItemClass(isActive)}
+                    onClick={handleNavClick}
+                  >
+                    <item.icon size={16} className={iconClass(isActive)} />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <div className="px-3 pb-1.5 text-[10px] font-bold tracking-widest text-white/40 uppercase">
+              Workspace
+            </div>
+            <div className="space-y-0.5">
+              {filteredNav.map((item) => {
+                const currentUrl = location.pathname + (location.search || "");
+                const isActive = item.to.includes("?")
+                  ? currentUrl === item.to
+                  : item.end
+                  ? location.pathname === item.to && !location.search
+                  : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard" && item.to !== "/japanese/dashboard");
 
-        {/* Appraisal Configuration Accordion */}
-        {(isAdmin || isHR) && !isInstructor && (
+                return (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    className={navItemClass(isActive)}
+                    onClick={handleNavClick}
+                  >
+                    <item.icon size={16} className={iconClass(isActive)} />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Traditional Review Accordion */}
+        {!isAdmin && (isHR || isManager) && !isInstructor && (
           <div>
             <button
               onClick={() => setTradReviewOpen(!tradReviewOpen)}
@@ -276,7 +308,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
         )}
         {/* Goals & KPI Management Accordion */}
-        {!isInternUser && !isInstructor && perfSubItems.length > 0 && (
+        {!isAdmin && !isInternUser && !isInstructor && perfSubItems.length > 0 && (
           <div>
             <button
               onClick={() => setPerfOpen(!perfOpen)}
@@ -321,7 +353,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
         )}
 
         {/* Organization Hub */}
-        {(isAdmin || isHR) && !isInstructor && (
+        {!isAdmin && isHR && !isInstructor && (
           <div>
             <button
               onClick={() => setMgmtOpen(!mgmtOpen)}
@@ -341,7 +373,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
 
             {mgmtOpen && (
               <div className="ml-5 pl-2.5 mt-1 border-l border-white/20 space-y-0.5">
-                {(isAdmin ? SUPERADMIN_ORG_ITEMS : HR_ORG_ITEMS).map((item) => {
+                {HR_ORG_ITEMS.map((item) => {
                   const isActive = item.end
                     ? location.pathname === item.to
                     : location.pathname.startsWith(item.to);

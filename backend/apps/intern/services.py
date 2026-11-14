@@ -658,13 +658,118 @@ class MiraiJourneyService:
         # Tab F: Quarter Timeline
         timeline = cls._get_quarter_timeline(profile, q_code)
 
+        quarter_purposes = {
+            'Q1': 'Foundational AI Engineering, Language Immersion & Japanese Foundations',
+            'Q2': 'Sprint Deliverables, Mentor Alignment & Core System Architecture',
+            'Q3': 'Scalable Microservices, Independent Ownership & Advanced Engineering',
+            'Q4': 'Production Reliability, Final Appraisals & Full-Time Conversion'
+        }
+        rating_scale = {
+            1: {'label': 'Unsatisfactory', 'description': 'Fails to meet basic standards; requires constant oversight.'},
+            2: {'label': 'Needs Improvement', 'description': 'Inconsistently meets standards; requires guidance on routine tasks.'},
+            3: {'label': 'Meets Expectations', 'description': 'Consistently fulfills assigned tasks and code quality expectations.'},
+            4: {'label': 'Exceeds Expectations', 'description': 'Regularly delivers high-quality work ahead of schedule with initiative.'},
+            5: {'label': 'Outstanding', 'description': 'Demonstrates technical mastery, exemplary quality, and thought leadership.'}
+        }
+        required_competencies = [
+            {
+                'id': 'tech_architecture',
+                'name': 'Technical Architecture & Software Engineering',
+                'weight': 35,
+                'description': 'Execution of clean software architecture, database schemas, and robust backend/frontend code.',
+                'subCompetencies': [
+                    {
+                        'id': 'tech_code_quality',
+                        'name': 'Code Quality & Clean Architecture',
+                        'expectations': 'Writes clean, modular Python and TypeScript code following repository architecture, type safety, and lint standards.',
+                        'required': True,
+                    },
+                    {
+                        'id': 'tech_api_db',
+                        'name': 'API Design & Database Efficiency',
+                        'expectations': 'Develops well-structured RESTful API endpoints, query optimizations, and schema models without performance bottlenecks.',
+                        'required': True,
+                    },
+                    {
+                        'id': 'tech_testing',
+                        'name': 'Automated Testing & Reliability',
+                        'expectations': 'Creates comprehensive test suites and maintains high test coverage before submitting pull requests.',
+                        'required': True,
+                    }
+                ]
+            },
+            {
+                'id': 'delivery_execution',
+                'name': 'Sprint Execution & Deliverables',
+                'weight': 25,
+                'description': 'Punctuality, accountability, and quality of sprint commitments and milestone deliveries.',
+                'subCompetencies': [
+                    {
+                        'id': 'exec_sprint_delivery',
+                        'name': 'Milestone Delivery & Timeliness',
+                        'expectations': 'Consistently completes assigned deliverables within sprint cutoffs and communicates blockers proactively.',
+                        'required': True,
+                    },
+                    {
+                        'id': 'exec_evidence_artifacts',
+                        'name': 'Verifiable Deliverables & Documentation',
+                        'expectations': 'Submits verifiable PR URLs, design documents, and clear release notes for mentor verification.',
+                        'required': True,
+                    }
+                ]
+            },
+            {
+                'id': 'communication_mentorship',
+                'name': 'Professional Communication & Teamwork',
+                'weight': 20,
+                'description': 'Receptivity to feedback, active participation in reviews, and constructive team coordination.',
+                'subCompetencies': [
+                    {
+                        'id': 'comm_stakeholder_sync',
+                        'name': 'Mentor Alignment & Feedback Receptivity',
+                        'expectations': 'Listens actively to mentor guidance, applies recommended improvements quickly, and participates in standups.',
+                        'required': True,
+                    },
+                    {
+                        'id': 'comm_peer_collaboration',
+                        'name': 'Teamwork & Knowledge Sharing',
+                        'expectations': 'Collaborates effectively with cohort peers and participates thoughtfully in code reviews.',
+                        'required': True,
+                    }
+                ]
+            },
+            {
+                'id': 'growth_ownership',
+                'name': 'Problem Solving & Continuous Growth',
+                'weight': 20,
+                'description': 'Independent initiative, problem diagnosis, and dedication to technical growth.',
+                'subCompetencies': [
+                    {
+                        'id': 'growth_problem_solving',
+                        'name': 'Independent Troubleshooting & Initiative',
+                        'expectations': 'Demonstrates curiosity and tenacity in debugging complex problems before escalating.',
+                        'required': True,
+                    },
+                    {
+                        'id': 'growth_skills_training',
+                        'name': 'Technical Training & Learning Commitment',
+                        'expectations': 'Consistently finishes scheduled technical immersion training modules and expands capabilities.',
+                        'required': True,
+                    }
+                ]
+            }
+        ]
+
         return {
             'id': str(quarter.id),
             'quarterCode': q_code,
             'title': quarter.title,
+            'quarterName': quarter.title,
+            'purpose': quarter_purposes.get(q_code, quarter.current_focus),
             'status': quarter.status,
             'startDate': quarter.start_date.isoformat() if quarter.start_date else None,
             'endDate': quarter.end_date.isoformat() if quarter.end_date else None,
+            'submissionDueDate': quarter.end_date.isoformat() if quarter.end_date else None,
             'completionPercentage': float(quarter.completion_percentage),
             'currentFocus': quarter.current_focus,
             'prerequisitesMet': quarter.prerequisites_met,
@@ -680,6 +785,8 @@ class MiraiJourneyService:
                 'name': quarter.mentor_assigned.get_full_name() or quarter.mentor_assigned.username if quarter.mentor_assigned else (profile.manager.get_full_name() if profile.manager else 'Unassigned'),
                 'email': quarter.mentor_assigned.email if quarter.mentor_assigned else (profile.manager.email if profile.manager else ''),
             },
+            'requiredCompetencies': required_competencies,
+            'ratingScale': rating_scale,
             # Detail View Sections (A through F)
             'exams': exams,
             'technicalParameters': tech_params,

@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { useState } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import ImpersonationBanner from "./ImpersonationBanner";
 import { useWebSocket } from "../hooks/useWebSocket";
 
 const MainLayout = () => {
@@ -30,6 +31,7 @@ const MainLayout = () => {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <ImpersonationBanner />
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <main
           className="flex-1 overflow-y-auto"

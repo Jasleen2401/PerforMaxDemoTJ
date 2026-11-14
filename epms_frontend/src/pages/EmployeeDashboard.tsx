@@ -1,45 +1,46 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Award, ArrowLeft } from 'lucide-react';
+import {
+  Award,
+  ArrowLeft,
+  RotateCcw
+} from 'lucide-react';
 import {
   useGetInternOverviewQuery,
-  useGetInternGoalsQuery,
-  useUpdateInternGoalProgressMutation,
-  useAddInternGoalCommentMutation,
-  useGetInternTasksQuery,
-  useCompleteInternTaskMutation,
-  useGetInternEvidenceQuery,
-  useSubmitInternEvidenceMutation,
+  useGetInternJourneyQuery,
   useGetInternSelfAppraisalQuery,
   useSubmitInternSelfAppraisalMutation,
   useGetInternPublishedFeedbackQuery,
   useReplyToMentorFeedbackMutation,
   useGetUnreadNotificationsCountQuery,
-  useGetInternJourneyQuery,
 } from '../features/dashboard/dashboardApi';
 import { useGetMyNotificationsQuery } from '../features/notification/notificationApi';
 import { useAuth } from '../hooks/useAuth';
+
 import InternOverviewTab from '../components/intern/InternOverviewTab';
-import InternGoalsTab from '../components/intern/InternGoalsTab';
-import InternTasksTab from '../components/intern/InternTasksTab';
-import InternEvidenceTab from '../components/intern/InternEvidenceTab';
+import InternQuartersTab from '../components/intern/InternQuartersTab';
 import InternEvaluationTab from '../components/intern/InternEvaluationTab';
-import InternFormsTab from '../components/intern/InternFormsTab';
+import { InternJourneyTab } from '../components/intern/InternJourneyTab';
 import InternResultsTab from '../components/intern/InternResultsTab';
 import InternProfileTab from '../components/intern/InternProfileTab';
-import { InternJourneyTab } from '../components/intern/InternJourneyTab';
 import InternNotificationsModal from '../components/intern/InternNotificationsModal';
 
-type DashboardTab = 'overview' | 'journey' | 'goals' | 'tasks' | 'evidence' | 'evaluation' | 'forms' | 'results' | 'profile';
+export type DashboardTab = 'overview' | 'quarters' | 'self-review' | 'journey' | 'feedback' | 'profile';
 
 export const EmployeeDashboard: React.FC = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
-  const [evidencePreselectedGoalId, setEvidencePreselectedGoalId] = useState<string>('');
 
-  const validTabs: DashboardTab[] = ['overview', 'journey', 'goals', 'tasks', 'evidence', 'evaluation', 'forms', 'results', 'profile'];
-  const tabParam = searchParams.get('tab') as DashboardTab | null;
+  const rawTabParam = searchParams.get('tab');
+  // Backwards compatibility mappings for any legacy URLs or bookmarks
+  const tabParam = (
+    rawTabParam === 'evaluation' ? 'self-review' :
+    rawTabParam === 'results' ? 'feedback' :
+    rawTabParam
+  ) as DashboardTab | null;
+
+  const validTabs: DashboardTab[] = ['overview', 'quarters', 'self-review', 'journey', 'feedback', 'profile'];
   const activeTab: DashboardTab = (tabParam && validTabs.includes(tabParam)) ? tabParam : 'overview';
 
   const setActiveTab = (newTab: DashboardTab) => {
@@ -50,7 +51,7 @@ export const EmployeeDashboard: React.FC = () => {
     }
   };
 
-  // Primary Queries
+  // Primary Queries for Intern Dashboard
   const {
     data: overviewData,
     isLoading: isOverviewLoading,
@@ -62,24 +63,6 @@ export const EmployeeDashboard: React.FC = () => {
     isLoading: isJourneyLoading,
     refetch: refetchJourney,
   } = useGetInternJourneyQuery();
-
-  const {
-    data: goals = [],
-    isLoading: isGoalsLoading,
-    refetch: refetchGoals,
-  } = useGetInternGoalsQuery();
-
-  const {
-    data: tasks = [],
-    isLoading: isTasksLoading,
-    refetch: refetchTasks,
-  } = useGetInternTasksQuery();
-
-  const {
-    data: evidenceList = [],
-    isLoading: isEvidenceLoading,
-    refetch: refetchEvidence,
-  } = useGetInternEvidenceQuery();
 
   const {
     data: selfAppraisal,
@@ -103,25 +86,13 @@ export const EmployeeDashboard: React.FC = () => {
     refetch: refetchMyNotifications,
   } = useGetMyNotificationsQuery();
 
-  // Primary Mutations
-  const [updateGoalProgress] = useUpdateInternGoalProgressMutation();
-  const [addGoalComment] = useAddInternGoalCommentMutation();
-  const [completeTask] = useCompleteInternTaskMutation();
-  const [submitEvidence] = useSubmitInternEvidenceMutation();
+  // Mutations
   const [submitSelfAppraisal] = useSubmitInternSelfAppraisalMutation();
   const [replyToFeedback] = useReplyToMentorFeedbackMutation();
-
-  const handleOpenEvidenceForGoal = (goalId: string) => {
-    setEvidencePreselectedGoalId(goalId);
-    setActiveTab('evidence');
-  };
 
   const handleRefreshAll = () => {
     refetchOverview();
     refetchJourney();
-    refetchGoals();
-    refetchTasks();
-    refetchEvidence();
     refetchSelfAppraisal();
     refetchFeedback();
     refetchUnreadNotifs();
@@ -131,12 +102,28 @@ export const EmployeeDashboard: React.FC = () => {
   const internName = overviewData?.profile?.name || user?.staffName || (user as any)?.username || (user as any)?.profile?.full_name || 'Intern';
   const designation = overviewData?.profile?.designation || (user as any)?.profile?.designation || 'Software Engineering Intern';
   const department = overviewData?.profile?.department || 'Engineering';
+  const cohortName = overviewData?.activeCohort || 'MIRAI Cohort 2026';
+  const workflowStatus = overviewData?.workflowStatus || 'IN_PROGRESS';
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Top Header / Welcome Area */}
-      <div className="pb-2 border-b border-slate-200/80">
+      <div className="pb-4 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+              {cohortName}
+            </span>
+            <span className="text-xs text-slate-400">•</span>
+            <span className="text-xs text-slate-500 font-medium">
+              {overviewData?.currentQuarter?.name || 'Q2 Quarter'}
+            </span>
+            {workflowStatus === 'RETURNED' && (
+              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                <RotateCcw size={11} /> Revision Needed
+              </span>
+            )}
+          </div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Award className="text-purple-600" size={26} />
             Welcome back, {internName}
@@ -145,9 +132,19 @@ export const EmployeeDashboard: React.FC = () => {
             <span className="font-medium text-slate-700">{designation}</span> • {department} • {overviewData?.cycle?.name || 'Active Performance Evaluation'}
           </p>
         </div>
+
+        {/* Quick Review Status Tag */}
+        <div className="flex items-center gap-3 shrink-0 self-start md:self-auto">
+          <div className="text-left md:text-right bg-slate-50 px-3.5 py-1.5 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Review Stage</span>
+            <span className="text-xs font-bold text-slate-800">
+              {overviewData?.currentReviewStage || 'Self-Review Open'}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* Back to Overview button when on a sub-view */}
+      {/* Sub-view Back Button */}
       {activeTab !== 'overview' && (
         <div className="flex items-center gap-2">
           <button
@@ -160,25 +157,38 @@ export const EmployeeDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* Main Content Sections */}
       <main className="transition-opacity duration-150">
         {activeTab === 'overview' && (
           <InternOverviewTab
             overviewData={overviewData}
             journeyData={journeyData}
-            goals={goals}
-            tasks={tasks}
-            myNotifications={myNotifications}
             isLoading={isOverviewLoading || isJourneyLoading}
             onNavigateToTab={(t) => setActiveTab(t as DashboardTab)}
             onRefresh={handleRefreshAll}
-            onUpdateProgress={async (goalId, progress, comment) => {
-              return updateGoalProgress({ id: goalId, progress, comment }).unwrap();
+          />
+        )}
+
+        {activeTab === 'quarters' && (
+          <InternQuartersTab
+            journeyData={journeyData}
+            overviewData={overviewData}
+            feedbackData={publishedFeedback}
+            isLoading={isOverviewLoading || isJourneyLoading}
+            onNavigateToTab={(t) => setActiveTab(t as DashboardTab)}
+            onRefresh={handleRefreshAll}
+          />
+        )}
+
+        {activeTab === 'self-review' && (
+          <InternEvaluationTab
+            selfAppraisal={selfAppraisal}
+            isLoading={isAppraisalLoading}
+            onSubmitSelfAppraisal={async (payload) => {
+              return submitSelfAppraisal(payload).unwrap();
             }}
-            onCompleteTask={async (payload) => {
-              return completeTask(payload).unwrap();
-            }}
-            onOpenEvidenceModal={handleOpenEvidenceForGoal}
+            onRefetch={refetchSelfAppraisal}
+            onNavigateToTab={(t) => setActiveTab(t as DashboardTab)}
           />
         )}
 
@@ -188,61 +198,7 @@ export const EmployeeDashboard: React.FC = () => {
           />
         )}
 
-        {activeTab === 'goals' && (
-          <InternGoalsTab
-            goals={goals}
-            isLoading={isGoalsLoading}
-            onUpdateProgress={async (goalId, progress, comment) => {
-              return updateGoalProgress({ id: goalId, progress, comment }).unwrap();
-            }}
-            onAddComment={async (goalId, comment, parentId) => {
-              return addGoalComment({ id: goalId, comment, parentId }).unwrap();
-            }}
-            onOpenEvidenceModal={handleOpenEvidenceForGoal}
-            onRefetch={refetchGoals}
-          />
-        )}
-
-        {activeTab === 'tasks' && (
-          <InternTasksTab
-            tasks={tasks}
-            goals={goals}
-            isLoading={isTasksLoading}
-            onCompleteTask={async (payload) => {
-              return completeTask(payload).unwrap();
-            }}
-            onRefetch={refetchTasks}
-          />
-        )}
-
-        {activeTab === 'evidence' && (
-          <InternEvidenceTab
-            evidenceList={evidenceList}
-            goals={goals}
-            isLoading={isEvidenceLoading}
-            onSubmitEvidence={async (fd) => {
-              return submitEvidence(fd).unwrap();
-            }}
-            preselectedGoalId={evidencePreselectedGoalId}
-            onRefetch={refetchEvidence}
-            onCloseDirectModal={() => setEvidencePreselectedGoalId('')}
-          />
-        )}
-
-        {activeTab === 'evaluation' && (
-          <InternEvaluationTab
-            selfAppraisal={selfAppraisal}
-            isLoading={isAppraisalLoading}
-            onSubmitSelfAppraisal={async (payload) => {
-              return submitSelfAppraisal(payload).unwrap();
-            }}
-            onRefetch={refetchSelfAppraisal}
-          />
-        )}
-
-        {activeTab === 'forms' && <InternFormsTab />}
-
-        {activeTab === 'results' && (
+        {activeTab === 'feedback' && (
           <InternResultsTab
             feedbackData={publishedFeedback}
             isLoading={isFeedbackLoading}

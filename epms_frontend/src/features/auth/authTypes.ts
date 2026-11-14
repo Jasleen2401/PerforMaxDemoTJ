@@ -1,11 +1,11 @@
 import type { EmployeeResponse } from "../employee/employeeTypes";
 
-export interface AuthRequest{
-    email:string;
-    password:string;
+export interface AuthRequest {
+    email: string;
+    password: string;
 }
 
-export interface AuthResponse{
+export interface AuthResponse {
     accessToken: string;
     refreshToken: string;
     password_change_required?: boolean;
@@ -13,16 +13,24 @@ export interface AuthResponse{
     data?: any;
 }
 
-export interface RefreshTokenRequest{
+export interface RefreshTokenRequest {
     refreshToken: string;
 }
 
-export interface AuthState{
+export interface AdminBackup {
+    accessToken: string;
+    refreshToken: string;
+    user: EmployeeResponse | null;
+}
+
+export interface AuthState {
     user: EmployeeResponse | null;
     accessToken: string | null;
     refreshToken: string | null;
     isAuthenticated: boolean;
     passwordChangeRequired?: boolean;
+    isImpersonating?: boolean;
+    originalAdmin?: AdminBackup | null;
 }
 
 export interface ForgotPasswordRequest {
@@ -44,4 +52,4 @@ export interface ChangePasswordPayload {
     newPassword?: string;
     confirm_password?: string;
     confirmPassword?: string;
-}
+}

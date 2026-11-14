@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { AuthResponse, AuthState } from "./authTypes";
+import type { AdminBackup, AuthResponse, AuthState } from "./authTypes";
 import type { EmployeeResponse } from "../employee/employeeTypes";
 
 const getStoredToken = (key: string) => {
@@ -22,11 +22,19 @@ try {
   try { localStorage.removeItem("user"); } catch {}
 }
 
+const storedAdminBackup = sessionStorage.getItem("admin_auth_backup");
+const parsedAdminBackup: AdminBackup | null = storedAdminBackup && storedAdminBackup !== "null"
+  ? JSON.parse(storedAdminBackup)
+  : null;
+
 const initialState: AuthState = {
   user: parsedUser,
   accessToken,
   refreshToken,
   isAuthenticated: !!accessToken,
+  passwordChangeRequired: false,
+  isImpersonating: !!parsedAdminBackup,
+  originalAdmin: parsedAdminBackup,
 };
 
 const authSlice = createSlice({
@@ -38,6 +46,9 @@ const authSlice = createSlice({
       state.accessToken = action.payload.accessToken || null;
       state.refreshToken = action.payload.refreshToken || null;
       state.isAuthenticated = Boolean(action.payload.accessToken);
+      state.isImpersonating = false;
+      state.originalAdmin = null;
+      sessionStorage.removeItem("admin_auth_backup");
 
       const pcr = Boolean(
         action.payload.password_change_required ||
@@ -84,13 +95,63 @@ const authSlice = createSlice({
         localStorage.setItem("user", JSON.stringify(state.user));
       }
     },
+    startImpersonation: (state, action: PayloadAction<AuthResponse>) => {
+      if (!sessionStorage.getItem("admin_auth_backup")) {
+        const backup: AdminBackup = {
+          accessToken: state.accessToken || "",
+          refreshToken: state.refreshToken || "",
+          user: state.user,
+        };
+        sessionStorage.setItem("admin_auth_backup", JSON.stringify(backup));
+        state.originalAdmin = backup;
+      }
+      state.isImpersonating = true;
+      state.accessToken = action.payload.accessToken;
+      state.refreshToken = action.payload.refreshToken;
+      state.isAuthenticated = true;
+
+      if (action.payload.user) {
+        state.user = action.payload.user;
+        localStorage.setItem("user", JSON.stringify(action.payload.user));
+      }
+
+      localStorage.setItem("accessToken", action.payload.accessToken);
+      localStorage.setItem("refreshToken", action.payload.refreshToken);
+    },
+    stopImpersonation: (state) => {
+      const backupRaw = sessionStorage.getItem("admin_auth_backup");
+      if (backupRaw) {
+        try {
+          const backup: AdminBackup = JSON.parse(backupRaw);
+          state.accessToken = backup.accessToken;
+          state.refreshToken = backup.refreshToken;
+          state.user = backup.user;
+          state.isAuthenticated = !!backup.accessToken;
+          localStorage.setItem("accessToken", backup.accessToken);
+          localStorage.setItem("refreshToken", backup.refreshToken);
+          if (backup.user) {
+            localStorage.setItem("user", JSON.stringify(backup.user));
+          } else {
+            localStorage.removeItem("user");
+          }
+        } catch (e) {
+          console.error("Failed to restore admin auth backup:", e);
+        }
+        sessionStorage.removeItem("admin_auth_backup");
+      }
+      state.isImpersonating = false;
+      state.originalAdmin = null;
+    },
     logout: (state) => {
       state.user = null;
       state.accessToken = null;
       state.refreshToken = null;
       state.isAuthenticated = false;
       state.passwordChangeRequired = false;
+      state.isImpersonating = false;
+      state.originalAdmin = null;
 
+      sessionStorage.removeItem("admin_auth_backup");
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
       localStorage.removeItem("user");
@@ -98,6 +159,14 @@ const authSlice = createSlice({
   },
 });
 
-export const { loginSuccess, logout, setTokens, setUser, passwordChangeCompleted } = authSlice.actions;
-export default authSlice.reducer;
+export const {
+  loginSuccess,
+  logout,
+  setTokens,
+  setUser,
+  passwordChangeCompleted,
+  startImpersonation,
+  stopImpersonation,
+} = authSlice.actions;
 
+export default authSlice.reducer;

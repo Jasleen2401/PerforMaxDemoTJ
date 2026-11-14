@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import permissions, status
 from apps.accounts.models import User, UserRole
+from apps.accounts.serializers import CustomTokenObtainPairSerializer
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 from apps.accounts.services.role_permission_service import (
@@ -29,7 +30,10 @@ class SuperAdminDashboardView(APIView):
 
     def get(self, request):
         total_users = User.objects.count()
-        total_interns = User.objects.filter(role=UserRole.INTERN).count()
+        emp_roles = [UserRole.INTERN]
+        if hasattr(UserRole, 'EMPLOYEE'):
+            emp_roles.append(getattr(UserRole, 'EMPLOYEE'))
+        total_employees = User.objects.filter(role__in=emp_roles).count()
         total_managers = User.objects.filter(role=UserRole.MANAGER).count()
         total_hr = User.objects.filter(role=UserRole.HR).count()
         total_departments = Department.objects.count()
@@ -44,7 +48,8 @@ class SuperAdminDashboardView(APIView):
             'data': {
                 'metrics': {
                     'totalUsers': total_users,
-                    'totalInterns': total_interns,
+                    'totalEmployees': total_employees,
+                    'totalInterns': total_employees,
                     'totalManagers': total_managers,
                     'totalHr': total_hr,
                     'totalDepartments': total_departments,
@@ -530,4 +535,177 @@ class SuperAdminPermissionsResetView(APIView):
                 'matrix': RolePermissionService.get_matrix(),
                 'catalog': SYSTEM_PERMISSIONS_CATALOG,
             }
+        })
+
+
+class SuperAdminImpersonateView(APIView):
+    permission_classes = [IsSuperAdminUser]
+
+    def post(self, request):
+        target_user_id = request.data.get('user_id') or request.data.get('userId')
+        employee_id = request.data.get('employee_id') or request.data.get('employeeId')
+        email = request.data.get('email')
+        username = request.data.get('username')
+
+        target_user = None
+        if target_user_id:
+            try:
+                target_user = User.objects.select_related('profile').get(id=target_user_id)
+            except (User.DoesNotExist, ValueError):
+                target_user = None
+
+        if not target_user and employee_id:
+            try:
+                profile = EmployeeProfile.objects.select_related('user').get(id=employee_id)
+                target_user = profile.user
+            except (EmployeeProfile.DoesNotExist, ValueError):
+                try:
+                    target_user = User.objects.select_related('profile').get(id=employee_id)
+                except (User.DoesNotExist, ValueError):
+                    target_user = None
+
+        if not target_user and email:
+            target_user = User.objects.select_related('profile').filter(email__iexact=str(email).strip()).first()
+
+        if not target_user and username:
+            target_user = User.objects.select_related('profile').filter(username__iexact=str(username).strip()).first()
+
+        if not target_user:
+            return Response(
+                {'code': 404, 'message': 'Target user not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if target_user.id == request.user.id:
+            return Response(
+                {'code': 400, 'message': 'Cannot impersonate yourself'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if target_user.role == UserRole.SUPER_ADMIN or target_user.is_superuser:
+            return Response(
+                {'code': 403, 'message': 'Cannot impersonate another Super Admin'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        AuditService.log(
+            actor=request.user,
+            action='IMPERSONATION_START',
+            entity_type='USER',
+            entity_id=str(target_user.id),
+            metadata={
+                'target_username': target_user.username,
+                'target_role': target_user.role,
+                'admin_username': request.user.username,
+            },
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        token = CustomTokenObtainPairSerializer.get_token(target_user)
+        token['impersonated_by'] = str(request.user.id)
+        token['impersonator_username'] = request.user.username
+
+        access_token = str(token.access_token)
+        refresh_token = str(token)
+
+        profile = getattr(target_user, 'profile', None)
+        profile_data = None
+        emp_code = "EMP-000"
+        staff_name = target_user.username
+        position_name = target_user.get_role_display()
+        dept_name = "General"
+        manager_name = None
+        profile_img = None
+
+        if profile:
+            staff_name = profile.full_name or target_user.username
+            emp_code = profile.employee_code
+            position_name = profile.designation
+            dept_name = profile.department.name if profile.department else "General"
+            manager_name = profile.manager.username if profile.manager else None
+            profile_img = profile.profile_image.url if (hasattr(profile, 'profile_image') and profile.profile_image) else None
+            profile_data = {
+                'id': str(profile.id),
+                'employee_code': profile.employee_code,
+                'first_name': profile.first_name,
+                'last_name': profile.last_name,
+                'full_name': profile.full_name,
+                'designation': profile.designation,
+                'department_id': str(profile.department.id) if profile.department else None,
+                'department_name': dept_name,
+                'manager_id': str(profile.manager.id) if profile.manager else None,
+                'manager_name': manager_name,
+                'joining_date': str(profile.joining_date) if profile.joining_date else None,
+                'employment_status': profile.employment_status,
+                'phone_number': profile.phone_number,
+                'profile_image': profile_img,
+                'profileImage': profile_img,
+            }
+
+        roles = [target_user.role]
+        if target_user.role == UserRole.SUPER_ADMIN:
+            roles.append('ADMIN')
+        elif target_user.role == UserRole.INTERN:
+            roles.append('EMPLOYEE')
+
+        user_data = {
+            'id': str(profile.id) if profile else str(target_user.id),
+            'userId': str(target_user.id),
+            'employeeCode': emp_code,
+            'staffName': staff_name,
+            'otherName': getattr(profile, 'other_name', '') if profile else '',
+            'email': target_user.email,
+            'phoneNo': getattr(profile, 'phone_number', '') if profile else '',
+            'profileImage': profile_img,
+            'positionName': position_name,
+            'positionId': getattr(profile, 'position', None).id if (profile and getattr(profile, 'position', None)) else 1,
+            'levelName': target_user.role,
+            'levelRank': 1,
+            'currentDepartmentName': dept_name,
+            'roles': roles,
+            'permissions': [f"ROLE_{r}" for r in roles] + ["ALL"],
+            'isActive': target_user.is_active,
+            'accountLocked': False,
+            'directManagerName': manager_name,
+            'profile': profile_data,
+        }
+
+        response_data = {
+            'accessToken': access_token,
+            'refreshToken': refresh_token,
+            'user': user_data,
+            'impersonator': {
+                'id': str(request.user.id),
+                'username': request.user.username,
+                'email': request.user.email,
+                'role': request.user.role,
+            }
+        }
+
+        return Response({
+            'code': 200,
+            'message': f'Impersonation started for {target_user.username}',
+            'data': response_data
+        })
+
+
+class SuperAdminImpersonateExitView(APIView):
+    permission_classes = [IsSuperAdminUser]
+
+    def post(self, request):
+        target_username = request.data.get('target_username', 'Unknown')
+        AuditService.log(
+            actor=request.user,
+            action='IMPERSONATION_END',
+            entity_type='USER',
+            entity_id=str(request.user.id),
+            metadata={
+                'admin_username': request.user.username,
+                'target_username': target_username,
+            },
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        return Response({
+            'code': 200,
+            'message': 'Impersonation ended successfully'
         })

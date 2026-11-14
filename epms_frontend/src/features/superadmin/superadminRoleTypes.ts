@@ -49,3 +49,26 @@ export interface UpdateMatrixRoleRequest {
 export interface UpdateFullMatrixRequest {
   matrix: Record<string, string[]>;
 }
+
+export interface ImpersonateUserRequest {
+  userId?: string;
+  employeeId?: string | number;
+  email?: string;
+  username?: string;
+}
+
+export interface ImpersonateUserResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: any;
+  impersonator: {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+  };
+}
+
+export interface ExitImpersonationRequest {
+  target_username?: string;
+}

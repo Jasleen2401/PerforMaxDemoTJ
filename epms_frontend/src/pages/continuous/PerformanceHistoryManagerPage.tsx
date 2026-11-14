@@ -914,8 +914,8 @@ export const PerformanceHistoryManagerPage = () => {
   const { data: employeeData, isLoading: isEmpsLoading } = useGetEmployeesQuery({ page: 0, size: 1000, excludeSelf: true });
   const employees = (employeeData?.content || []).filter(emp => emp.id !== user?.id);
 
-  const [selectedDeptId, setSelectedDeptId] = useState<number | ''>(user?.currentDepartmentId || '');
-  const [selectedEmpId, setSelectedEmpId] = useState<number | ''>('');
+  const [selectedDeptId, setSelectedDeptId] = useState<string | number | ''>(user?.currentDepartmentId || '');
+  const [selectedEmpId, setSelectedEmpId] = useState<string | number | ''>('');
   const [filterType, setFilterType] = useState<'ALL' | 'FEEDBACK' | 'MEETING'>('ALL');
 
   const [managerPerspective, setManagerPerspective] = useState<'conducted' | 'received'>('conducted');
@@ -932,12 +932,12 @@ export const PerformanceHistoryManagerPage = () => {
     }
   }, [user?.currentDepartmentId]);
 
-  const selectedEmployee = employees?.find(e => e.id === selectedEmpId);
+  const selectedEmployee = employees?.find(e => String(e.id) === String(selectedEmpId));
   const isManagerSelected = selectedEmployee?.roles?.some(r => r.replace("ROLE_", "") === 'MANAGER');
 
   const { data: employeeHistoryResponse, isLoading: isEmpHistoryLoading } = useGetPerformanceHistoryByEmployeeQuery(
     { 
-      employeeId: Number(selectedEmpId), 
+      employeeId: selectedEmpId as any, 
       sourceType: filterType,
       onlyByManager: selectedEmpId === '' 
         ? undefined 
@@ -954,7 +954,7 @@ export const PerformanceHistoryManagerPage = () => {
   const { data: globalHistoryResponse, isLoading: isGlobalHistoryLoading } = useGetAllPerformanceHistoryQuery(
     { 
       sourceType: filterType,
-      departmentId: Number(selectedDeptId),
+      departmentId: selectedDeptId as any,
       page: currentPage - 1, 
       size: itemsPerPage 
     },
@@ -963,16 +963,16 @@ export const PerformanceHistoryManagerPage = () => {
 
   // Always fetch both so both chart types are ready without waiting for filter change
   const { data: analyticsData } = useGetPerformancePulseQuery({
-    departmentId: Number(selectedDeptId),
-    employeeId: selectedEmpId === '' ? undefined : Number(selectedEmpId),
+    departmentId: selectedDeptId as any,
+    employeeId: selectedEmpId === '' ? undefined : (selectedEmpId as any),
     onlyByManager: selectedEmpId === '' 
       ? undefined 
       : (isManagerSelected && managerPerspective === 'conducted' ? false : true)
   });
 
   const { data: meetingPulseData } = useGetMeetingPulseQuery({
-    departmentId: Number(selectedDeptId),
-    employeeId: selectedEmpId === '' ? undefined : Number(selectedEmpId),
+    departmentId: selectedDeptId as any,
+    employeeId: selectedEmpId === '' ? undefined : (selectedEmpId as any),
     onlyByManager: selectedEmpId === '' 
       ? undefined 
       : (isManagerSelected && managerPerspective === 'conducted' ? false : true)
@@ -985,7 +985,7 @@ export const PerformanceHistoryManagerPage = () => {
     }
     if (analyticsData) {
       return analyticsData
-        .filter(h => h.performerId === Number(selectedEmpId))
+        .filter(h => String(h.performerId) === String(selectedEmpId))
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
     return [];
@@ -993,7 +993,7 @@ export const PerformanceHistoryManagerPage = () => {
 
   const receivedAnalyticsData = useMemo(() => {
     if (!selectedEmpId || !analyticsData) return [];
-    return analyticsData.filter(h => h.employeeId === Number(selectedEmpId));
+    return analyticsData.filter(h => String(h.employeeId) === String(selectedEmpId));
   }, [analyticsData, selectedEmpId]);
 
   // analyticsData comes from findLatestStateByEmployee which includes all roles
@@ -1004,19 +1004,19 @@ export const PerformanceHistoryManagerPage = () => {
   const receivedMeetingHistory = useMemo(() => {
     if (!selectedEmpId || !analyticsData) return [];
     return analyticsData.filter((h: any) =>
-      h.sourceType === 'MEETING' && h.employeeId === Number(selectedEmpId)
+      h.sourceType === 'MEETING' && String(h.employeeId) === String(selectedEmpId)
     );
   }, [analyticsData, selectedEmpId]);
 
   const receivedActionItems = useMemo(() => {
     if (!selectedEmpId || !meetingPulseData?.actionItems) return [];
-    return meetingPulseData.actionItems.filter((ai: any) => ai.assignedToId === Number(selectedEmpId));
+    return meetingPulseData.actionItems.filter((ai: any) => String(ai.assignedToId) === String(selectedEmpId));
   }, [meetingPulseData, selectedEmpId]);
 
   // Action items from meetings the selected manager CONDUCTED — assigned to their subordinates
   const conductedActionItems = useMemo(() => {
     if (!selectedEmpId || !meetingPulseData?.actionItems) return [];
-    return meetingPulseData.actionItems.filter((ai: any) => ai.assignedToId !== Number(selectedEmpId));
+    return meetingPulseData.actionItems.filter((ai: any) => String(ai.assignedToId) !== String(selectedEmpId));
   }, [meetingPulseData, selectedEmpId]);
 
   const selectedDeptName = departments?.find(d => d.id === selectedDeptId)?.departmentName;
@@ -1091,14 +1091,14 @@ export const PerformanceHistoryManagerPage = () => {
                     <ManagerialActivityChart 
                       history={managerChartHistory}
                       managerName={selectedEmployeeName || ''}
-                      managerId={Number(selectedEmpId)}
+                      managerId={selectedEmpId as any}
                       timeRange={managerTimeRange}
                       onTimeRangeChange={setManagerTimeRange}
                       filterType={filterType}
                     />
                   </div>
                   <div className="lg:col-span-1 flex flex-col gap-4">
-                    <ManagerActionStats history={managerChartHistory} managerId={Number(selectedEmpId)} filterType={filterType} />
+                    <ManagerActionStats history={managerChartHistory} managerId={selectedEmpId as any} filterType={filterType} />
                     {(filterType === 'ALL' || filterType === 'MEETING') && (
                       <MeetingStats
                         total={conductedActionItems.length}
@@ -1235,7 +1235,7 @@ export const PerformanceHistoryManagerPage = () => {
             className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
             value={selectedEmpId}
             onChange={(e) => {
-              setSelectedEmpId(e.target.value === '' ? '' : Number(e.target.value));
+              setSelectedEmpId(e.target.value);
               setCurrentPage(1);
               setManagerPerspective('conducted');
             }}

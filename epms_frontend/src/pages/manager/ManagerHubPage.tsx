@@ -27,6 +27,8 @@ import {
   CheckCircle2,
   Clock,
   Trash2,
+  FolderGit2,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -41,8 +43,12 @@ import {
   useGetManagerEvidenceQuery,
   useReviewEvidenceDecisionMutation,
   useGiveManagerFeedbackMutation,
+  useGetHistoricalReviewsQuery,
 } from '../../features/manager/managerApi';
 import type { MenteeItem } from '../../features/manager/managerApi';
+import { ProjectManagementSection } from './ProjectManagementSection';
+import { TalentRadarSection } from './TalentRadarSection';
+import { GoalAuditingSection } from './GoalAuditingSection';
 
 export const ManagerHubPage: React.FC = () => {
   const navigate = useNavigate();
@@ -61,7 +67,11 @@ export const ManagerHubPage: React.FC = () => {
     if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
       headers.set('Content-Type', 'application/json');
     }
-    return fetch(url, { ...options, headers });
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    const finalUrl = (baseUrl && !url.startsWith('http'))
+      ? `${baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`
+      : url;
+    return fetch(finalUrl, { ...options, headers });
   }, [accessToken]);
 
   const getTabFromLocation = (): string => {
@@ -69,8 +79,8 @@ export const ManagerHubPage: React.FC = () => {
     if (location.pathname === '/manager/tasks') return 'tasks';
     if (location.pathname === '/manager/evidence') return 'evidence';
     const tabParam = searchParams.get('tab');
-    if (tabParam === 'batches' || tabParam === 'tasks' || tabParam === 'capabilities' || tabParam === 'evidence') {
-      return tabParam;
+    if (['batches', 'tasks', 'capabilities', 'evidence', 'projects', 'radar', 'verification', 'history'].includes(tabParam || '')) {
+      return tabParam as string;
     }
     return 'mentees';
   };
@@ -108,6 +118,10 @@ export const ManagerHubPage: React.FC = () => {
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [isAddCycleOpen, setIsAddCycleOpen] = useState(false);
   const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
+
+  // CSV file state
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvPreviewRows, setCsvPreviewRows] = useState<Array<{ name: string; email: string; cohort: string; batch: string; subBatch: string }>>([]);
 
   // Batches & Goals data state
   const [cycles, setCycles] = useState<any[]>([]);
@@ -158,12 +172,12 @@ export const ManagerHubPage: React.FC = () => {
     visibility: 'PUBLIC',
   });
 
-  // New Technical Parameter Form State
+  // New Technical Parameter Form State (Scale 1 to 10)
   const [paramForm, setParamForm] = useState({
     name: '',
     category: 'Software Engineering',
     description: '',
-    benchmark_score: 5.0,
+    benchmark_score: 7.5,
     weight: 20.0,
   });
 
@@ -176,16 +190,22 @@ export const ManagerHubPage: React.FC = () => {
   // Load Batches & Goals data from backend
   const loadBatchesData = useCallback(async () => {
     try {
-      const cRes = await authFetch('/appraisal-cycles');
+      let cRes = await authFetch('/api/performance/cycles/');
+      if (!cRes.ok) {
+        cRes = await authFetch('/appraisal-cycles/');
+      }
       if (cRes.ok) {
         const cJson = await cRes.json();
-        const cList = cJson.data || (Array.isArray(cJson) ? cJson : []);
+        const cList = cJson.results || cJson.data || (Array.isArray(cJson) ? cJson : []);
         setCycles(cList);
       }
     } catch {}
 
     try {
-      const gRes = await authFetch('/api/goals/');
+      let gRes = await authFetch('/api/goals/');
+      if (!gRes.ok) {
+        gRes = await authFetch('/api/manager/tasks/');
+      }
       if (gRes.ok) {
         const gJson = await gRes.json();
         const gList = gJson.results || gJson.data || (Array.isArray(gJson) ? gJson : []);
@@ -208,10 +228,13 @@ export const ManagerHubPage: React.FC = () => {
   const { refetch: refetchParams } = useGetTechnicalParametersQuery();
   const { data: evidenceList = [], refetch: refetchEvidence } = useGetManagerEvidenceQuery();
 
-  // Selected Mentee for Technical Review Tab
+  // Selected Mentee for Technical Review & History Tab
   const [techReviewMenteeId, setTechReviewMenteeId] = useState<string>('');
   const activeTechMenteeId = techReviewMenteeId || (mentees.length > 0 ? mentees[0].id : '');
   const { data: techDossier, refetch: refetchTechReviews } = useGetTechnicalReviewsQuery(activeTechMenteeId, {
+    skip: !activeTechMenteeId,
+  });
+  const { data: historicalReviews = [], isLoading: isHistoryLoading, refetch: refetchHistory } = useGetHistoricalReviewsQuery(activeTechMenteeId, {
     skip: !activeTechMenteeId,
   });
 
@@ -234,10 +257,10 @@ export const ManagerHubPage: React.FC = () => {
       navigate('/manager/tasks');
     } else if (tabKey === 'evidence') {
       navigate('/manager/evidence');
-    } else if (tabKey === 'batches') {
-      navigate('/manager/hub?tab=batches');
-    } else {
+    } else if (tabKey === 'mentees') {
       navigate('/manager/mentees');
+    } else {
+      navigate(`/manager/hub?tab=${tabKey}`);
     }
   };
 
@@ -250,25 +273,40 @@ export const ManagerHubPage: React.FC = () => {
     }
     const internEmail = newInternForm.email || `${newInternForm.name.toLowerCase().replace(/\s+/g, '')}@college.edu`;
     try {
-      const res = await authFetch('/emp/', {
+      const payload = {
+        staffName: newInternForm.name,
+        name: newInternForm.name,
+        email: internEmail,
+        currentDepartmentName: newInternForm.batch,
+        batch: newInternForm.batch,
+        subBatch: newInternForm.subBatch,
+        positionName: `Software Intern (${newInternForm.subBatch})`,
+        cohort: newInternForm.cohort,
+        universityCohort: newInternForm.cohort,
+        roles: ['INTERN', 'EMPLOYEE'],
+        status: 'ACTIVE'
+      };
+
+      let res = await authFetch('/api/manager/mentees/', {
         method: 'POST',
-        body: JSON.stringify({
-          staffName: newInternForm.name,
-          email: internEmail,
-          currentDepartmentName: newInternForm.batch,
-          positionName: `Software Intern (${newInternForm.subBatch})`,
-          roles: ['INTERN', 'EMPLOYEE'],
-          status: 'ACTIVE'
-        })
+        body: JSON.stringify(payload)
       });
+      if (!res.ok) {
+        res = await authFetch('/emp/', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      }
+
       if (res.ok) {
         toast.success(`Intern "${newInternForm.name}" created and saved to database!`);
+        setIsAddInternOpen(false);
+        setNewInternForm({ name: '', email: '', cohort: 'MIRAI Cohort 1', batch: 'Batch A', subBatch: 'A1', mentor: '' });
+        refetchMentees();
       } else {
-        toast.info(`Intern "${newInternForm.name}" saved in session directory.`);
+        const errJson = await res.json().catch(() => ({}));
+        toast.error(errJson.message || errJson.detail || 'Failed to create intern in database.');
       }
-      setIsAddInternOpen(false);
-      setNewInternForm({ name: '', email: '', cohort: 'MIRAI Cohort 1', batch: 'Batch A', subBatch: 'A1', mentor: '' });
-      refetchMentees();
     } catch {
       toast.error('Failed to create intern in backend.');
     }
@@ -286,29 +324,83 @@ export const ManagerHubPage: React.FC = () => {
     toast.success("Sample CSV template downloaded!");
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+      if (lines.length <= 1) {
+        toast.warning('CSV file appears empty or has only headers.');
+        return;
+      }
+      const parsed: Array<{ name: string; email: string; cohort: string; batch: string; subBatch: string }> = [];
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+        if (parts.length >= 2 && parts[0]) {
+          parsed.push({
+            name: parts[0],
+            email: parts[1] || `${parts[0].toLowerCase().replace(/\s+/g, '')}@college.edu`,
+            cohort: parts[2] || 'MIRAI Cohort 1',
+            batch: parts[3] || 'Batch A',
+            subBatch: parts[4] || 'A1'
+          });
+        }
+      }
+      setCsvPreviewRows(parsed);
+      toast.info(`Detected ${parsed.length} intern(s) in CSV file.`);
+    };
+    reader.readAsText(file);
+  };
+
   const handleCsvImport = async () => {
-    const demoCsvInterns = [
-      { name: 'Devon Miller', email: 'devon@college.edu', batch: 'Batch A', subBatch: 'A1' },
-      { name: 'Maya Lin', email: 'maya@college.edu', batch: 'Batch B', subBatch: 'B1' }
+    const internsToImport = csvPreviewRows.length > 0 ? csvPreviewRows : [
+      { name: 'Devon Miller', email: 'devon@college.edu', cohort: 'MIRAI Cohort 1', batch: 'Batch A', subBatch: 'A1' },
+      { name: 'Maya Lin', email: 'maya@college.edu', cohort: 'MIRAI Cohort 1', batch: 'Batch B', subBatch: 'B1' }
     ];
-    for (const c of demoCsvInterns) {
-      try {
-        await authFetch('/emp/', {
+
+    try {
+      const payload = internsToImport.map(c => ({
+        staffName: c.name,
+        name: c.name,
+        email: c.email,
+        currentDepartmentName: c.batch,
+        batch: c.batch,
+        subBatch: c.subBatch,
+        positionName: `Software Intern (${c.subBatch})`,
+        cohort: c.cohort,
+        universityCohort: c.cohort,
+        roles: ['INTERN', 'EMPLOYEE'],
+        status: 'ACTIVE'
+      }));
+
+      let res = await authFetch('/api/manager/mentees/', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        res = await authFetch('/emp/', {
           method: 'POST',
-          body: JSON.stringify({
-            staffName: c.name,
-            email: c.email,
-            currentDepartmentName: c.batch,
-            positionName: `Software Intern (${c.subBatch})`,
-            roles: ['INTERN', 'EMPLOYEE'],
-            status: 'ACTIVE'
-          })
+          body: JSON.stringify(payload)
         });
-      } catch {}
+      }
+
+      if (res.ok) {
+        toast.success(`Imported ${internsToImport.length} interns via CSV and saved to database!`);
+        setIsCsvModalOpen(false);
+        setCsvFile(null);
+        setCsvPreviewRows([]);
+        refetchMentees();
+      } else {
+        toast.error('Failed to import interns to database.');
+      }
+    } catch {
+      toast.error('Error uploading CSV to backend.');
     }
-    toast.success("Imported 2 interns via CSV and saved to database!");
-    setIsCsvModalOpen(false);
-    refetchMentees();
   };
 
   // Launch Cycle Handler
@@ -316,20 +408,36 @@ export const ManagerHubPage: React.FC = () => {
     e.preventDefault();
     if (!cycleForm.name) return;
     try {
-      await authFetch('/appraisal-cycles', {
+      const payload = {
+        name: cycleForm.name,
+        cycleName: cycleForm.name,
+        start_date: cycleForm.startDate,
+        startDate: cycleForm.startDate,
+        end_date: cycleForm.endDate,
+        endDate: cycleForm.endDate,
+        evaluationPeriod: cycleForm.quarter,
+        status: 'ACTIVE'
+      };
+
+      let res = await authFetch('/api/performance/cycles/', {
         method: 'POST',
-        body: JSON.stringify({
-          cycleName: cycleForm.name,
-          startDate: cycleForm.startDate,
-          endDate: cycleForm.endDate,
-          evaluationPeriod: cycleForm.quarter,
-          status: 'ACTIVE'
-        })
+        body: JSON.stringify(payload)
       });
-      toast.success(`Appraisal cycle "${cycleForm.name}" launched!`);
-      setIsAddCycleOpen(false);
-      setCycleForm({ name: '', quarter: 'Q2 2026', startDate: '2026-04-01', endDate: '2026-06-30' });
-      loadBatchesData();
+      if (!res.ok) {
+        res = await authFetch('/appraisal-cycles/', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res.ok) {
+        toast.success(`Appraisal cycle "${cycleForm.name}" launched and active!`);
+        setIsAddCycleOpen(false);
+        setCycleForm({ name: '', quarter: 'Q2 2026', startDate: '2026-04-01', endDate: '2026-06-30' });
+        loadBatchesData();
+      } else {
+        toast.error('Failed to launch evaluation cycle.');
+      }
     } catch {
       toast.error('Failed to create cycle.');
     }
@@ -340,23 +448,52 @@ export const ManagerHubPage: React.FC = () => {
     e.preventDefault();
     if (!projectGoalForm.title) return;
     const targetId = projectGoalForm.internId || mentees[0]?.id;
+    if (!targetId) {
+      toast.warning('Please select an intern to assign the goal.');
+      return;
+    }
     try {
-      await authFetch('/api/goals/', {
+      const activeCycle = cycles.find((c: any) => c.status === 'ACTIVE' || c.isActive) || cycles[0];
+      const cycleId = activeCycle?.uuid || activeCycle?.id;
+
+      let res = await authFetch('/api/manager/tasks/assign/', {
         method: 'POST',
         body: JSON.stringify({
-          employee: targetId,
+          employee_id: targetId,
           title: projectGoalForm.title,
           description: projectGoalForm.category,
           due_date: projectGoalForm.dueDate,
           priority: 'HIGH',
-          status: 'NOT_STARTED'
+          expected_evidence_type: 'CODE_PR',
+          linked_competency: projectGoalForm.category,
+          cycle: cycleId
         })
       });
-      toast.success(`Goal "${projectGoalForm.title}" assigned!`);
-      setIsAddGoalOpen(false);
-      setProjectGoalForm({ internId: '', title: '', category: 'Technical Goal', dueDate: '2026-06-30' });
-      loadBatchesData();
-      refetchTasks();
+
+      if (!res.ok) {
+        res = await authFetch('/api/goals/', {
+          method: 'POST',
+          body: JSON.stringify({
+            employee: targetId,
+            title: projectGoalForm.title,
+            description: projectGoalForm.category,
+            due_date: projectGoalForm.dueDate,
+            priority: 'HIGH',
+            status: 'NOT_STARTED',
+            cycle: cycleId
+          })
+        });
+      }
+
+      if (res.ok) {
+        toast.success(`Goal "${projectGoalForm.title}" assigned successfully!`);
+        setIsAddGoalOpen(false);
+        setProjectGoalForm({ internId: '', title: '', category: 'Technical Goal', dueDate: '2026-06-30' });
+        loadBatchesData();
+        refetchTasks();
+      } else {
+        toast.error('Failed to assign project goal.');
+      }
     } catch {
       toast.error('Failed to assign project goal.');
     }
@@ -702,10 +839,14 @@ export const ManagerHubPage: React.FC = () => {
       <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-1.5 flex-wrap">
         {[
           { key: 'mentees', label: 'Directory', icon: Users },
-          { key: 'batches', label: 'Batches & Goals', icon: Layers },
+          { key: 'projects', label: 'Projects & Milestones', icon: FolderGit2 },
           { key: 'tasks', label: 'Tasks', icon: Target },
+          { key: 'verification', label: 'Goal Auditing', icon: CheckCircle2 },
           { key: 'capabilities', label: 'Technical Skills', icon: Sparkles },
           { key: 'evidence', label: 'Evidence Review', icon: FolderOpen },
+          { key: 'batches', label: 'Batches & Terms', icon: Layers },
+          { key: 'radar', label: 'Talent Radar & PPO', icon: TrendingUp },
+          { key: 'history', label: 'Review History', icon: Clock },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -1737,6 +1878,179 @@ export const ManagerHubPage: React.FC = () => {
                       Conduct Review
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: PROJECTS & MILESTONES */}
+      {/* ========================================================================= */}
+      {activeTab === 'projects' && (
+        <ProjectManagementSection
+          onAssignTaskForProject={(projectId) => {
+            setTaskForm((prev) => ({ ...prev, description: `Target Project ID: ${projectId}` }));
+            setIsAssignTaskOpen(true);
+          }}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: GOAL AUDITING & VERIFICATION */}
+      {/* ========================================================================= */}
+      {activeTab === 'verification' && (
+        <GoalAuditingSection onRefetchData={refetchTasks} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: TALENT RADAR & PPO VERDICT */}
+      {/* ========================================================================= */}
+      {activeTab === 'radar' && (
+        <TalentRadarSection mentees={mentees} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: REVIEW HISTORY */}
+      {/* ========================================================================= */}
+      {activeTab === 'history' && (
+        <div className="space-y-5">
+          {/* Header & Intern Selector */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Clock className="text-purple-600" size={18} />
+                Historical Performance Evaluations
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Inspect finalized appraisal dossiers, criteria ratings, and mentor/self reflections.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-xs font-bold text-slate-600 whitespace-nowrap">Select Intern:</label>
+              <select
+                value={activeTechMenteeId}
+                onChange={(e) => setTechReviewMenteeId(e.target.value)}
+                className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                {mentees.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.fullName} ({m.employeeCode})
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => refetchHistory()}
+                className="p-2 text-slate-500 hover:text-purple-600 bg-slate-50 hover:bg-purple-50 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                title="Refresh History"
+              >
+                <RefreshCw size={14} className={isHistoryLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {/* Historical Reviews List */}
+          {isHistoryLoading ? (
+            <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-200 text-slate-400">
+              <RefreshCw className="animate-spin mb-3" size={24} />
+              <p className="text-xs font-semibold">Loading appraisal history...</p>
+            </div>
+          ) : historicalReviews.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-200 text-center">
+              <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-3">
+                <Clock size={24} />
+              </div>
+              <h4 className="text-sm font-bold text-slate-800">No Historical Reviews Found</h4>
+              <p className="text-xs text-slate-500 max-w-sm mt-1">
+                Completed appraisal cycles and audited evaluations for this intern will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {historicalReviews.map((review: any) => (
+                <div
+                  key={review.id}
+                  className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-5 space-y-4 transition-all hover:shadow-md"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">{review.cycleName}</h4>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          {review.statusDisplay || review.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Cycle Period: {review.cycleStartDate || 'N/A'} - {review.cycleEndDate || 'N/A'} • Candidate: {review.employeeName} ({review.employeeCode})
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Overall Score</div>
+                        <div className="text-base font-black text-purple-600">
+                          {review.overallScore !== null && review.overallScore !== undefined
+                            ? `${Number(review.overallScore).toFixed(1)} / 10`
+                            : 'Pending'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate(`/appraisals/${review.id}/evaluate`)}
+                        className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <ExternalLink size={13} />
+                        View Evaluation
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Comments & Reflections */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Mentor Reflection ({review.reviewerName || 'Supervisor'})
+                      </span>
+                      <p className="text-xs text-slate-700 leading-relaxed italic">
+                        "{review.reviewerComments || 'No reviewer comments recorded.'}"
+                      </p>
+                    </div>
+
+                    <div className="bg-purple-50/50 p-3.5 rounded-2xl border border-purple-100/60 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-purple-600 tracking-wider">
+                        Mentee Self Reflection
+                      </span>
+                      <p className="text-xs text-slate-700 leading-relaxed italic">
+                        "{review.selfComments || 'No self comments recorded.'}"
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Criteria Ratings Breakdown */}
+                  {review.criteriaRatings && review.criteriaRatings.length > 0 && (
+                    <div className="space-y-2 pt-2">
+                      <div className="text-[11px] font-bold text-slate-700">Competency Breakdown</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {review.criteriaRatings.map((crit: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between"
+                          >
+                            <div>
+                              <div className="text-xs font-semibold text-slate-800">{crit.criterionName}</div>
+                              <div className="text-[10px] text-slate-400">Weight: {crit.weight}%</div>
+                            </div>
+                            <div className="text-xs font-black text-purple-600 px-2 py-1 bg-white rounded-lg border border-slate-200">
+                              {crit.score} / 10
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

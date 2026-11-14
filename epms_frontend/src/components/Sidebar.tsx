@@ -102,11 +102,11 @@ const Sidebar = ({ onClose }: SidebarProps) => {
       case "Assigned Mentees":    return isManager || isHR;
       case "Performance Appraisals": return isAdmin || isManager || isHR;
       case "Performance Pulse":   return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
-      case "Team Pulse":          return hasPermission("APPRAISAL_VIEW_TEAM") && !isAdmin && !isHR;
+      case "Team Pulse":          return (isManager || hasPermission("APPRAISAL_VIEW_TEAM")) && !isAdmin && !isHR;
       case "Continuous Feedback": return true;
       case "Performance Analytics": return isAdmin || isHR || hasPermission("REPORT_VIEW_ALL");
-      case "My Goals & KRAs":     return !isAdmin && !isHR && hasPermission("KPI_VIEW_OWN");
-      case "My KPI Journey":      return !isAdmin && !isHR && hasPermission("KPI_VIEW_OWN") && !!user?.id;
+      case "My Goals & KRAs":     return !isAdmin && !isHR && (isManager || hasPermission("KPI_VIEW_OWN"));
+      case "My KPI Journey":      return !isAdmin && !isHR && (isManager || hasPermission("KPI_VIEW_OWN")) && !!user?.id;
       default:                    return true;
     }
   });

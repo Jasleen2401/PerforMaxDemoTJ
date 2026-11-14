@@ -1,6 +1,13 @@
+import uuid
+from datetime import date
 from django.db.models import Q, Avg
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
+from apps.accounts.models import User, UserRole
+from apps.employees.models import EmployeeProfile, EmploymentStatus
+from apps.organization.models import Department
 from apps.goals.models import Goal, GoalStatus
 from apps.evidence.models import EvidenceSubmission, EvidenceReviewStatus
 from apps.performance.models import Appraisal, PerformanceCycle, TechnicalCapabilityReview, AppraisalStatus, AppraisalType
@@ -124,3 +131,108 @@ class ManagerMenteesView(APIView):
             'data': mentees_data,
             'total': len(mentees_data)
         })
+
+    def post(self, request):
+        """
+        Create a new intern and assign to the authenticated mentor.
+        Supports both single intern creation and batch CSV import payloads.
+        """
+        data = request.data
+        interns_to_create = []
+
+        if isinstance(data, list):
+            interns_to_create = data
+        elif 'interns' in data and isinstance(data['interns'], list):
+            interns_to_create = data['interns']
+        else:
+            interns_to_create = [data]
+
+        created_results = []
+        for item in interns_to_create:
+            name = (item.get('staffName') or item.get('name') or '').strip()
+            if not name:
+                continue
+
+            email = (item.get('email') or '').strip().lower()
+            if not email:
+                clean_name = name.lower().replace(' ', '')
+                email = f"{clean_name}_{uuid.uuid4().hex[:4]}@college.edu"
+
+            batch = item.get('currentDepartmentName') or item.get('batch') or 'Batch A'
+            sub_batch = item.get('subBatch') or item.get('sub_batch') or 'A1'
+            cohort = item.get('cohort') or item.get('universityCohort') or 'MIRAI Cohort 2026'
+            position = item.get('positionName') or f"Software Intern ({sub_batch})"
+
+            # Ensure unique username
+            base_username = email.split('@')[0].replace('.', '_').replace('-', '_')
+            username = base_username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}_{counter}"
+                counter += 1
+
+            # Find or create User
+            user = User.objects.filter(email=email).first()
+            if not user:
+                user = User.objects.create(
+                    username=username,
+                    email=email,
+                    role=UserRole.INTERN,
+                    is_active=True
+                )
+                user.set_password("Dailoqa")
+                user.save()
+
+            # Ensure Department
+            dept = Department.objects.filter(name__iexact=batch).first()
+            if not dept:
+                dept = Department.objects.filter(name="Engineering").first() or Department.objects.first()
+
+            # Generate unique employee code
+            emp_code = f"INT-{uuid.uuid4().hex[:6].upper()}"
+            name_parts = name.split(' ', 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+            profile, created = EmployeeProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'employee_code': emp_code,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'department': dept,
+                    'manager': request.user,
+                    'designation': position,
+                    'employment_status': EmploymentStatus.ACTIVE,
+                    'university_cohort': cohort,
+                    'joining_date': timezone.localdate(),
+                }
+            )
+            if not created and not profile.manager:
+                profile.manager = request.user
+                profile.save(update_fields=['manager'])
+
+            created_results.append({
+                'id': str(profile.id),
+                'userId': str(user.id),
+                'employeeCode': profile.employee_code,
+                'fullName': profile.full_name,
+                'email': user.email,
+                'department': dept.name if dept else batch,
+                'designation': profile.designation,
+                'employmentStatus': profile.employment_status,
+                'universityCohort': profile.university_cohort,
+            })
+
+        if not created_results:
+            return Response(
+                {'code': 400, 'message': 'No valid intern records provided.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response({
+            'code': 201,
+            'message': f'Successfully created {len(created_results)} intern(s) and assigned to mentor.',
+            'data': created_results if len(created_results) > 1 else created_results[0]
+        }, status=status.HTTP_201_CREATED)
+

@@ -69,8 +69,10 @@ class PerformanceCycle(models.Model):
         help_text='Cutoff date for mentor and Japanese instructor evaluations'
     )
     japanese_evaluation_mandatory = models.BooleanField(
-        default=False,
-        help_text='If True, HR cannot finalize until the Japanese evaluation is submitted'
+        null=True,
+        blank=True,
+        default=None,
+        help_text='If True, HR cannot finalize until the Japanese evaluation is submitted. None means unconfigured.'
     )
     current_phase = models.CharField(
         max_length=50,

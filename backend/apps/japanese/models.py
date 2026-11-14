@@ -308,6 +308,7 @@ class JLPTEligibilityRecord(models.Model):
         verbose_name = 'JLPT Eligibility Record'
         verbose_name_plural = 'JLPT Eligibility Records'
         unique_together = ('intern', 'cycle')
+        ordering = ['intern__employee_code']
 
     def __str__(self):
         return f"{self.intern} — JLPT {self.required_level} eligibility: {self.get_eligibility_status_display()} ({self.cycle.name})"

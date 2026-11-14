@@ -150,11 +150,32 @@ export const japaneseApi = api.injectEndpoints({
       invalidatesTags: ["JapanesePractice", "JapaneseInterns", "JapaneseDashboard"],
     }),
 
-    getJLPTAttempts: builder.query<JLPTAttempt[], { intern?: string } | void>({
+    getJLPTAttempts: builder.query<
+      JLPTAttempt[],
+      {
+        intern?: string;
+        level?: string;
+        batch?: string;
+        sub_batch?: string;
+        status?: string;
+        verified?: string;
+        q?: string;
+        page_size?: number;
+      } | void
+    >({
       query: (params) => ({
         url: "/japanese/jlpt-attempts/",
-        params: params || {},
+        params: { page_size: 100, ...(params || {}) },
       }),
+      transformResponse: (response: any) => {
+        if (response && Array.isArray(response.results)) {
+          return response.results;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        return [];
+      },
       providesTags: ["JLPT"],
     }),
 
@@ -176,11 +197,31 @@ export const japaneseApi = api.injectEndpoints({
       invalidatesTags: ["JLPT", "JapaneseInterns", "JapaneseDashboard"],
     }),
 
-    getJLPTEligibility: builder.query<JLPTEligibilityRecord[], { cycle?: string } | void>({
+    getJLPTEligibility: builder.query<
+      JLPTEligibilityRecord[],
+      {
+        cycle?: string;
+        level?: string;
+        batch?: string;
+        sub_batch?: string;
+        status?: string;
+        q?: string;
+        page_size?: number;
+      } | void
+    >({
       query: (params) => ({
         url: "/japanese/jlpt-eligibility/",
-        params: params || {},
+        params: { page_size: 100, ...(params || {}) },
       }),
+      transformResponse: (response: any) => {
+        if (response && Array.isArray(response.results)) {
+          return response.results;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        return [];
+      },
       providesTags: ["JLPT"],
     }),
 

@@ -115,8 +115,15 @@ export interface JapanesePracticeResult {
 export interface JLPTAttempt {
   id: string;
   intern: string;
+  intern_id?: string;
   intern_name?: string;
   intern_code?: string;
+  intern_email?: string;
+  batch_name?: string;
+  batch_code?: string;
+  sub_batch_name?: string;
+  sub_batch_code?: string;
+  target_level?: JLPTLevel;
   level: JLPTLevel;
   exam_date: string;
   score?: number | null;
@@ -124,6 +131,7 @@ export interface JLPTAttempt {
   certificate_file?: string | null;
   verified: boolean;
   verified_by?: string | null;
+  verified_by_username?: string;
   verified_at?: string | null;
   notes?: string;
   created_at?: string;
@@ -132,8 +140,10 @@ export interface JLPTAttempt {
 export interface JLPTEligibilityRecord {
   id: string;
   intern: string;
+  intern_id?: string;
   intern_name?: string;
   intern_code?: string;
+  intern_email?: string;
   cycle: string;
   cycle_name?: string;
   required_level: JLPTLevel;
@@ -141,6 +151,21 @@ export interface JLPTEligibilityRecord {
   eligibility_status_display?: string;
   notes?: string;
   linked_attempt?: string | null;
+  batch_name?: string;
+  batch_code?: string;
+  sub_batch_name?: string;
+  sub_batch_code?: string;
+  current_level?: JLPTLevel | null;
+  all_attempts?: Array<{
+    id: string;
+    level: JLPTLevel;
+    exam_date: string;
+    passed: boolean | null;
+    score: number | null;
+    verified: boolean;
+    verified_by?: string | null;
+    notes?: string;
+  }>;
   updated_at?: string;
 }
 
@@ -153,6 +178,10 @@ export interface JapaneseAssignedIntern {
   department: string;
   managerName: string;
   designation: string;
+  batchName?: string;
+  batchCode?: string;
+  subBatchName?: string;
+  subBatchCode?: string;
   plan?: {
     id: string;
     title: string;

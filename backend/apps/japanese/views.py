@@ -134,12 +134,68 @@ class JLPTAttemptViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = JLPTAttempt.objects.select_related('intern', 'verified_by')
+        qs = JLPTAttempt.objects.select_related('intern', 'intern__user', 'verified_by').prefetch_related(
+            'intern__japanese_batches', 'intern__japanese_batches__parent_batch',
+            'intern__japanese_learning_plans', 'intern__jlpt_eligibility_records'
+        )
         if user.role == 'INTERN':
             return qs.filter(intern__user=user)
+
+        if user.role == 'INSTRUCTOR':
+            assigned_batches = JapaneseBatch.objects.filter(instructors=user)
+            if assigned_batches.exists():
+                all_batches = JapaneseBatch.objects.filter(
+                    models.Q(id__in=assigned_batches) | models.Q(parent_batch__in=assigned_batches)
+                )
+                qs = qs.filter(intern__japanese_batches__in=all_batches).distinct()
+
         intern_id = self.request.query_params.get('intern')
         if intern_id:
             qs = qs.filter(intern_id=intern_id)
+
+        level = self.request.query_params.get('level')
+        if level and level.upper() != 'ALL':
+            qs = qs.filter(level=level.upper())
+
+        batch = self.request.query_params.get('batch')
+        if batch and batch.upper() != 'ALL':
+            qs = qs.filter(
+                models.Q(intern__japanese_batches__name__icontains=batch) |
+                models.Q(intern__japanese_batches__code__icontains=batch)
+            )
+
+        sub_batch = self.request.query_params.get('sub_batch')
+        if sub_batch and sub_batch.upper() != 'ALL':
+            qs = qs.filter(
+                models.Q(intern__japanese_batches__code__iexact=sub_batch) |
+                models.Q(intern__japanese_batches__name__icontains=sub_batch)
+            )
+
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            st = status_param.upper()
+            if st == 'PASSED':
+                qs = qs.filter(passed=True)
+            elif st == 'FAILED':
+                qs = qs.filter(passed=False)
+            elif st in ('PENDING', 'SCHEDULED'):
+                qs = qs.filter(passed__isnull=True)
+
+        verified = self.request.query_params.get('verified')
+        if verified and verified.upper() != 'ALL':
+            if verified.lower() in ('true', 'verified', '1'):
+                qs = qs.filter(verified=True)
+            elif verified.lower() in ('false', 'pending', 'unverified', '0'):
+                qs = qs.filter(verified=False)
+
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            qs = qs.filter(
+                models.Q(intern__full_name__icontains=q) |
+                models.Q(intern__employee_code__icontains=q) |
+                models.Q(intern__user__email__icontains=q)
+            )
+
         return qs
 
     @action(detail=True, methods=['post'])
@@ -153,11 +209,14 @@ class JLPTAttemptViewSet(viewsets.ModelViewSet):
             obj.passed = request.data['passed']
         if 'score' in request.data and request.data['score'] is not None:
             obj.score = request.data['score']
-        obj.notes = request.data.get('notes', obj.notes)
+        if 'notes' in request.data:
+            obj.notes = request.data['notes']
         obj.save()
 
         # Update or create matching JLPTEligibilityRecord
         cycle = PerformanceCycle.objects.filter(status=CycleStatus.ACTIVE).first()
+        if not cycle:
+            cycle = PerformanceCycle.objects.first()
         if cycle:
             eligibility_record, _ = JLPTEligibilityRecord.objects.get_or_create(
                 intern=obj.intern,
@@ -166,7 +225,7 @@ class JLPTAttemptViewSet(viewsets.ModelViewSet):
             )
             if obj.passed:
                 eligibility_record.eligibility_status = 'MEETS_REQUIREMENT'
-            else:
+            elif obj.passed is False:
                 eligibility_record.eligibility_status = 'DOES_NOT_MEET'
             eligibility_record.linked_attempt = obj
             eligibility_record.updated_by = request.user
@@ -181,12 +240,57 @@ class JLPTEligibilityRecordViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = JLPTEligibilityRecord.objects.select_related('intern', 'cycle', 'linked_attempt')
+        qs = JLPTEligibilityRecord.objects.select_related(
+            'intern', 'intern__user', 'cycle', 'linked_attempt'
+        ).prefetch_related(
+            'intern__japanese_batches', 'intern__japanese_batches__parent_batch',
+            'intern__jlpt_attempts', 'intern__japanese_learning_plans'
+        )
         if user.role == 'INTERN':
             return qs.filter(intern__user=user)
+
+        if user.role == 'INSTRUCTOR':
+            assigned_batches = JapaneseBatch.objects.filter(instructors=user)
+            if assigned_batches.exists():
+                all_batches = JapaneseBatch.objects.filter(
+                    models.Q(id__in=assigned_batches) | models.Q(parent_batch__in=assigned_batches)
+                )
+                qs = qs.filter(intern__japanese_batches__in=all_batches).distinct()
+
         cycle_id = self.request.query_params.get('cycle')
         if cycle_id:
             qs = qs.filter(cycle_id=cycle_id)
+
+        level = self.request.query_params.get('level')
+        if level and level.upper() != 'ALL':
+            qs = qs.filter(required_level=level.upper())
+
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            qs = qs.filter(eligibility_status=status_param.upper())
+
+        batch = self.request.query_params.get('batch')
+        if batch and batch.upper() != 'ALL':
+            qs = qs.filter(
+                models.Q(intern__japanese_batches__name__icontains=batch) |
+                models.Q(intern__japanese_batches__code__icontains=batch)
+            )
+
+        sub_batch = self.request.query_params.get('sub_batch')
+        if sub_batch and sub_batch.upper() != 'ALL':
+            qs = qs.filter(
+                models.Q(intern__japanese_batches__code__iexact=sub_batch) |
+                models.Q(intern__japanese_batches__name__icontains=sub_batch)
+            )
+
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            qs = qs.filter(
+                models.Q(intern__full_name__icontains=q) |
+                models.Q(intern__employee_code__icontains=q) |
+                models.Q(intern__user__email__icontains=q)
+            )
+
         return qs
 
 
@@ -592,6 +696,9 @@ class JapaneseInternsView(APIView):
             total_practice = practice_results.count()
             progress_pct = round((completed_practice / max(total_practice, 1)) * 100, 1) if total_practice > 0 else 0.0
 
+            sub_batch = p.japanese_batches.filter(parent_batch__isnull=False).first()
+            main_batch = sub_batch.parent_batch if sub_batch and sub_batch.parent_batch else p.japanese_batches.filter(parent_batch__isnull=True).first()
+
             results.append({
                 'id': str(p.id),
                 'userId': str(p.user.id),
@@ -601,6 +708,10 @@ class JapaneseInternsView(APIView):
                 'department': p.department.name if p.department else 'Language & Training',
                 'managerName': p.manager.username if p.manager else 'Unassigned',
                 'designation': p.designation or 'Intern',
+                'batchName': main_batch.name if main_batch else '',
+                'batchCode': main_batch.code if main_batch else '',
+                'subBatchName': sub_batch.name if sub_batch else '',
+                'subBatchCode': sub_batch.code if sub_batch else '',
                 'plan': {
                     'id': str(plan.id) if plan else None,
                     'title': plan.title if plan else 'No Active Plan',

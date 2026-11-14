@@ -47,23 +47,123 @@ class JapanesePracticeResultSerializer(serializers.ModelSerializer):
 
 class JLPTAttemptSerializer(serializers.ModelSerializer):
     intern_name = serializers.CharField(source='intern.full_name', read_only=True)
+    intern_code = serializers.CharField(source='intern.employee_code', read_only=True)
+    intern_email = serializers.CharField(source='intern.user.email', read_only=True)
+    intern_id = serializers.CharField(source='intern.id', read_only=True)
     verified_by_username = serializers.CharField(source='verified_by.username', read_only=True)
+    batch_name = serializers.SerializerMethodField()
+    batch_code = serializers.SerializerMethodField()
+    sub_batch_name = serializers.SerializerMethodField()
+    sub_batch_code = serializers.SerializerMethodField()
+    target_level = serializers.SerializerMethodField()
 
     class Meta:
         model = JLPTAttempt
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'verified_by', 'verified_at', 'verified']
 
+    def _get_sub_batch(self, obj):
+        return obj.intern.japanese_batches.filter(parent_batch__isnull=False).first()
+
+    def _get_main_batch(self, obj):
+        sb = self._get_sub_batch(obj)
+        if sb and sb.parent_batch:
+            return sb.parent_batch
+        return obj.intern.japanese_batches.filter(parent_batch__isnull=True).first()
+
+    def get_batch_name(self, obj):
+        mb = self._get_main_batch(obj)
+        return mb.name if mb else ''
+
+    def get_batch_code(self, obj):
+        mb = self._get_main_batch(obj)
+        return mb.code if mb else ''
+
+    def get_sub_batch_name(self, obj):
+        sb = self._get_sub_batch(obj)
+        return sb.name if sb else ''
+
+    def get_sub_batch_code(self, obj):
+        sb = self._get_sub_batch(obj)
+        return sb.code if sb else ''
+
+    def get_target_level(self, obj):
+        plan = obj.intern.japanese_learning_plans.filter(is_active=True).first()
+        if plan:
+            return plan.target_jlpt_level
+        elig = obj.intern.jlpt_eligibility_records.first()
+        return elig.required_level if elig else 'N4'
+
 
 class JLPTEligibilityRecordSerializer(serializers.ModelSerializer):
     intern_name = serializers.CharField(source='intern.full_name', read_only=True)
+    intern_code = serializers.CharField(source='intern.employee_code', read_only=True)
+    intern_email = serializers.CharField(source='intern.user.email', read_only=True)
+    intern_id = serializers.CharField(source='intern.id', read_only=True)
     cycle_name = serializers.CharField(source='cycle.name', read_only=True)
     eligibility_status_display = serializers.CharField(source='get_eligibility_status_display', read_only=True)
+    batch_name = serializers.SerializerMethodField()
+    batch_code = serializers.SerializerMethodField()
+    sub_batch_name = serializers.SerializerMethodField()
+    sub_batch_code = serializers.SerializerMethodField()
+    current_level = serializers.SerializerMethodField()
+    all_attempts = serializers.SerializerMethodField()
 
     class Meta:
         model = JLPTEligibilityRecord
         fields = '__all__'
         read_only_fields = ['id', 'updated_at']
+
+    def _get_sub_batch(self, obj):
+        return obj.intern.japanese_batches.filter(parent_batch__isnull=False).first()
+
+    def _get_main_batch(self, obj):
+        sb = self._get_sub_batch(obj)
+        if sb and sb.parent_batch:
+            return sb.parent_batch
+        return obj.intern.japanese_batches.filter(parent_batch__isnull=True).first()
+
+    def get_batch_name(self, obj):
+        mb = self._get_main_batch(obj)
+        return mb.name if mb else ''
+
+    def get_batch_code(self, obj):
+        mb = self._get_main_batch(obj)
+        return mb.code if mb else ''
+
+    def get_sub_batch_name(self, obj):
+        sb = self._get_sub_batch(obj)
+        return sb.name if sb else ''
+
+    def get_sub_batch_code(self, obj):
+        sb = self._get_sub_batch(obj)
+        return sb.code if sb else ''
+
+    def get_current_level(self, obj):
+        levels_order = {'N1': 5, 'N2': 4, 'N3': 3, 'N4': 2, 'N5': 1}
+        passed_attempts = [
+            a for a in obj.intern.jlpt_attempts.all()
+            if a.passed and a.level in levels_order
+        ]
+        if not passed_attempts:
+            return None
+        passed_attempts.sort(key=lambda a: levels_order.get(a.level, 0), reverse=True)
+        return passed_attempts[0].level
+
+    def get_all_attempts(self, obj):
+        return [
+            {
+                'id': str(a.id),
+                'level': a.level,
+                'exam_date': str(a.exam_date),
+                'passed': a.passed,
+                'score': a.score,
+                'verified': a.verified,
+                'verified_by': a.verified_by.username if a.verified_by else None,
+                'notes': a.notes,
+            }
+            for a in obj.intern.jlpt_attempts.all().order_by('-exam_date')
+        ]
 
 
 class JapaneseEvalCriterionSerializer(serializers.ModelSerializer):

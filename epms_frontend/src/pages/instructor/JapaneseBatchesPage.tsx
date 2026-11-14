@@ -123,6 +123,27 @@ export const JapaneseBatchesPage: React.FC = () => {
     return batches.find((b) => b.id === selectedBatchId) || null;
   }, [batches, selectedBatchId]);
 
+  // Overall batch statistics
+  const totalSubBatchesCount = useMemo(() => {
+    return batches.reduce((acc, b) => acc + (b.sub_batches?.length || 0), 0);
+  }, [batches]);
+
+  const totalAllInternsCount = useMemo(() => {
+    return batches.reduce((acc, b) => acc + (b.interns_count || 0), 0);
+  }, [batches]);
+
+  const overallAvgProgress = useMemo(() => {
+    let totalProgress = 0;
+    let internCount = 0;
+    batches.forEach((b) => {
+      b.assigned_interns?.forEach((i) => {
+        totalProgress += i.progress?.percentage || 0;
+        internCount++;
+      });
+    });
+    return internCount > 0 ? Math.round(totalProgress / internCount) : 0;
+  }, [batches]);
+
   // Handle navigating to an intern's profile
   const handleViewProfile = (internId: string) => {
     navigate(`/employees/${internId}/profile`);
@@ -155,7 +176,70 @@ export const JapaneseBatchesPage: React.FC = () => {
         </button>
       </div>
 
-      {/* 2. Compact Filter Toolbar */}
+      {/* 2. Overview Metric Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Total Batches
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
+              <Layers size={14} />
+            </div>
+          </div>
+          <div className="text-xl font-black text-slate-900 mt-1">
+            {batches.length}
+          </div>
+          <p className="text-[10.5px] text-slate-400 mt-0.5">Assigned main cohorts</p>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Sub-Batches
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
+              <Layers size={14} />
+            </div>
+          </div>
+          <div className="text-xl font-black text-slate-900 mt-1">
+            {totalSubBatchesCount}
+          </div>
+          <p className="text-[10.5px] text-slate-400 mt-0.5">Across all cohorts</p>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Total Interns
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+              <Users size={14} />
+            </div>
+          </div>
+          <div className="text-xl font-black text-slate-900 mt-1">
+            {totalAllInternsCount}
+          </div>
+          <p className="text-[10.5px] text-slate-400 mt-0.5">Enrolled trainees</p>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Avg Batch Progress
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+              <Award size={14} />
+            </div>
+          </div>
+          <div className="text-xl font-black text-slate-900 mt-1">
+            {overallAvgProgress}%
+          </div>
+          <p className="text-[10.5px] text-slate-400 mt-0.5">Curriculum completion</p>
+        </div>
+      </div>
+
+      {/* 3. Compact Filter Toolbar */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
           {/* Search Input */}

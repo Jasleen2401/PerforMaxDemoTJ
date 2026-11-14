@@ -7,6 +7,10 @@ from apps.performance.models import (
     CycleParticipant,
     CycleStatus,
     EvaluationCriterion,
+    CycleCompetency,
+    CycleEvaluatorAssignment,
+    EvaluatorSectionType,
+    CompetencySection,
     Appraisal,
     AppraisalRating,
     PerformanceImprovementPlan,
@@ -111,6 +115,107 @@ class EligibleInternSerializer(serializers.ModelSerializer):
 
     def get_is_eligible(self, obj):
         return bool(getattr(obj, 'user', None) and obj.user.role == 'INTERN' and obj.employment_status in ['ACTIVE', 'PROBATION'])
+
+
+class CycleCompetencySerializer(serializers.ModelSerializer):
+    cycle_id = serializers.UUIDField(source='cycle.id', read_only=True)
+    section_display = serializers.CharField(source='get_section_display', read_only=True)
+    weight = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal('0.00'), max_value=Decimal('100.00'))
+    benchmark_score = serializers.DecimalField(max_digits=4, decimal_places=1, default=Decimal('5.0'), required=False)
+    rubric_descriptors = serializers.JSONField(required=False, default=dict)
+
+    class Meta:
+        model = CycleCompetency
+        fields = (
+            'id', 'cycle', 'cycle_id', 'section', 'section_display',
+            'name', 'description', 'weight', 'benchmark_score',
+            'rubric_descriptors', 'order', 'is_active',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = ('id', 'cycle_id', 'section_display', 'created_at', 'updated_at')
+
+    def validate_rubric_descriptors(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Rubric descriptors must be a dictionary.")
+
+        valid_levels = {'1', '2', '3', '4', '5'}
+        cleaned = {}
+        for key, val in value.items():
+            str_key = str(key)
+            if str_key not in valid_levels:
+                raise serializers.ValidationError(
+                    f"Unsupported proficiency level '{key}'. Only levels 1, 2, 3, 4, and 5 are supported."
+                )
+            if val is None:
+                raise serializers.ValidationError(
+                    f"Descriptor for level '{key}' cannot be null."
+                )
+            if not isinstance(val, str):
+                raise serializers.ValidationError(
+                    f"Descriptor for level '{key}' must be a string."
+                )
+            trimmed_val = val.strip()
+            if not trimmed_val:
+                raise serializers.ValidationError(
+                    f"Descriptor for level '{key}' cannot be empty or whitespace only."
+                )
+            cleaned[str_key] = trimmed_val
+        return cleaned
+
+    def validate(self, attrs):
+        cycle = attrs.get('cycle') or getattr(self.instance, 'cycle', None)
+        section = attrs.get('section') or getattr(self.instance, 'section', None)
+        name = attrs.get('name') or getattr(self.instance, 'name', None)
+        if cycle and section and name:
+            qs = CycleCompetency.objects.filter(cycle=cycle, section=section, name=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({
+                    'name': f"A competency named '{name}' already exists in section {section} for this cycle."
+                })
+        return attrs
+
+
+class CycleEvaluatorAssignmentSerializer(serializers.ModelSerializer):
+    cycle_id = serializers.UUIDField(source='cycle.id', read_only=True)
+    participant_id = serializers.UUIDField(source='participant.id', read_only=True)
+    employee_id = serializers.UUIDField(source='participant.employee.id', read_only=True)
+    employee_code = serializers.CharField(source='participant.employee.employee_code', read_only=True)
+    employee_name = serializers.CharField(source='participant.employee.full_name', read_only=True)
+    employee_email = serializers.EmailField(source='participant.employee.email', read_only=True)
+    evaluator_id = serializers.UUIDField(source='evaluator.id', read_only=True)
+    evaluator_name = serializers.CharField(source='evaluator.get_full_name', read_only=True)
+    evaluator_username = serializers.CharField(source='evaluator.username', read_only=True)
+    evaluator_email = serializers.EmailField(source='evaluator.email', read_only=True)
+    section_display = serializers.CharField(source='get_section_display', read_only=True)
+    assigned_by_name = serializers.CharField(source='assigned_by.username', default='', read_only=True)
+
+    class Meta:
+        model = CycleEvaluatorAssignment
+        fields = (
+            'id', 'cycle', 'cycle_id', 'participant', 'participant_id',
+            'employee_id', 'employee_code', 'employee_name', 'employee_email',
+            'evaluator', 'evaluator_id', 'evaluator_name', 'evaluator_username', 'evaluator_email',
+            'section', 'section_display', 'is_mandatory',
+            'assigned_by', 'assigned_by_name', 'created_at'
+        )
+        read_only_fields = (
+            'id', 'cycle_id', 'participant_id', 'employee_id', 'employee_code',
+            'employee_name', 'employee_email', 'evaluator_id', 'evaluator_name',
+            'evaluator_username', 'evaluator_email', 'section_display',
+            'assigned_by_name', 'created_at'
+        )
+
+
+class AssignEvaluatorSerializer(serializers.Serializer):
+    participant_id = serializers.UUIDField(required=True)
+    section = serializers.ChoiceField(choices=EvaluatorSectionType.choices, required=True)
+    evaluator_id = serializers.UUIDField(required=False, allow_null=True)
+    is_mandatory = serializers.BooleanField(required=False, default=True)
+
 
 class EvaluationCriterionSerializer(serializers.ModelSerializer):
     class Meta:

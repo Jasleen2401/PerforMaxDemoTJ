@@ -1,7 +1,7 @@
 // epms_frontend/src/pages/appraisal/AppraisalManagementWorkspace.tsx
 import React from 'react';
 import {
-  LayoutDashboard, Sliders, Users, Layers, CheckSquare,
+  LayoutDashboard, Sliders, Users, Layers, UserCheck, CheckSquare,
   Lock, AlertCircle, RefreshCw, PlusCircle, ArrowLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,8 @@ import {
 import { CycleOverviewTab } from './CycleOverviewTab';
 import { CycleSetupTab } from './CycleSetupTab';
 import { CohortEnrollmentTab } from './CohortEnrollmentTab';
+import { CompetencyRubricsTab } from './CompetencyRubricsTab';
+import { EvaluatorAssignmentTab } from './EvaluatorAssignmentTab';
 
 const WorkspaceContent: React.FC = () => {
   const navigate = useNavigate();
@@ -148,14 +150,32 @@ const WorkspaceContent: React.FC = () => {
           )}
         </button>
 
-        {/* Deferred Workstream Tabs (PR #3 and PR #4) */}
-        <div className="h-5 w-px bg-slate-200 mx-1 shrink-0" />
+        <button
+          onClick={() => setActiveTab('competencies')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'competencies'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Tab 4: Competencies
+        </button>
 
-        <div className="flex items-center gap-1.5 px-3 py-2 text-slate-400 text-xs font-medium cursor-not-allowed shrink-0" title="Competency rubrics & evaluator assignment (PR #3)">
-          <Layers className="w-3.5 h-3.5" />
-          <span>Competencies</span>
-          <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded">PR #3</span>
-        </div>
+        <button
+          onClick={() => setActiveTab('evaluators')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'evaluators'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          Tab 5: Evaluator Assignments
+        </button>
+
+        {/* Deferred Workstream Tabs (PR #4) */}
+        <div className="h-5 w-px bg-slate-200 mx-1 shrink-0" />
 
         <div className="flex items-center gap-1.5 px-3 py-2 text-slate-400 text-xs font-medium cursor-not-allowed shrink-0" title="Assessment progress tracker (PR #4)">
           <CheckSquare className="w-3.5 h-3.5" />
@@ -175,6 +195,8 @@ const WorkspaceContent: React.FC = () => {
         {activeTab === 'overview' && <CycleOverviewTab />}
         {activeTab === 'setup' && <CycleSetupTab />}
         {activeTab === 'participants' && <CohortEnrollmentTab />}
+        {activeTab === 'competencies' && <CompetencyRubricsTab />}
+        {activeTab === 'evaluators' && <EvaluatorAssignmentTab />}
       </div>
     </div>
   );

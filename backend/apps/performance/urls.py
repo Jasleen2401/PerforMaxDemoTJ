@@ -3,6 +3,8 @@ from rest_framework.routers import DefaultRouter
 from apps.performance.views import (
     PerformanceCycleViewSet,
     CycleParticipantViewSet,
+    CycleCompetencyViewSet,
+    CycleEvaluatorAssignmentViewSet,
     EvaluationCriterionViewSet,
     AppraisalViewSet,
     PerformanceImprovementPlanViewSet,
@@ -12,6 +14,8 @@ from apps.performance.views import (
 router = DefaultRouter()
 router.register(r'cycles', PerformanceCycleViewSet, basename='performancecycle')
 router.register(r'participants', CycleParticipantViewSet, basename='cycleparticipant')
+router.register(r'competencies', CycleCompetencyViewSet, basename='cyclecompetency')
+router.register(r'evaluators', CycleEvaluatorAssignmentViewSet, basename='cycleevaluatorassignment')
 router.register(r'criteria', EvaluationCriterionViewSet, basename='evaluationcriterion')
 router.register(r'appraisals', AppraisalViewSet, basename='appraisal')
 router.register(r'pips', PerformanceImprovementPlanViewSet, basename='pip')

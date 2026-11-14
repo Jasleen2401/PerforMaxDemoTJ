@@ -28,8 +28,13 @@ import {
   UserX,
   RotateCcw,
   Compass,
+  LogIn,
+  Loader2,
 } from "lucide-react";
 import { toast } from "react-toastify";
+import { useAppDispatch, useAppSelector } from "../../hooks/reduxHooks";
+import { startImpersonation } from "../../features/auth/authSlice";
+import { useImpersonateUserMutation } from "../../features/superadmin/superadminRoleApi";
 import { useGetEmployeeByIdQuery } from "../../features/employee/employeeapi";
 import {
   useGetActiveCycleQuery,
@@ -151,6 +156,34 @@ const EmployeeProfileView = () => {
 
   const { data: employee, isLoading: isEmployeeLoading, error: employeeError, refetch: refetchEmployee } =
     useGetEmployeeByIdQuery(employeeId, { skip: !employeeId });
+
+  const dispatch = useAppDispatch();
+  const { user: currentUser, originalAdmin } = useAppSelector((state) => state.auth);
+  const [impersonateUser] = useImpersonateUserMutation();
+  const [isImpersonatingThis, setIsImpersonatingThis] = useState(false);
+
+  const isSuperAdmin =
+    currentUser?.roles?.includes("SUPER_ADMIN") ||
+    currentUser?.levelName === "SUPER_ADMIN" ||
+    originalAdmin?.user?.roles?.includes("SUPER_ADMIN") ||
+    originalAdmin?.user?.levelName === "SUPER_ADMIN";
+
+  const handleLoginAs = async () => {
+    if (!employee || isImpersonatingThis) return;
+    setIsImpersonatingThis(true);
+    try {
+      const res = await impersonateUser({ employeeId: employee.id }).unwrap();
+      dispatch(startImpersonation(res));
+      toast.success(`Logged in as ${employee.staffName || employee.email}`);
+      navigate("/dashboard");
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || "Failed to switch user account.";
+      toast.error(msg);
+    } finally {
+      setIsImpersonatingThis(false);
+    }
+  };
+
   const { data: activeCycle } = useGetActiveCycleQuery();
   const { data: allCycles = [] } = useGetCyclesQuery();
 
@@ -478,6 +511,24 @@ const EmployeeProfileView = () => {
 
         {/* Action Controls for Admin/HR */}
         <div className="flex items-center gap-2.5">
+          {isSuperAdmin &&
+            !employee.roles?.includes("SUPER_ADMIN") &&
+            employee.levelName !== "SUPER_ADMIN" &&
+            String(employee.id) !== String(currentUser?.id) && (
+              <button
+                type="button"
+                onClick={handleLoginAs}
+                disabled={isImpersonatingThis}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 cursor-pointer shadow-xs disabled:opacity-60"
+              >
+                {isImpersonatingThis ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <LogIn size={13} />
+                )}
+                Login As Employee
+              </button>
+            )}
           <button
             type="button"
             onClick={handleToggleAccountStatus}

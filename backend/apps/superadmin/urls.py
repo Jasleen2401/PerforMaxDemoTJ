@@ -17,4 +17,7 @@ urlpatterns = [
     path('permissions/catalog/', views.SuperAdminPermissionsCatalogView.as_view(), name='permissions_catalog'),
     path('permissions/matrix/', views.SuperAdminPermissionsMatrixView.as_view(), name='permissions_matrix'),
     path('permissions/matrix/reset/', views.SuperAdminPermissionsResetView.as_view(), name='permissions_reset'),
+    # Super Admin Impersonation ("Login As") endpoints
+    path('impersonate/', views.SuperAdminImpersonateView.as_view(), name='impersonate'),
+    path('impersonate/exit/', views.SuperAdminImpersonateExitView.as_view(), name='impersonate_exit'),
 ]

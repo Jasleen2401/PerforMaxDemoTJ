@@ -14,8 +14,12 @@ import {
 import { useGetActiveDepartmentsQuery } from "../../features/org/departmentApi";
 import { useGetTeamsQuery } from "../../features/org/teamApi";
 import { useDownloadReportMutation } from "../../features/report/reportApi";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useRef, useState } from "react";
+import { toast } from "react-toastify";
+import { useAppDispatch, useAppSelector } from "../../hooks/reduxHooks";
+import { startImpersonation } from "../../features/auth/authSlice";
+import { useImpersonateUserMutation } from "../../features/superadmin/superadminRoleApi";
 import {
   Plus,
   Pencil,
@@ -34,6 +38,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  LogIn,
 } from "lucide-react";
 import { Can } from "../../components/Can";
 
@@ -106,6 +111,34 @@ const EmployeeList = () => {
     useImportEmployeesMutation();
   const [assignRole] = useAssignRoleToEmployeeMutation();
   const [removeRole] = useRemoveRoleFromEmployeeMutation();
+
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const { user: currentUser, originalAdmin } = useAppSelector((state) => state.auth);
+  const [impersonateUser] = useImpersonateUserMutation();
+  const [impersonatingId, setImpersonatingId] = useState<number | string | null>(null);
+
+  const isSuperAdmin =
+    currentUser?.roles?.includes("SUPER_ADMIN") ||
+    currentUser?.levelName === "SUPER_ADMIN" ||
+    originalAdmin?.user?.roles?.includes("SUPER_ADMIN") ||
+    originalAdmin?.user?.levelName === "SUPER_ADMIN";
+
+  const handleLoginAs = async (emp: any) => {
+    if (impersonatingId) return;
+    setImpersonatingId(emp.id);
+    try {
+      const res = await impersonateUser({ employeeId: emp.id }).unwrap();
+      dispatch(startImpersonation(res));
+      toast.success(`Logged in as ${emp.staffName || emp.email}`);
+      navigate("/dashboard");
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || "Failed to switch user account.";
+      toast.error(msg);
+    } finally {
+      setImpersonatingId(null);
+    }
+  };
 
   const handleDownload = async (format: "pdf" | "xlsx") => {
     try {
@@ -724,6 +757,39 @@ const EmployeeList = () => {
                             margin: "0 2px",
                           }}
                         />
+                        {isSuperAdmin &&
+                          !emp.roles?.includes("SUPER_ADMIN") &&
+                          emp.levelName !== "SUPER_ADMIN" &&
+                          String(emp.id) !== String(currentUser?.id) && (
+                            <button
+                              type="button"
+                              onClick={() => handleLoginAs(emp)}
+                              disabled={impersonatingId === emp.id}
+                              title={`Login as ${emp.staffName}`}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: "#6D28D9",
+                                background: "#F5F3FF",
+                                border: "0.5px solid #DDD6FE",
+                                borderRadius: 6,
+                                padding: "3px 8px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                cursor: "pointer",
+                                marginRight: 4,
+                              }}
+                              className="hover:bg-purple-100 hover:text-purple-900 transition-colors"
+                            >
+                              {impersonatingId === emp.id ? (
+                                <Loader2 size={11} className="animate-spin" />
+                              ) : (
+                                <LogIn size={11} />
+                              )}
+                              <span>Login As</span>
+                            </button>
+                          )}
                         <Can permission="EMPLOYEE_EDIT">
                           {emp.accountLocked && (
                             <button

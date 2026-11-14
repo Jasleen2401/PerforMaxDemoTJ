@@ -8,6 +8,9 @@ import type {
   UpdateRoleRequest,
   UpdateMatrixRoleRequest,
   UpdateFullMatrixRequest,
+  ImpersonateUserRequest,
+  ImpersonateUserResponse,
+  ExitImpersonationRequest,
 } from "./superadminRoleTypes";
 
 export const superadminRoleApi = api.injectEndpoints({
@@ -92,6 +95,32 @@ export const superadminRoleApi = api.injectEndpoints({
       }),
       invalidatesTags: ["SuperAdminPermissionsMatrix", "SuperAdminRoles"],
     }),
+
+    impersonateUser: builder.mutation<
+      ImpersonateUserResponse,
+      ImpersonateUserRequest
+    >({
+      query: (body) => ({
+        url: "/superadmin/impersonate/",
+        method: "POST",
+        body,
+      }),
+      transformResponse: (response: ApiResponse<ImpersonateUserResponse> | any) =>
+        response?.data ?? response,
+      invalidatesTags: ["Profile", "Employee", "GoalSet", "Appraisal"],
+    }),
+
+    exitImpersonation: builder.mutation<
+      { code: number; message: string },
+      ExitImpersonationRequest | void
+    >({
+      query: (body) => ({
+        url: "/superadmin/impersonate/exit/",
+        method: "POST",
+        body: body || {},
+      }),
+      invalidatesTags: ["Profile", "Employee", "GoalSet", "Appraisal"],
+    }),
   }),
 });
 
@@ -104,4 +133,6 @@ export const {
   useUpdateRolePermissionsMutation,
   useUpdateFullMatrixMutation,
   useResetPermissionsMutation,
+  useImpersonateUserMutation,
+  useExitImpersonationMutation,
 } = superadminRoleApi;

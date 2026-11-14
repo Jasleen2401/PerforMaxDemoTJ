@@ -14,6 +14,7 @@ import {
   kpiRoutes,
   continuousRoutes,
   managerRoutes,
+  instructorRoutes,
 } from "./routes";
 import { ActiveCycleProvider } from "./context/ActiveCycleContext";
 import KpiCategoryManager from './pages/kpi/KpiCategoryManager';
@@ -75,13 +76,18 @@ const App = () => {
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
 
+            {/* Japanese Instructor Routes */}
+            {instructorRoutes.map((route) => (
+              <Route key={route.path} path={route.path} element={route.element} />
+            ))}
+
             {/* KPI General Routes */}
             {kpiRoutes.filter(r => !['/kpi/library', '/kpi/manage', '/kpi/library/new', '/kpi/library/edit/:id', '/kpi/assign/:employeeId', '/kpi/team', '/kpi/org-history'].includes(r.path)).map((route) => (
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
 
-            {/* Manager & Admin/HR KPI & Mentor Hub Routes */}
-            <Route element={<ProtectedRoute allowedRoles={["MANAGER", "ADMIN", "HR"]} />}>
+            {/* Manager, Admin, HR & Instructor Employee Profile / Mentor Hub Routes */}
+            <Route element={<ProtectedRoute allowedRoles={["MANAGER", "ADMIN", "HR", "INSTRUCTOR"]} />}>
               {managerRoutes.map((route) => (
                 <Route key={route.path} path={route.path} element={route.element} />
               ))}

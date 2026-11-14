@@ -32,6 +32,7 @@ export default defineConfig([
       'react-hooks/static-components': 'warn',
       'react-hooks/rules-of-hooks': 'warn',
       'react-hooks/immutability': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
     },
   },
 ])

@@ -7,4 +7,6 @@ export * from "./generalRoutes";
 export * from "./kpiRoutes";
 export * from "./continuousRoutes";
 export * from "./managerRoutes";
+export * from "./instructorRoutes";
+
 

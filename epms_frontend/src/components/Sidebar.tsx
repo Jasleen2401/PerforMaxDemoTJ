@@ -86,13 +86,13 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ onClose }: SidebarProps) => {
-  const { logout, isAdmin, isHR, isManager, isIntern, user, hasPermission, hasRole } = useAuth();
+  const { logout, isAdmin, isHR, isManager, isInstructor, isIntern, user, hasPermission, hasRole } = useAuth();
   const location = useLocation();
   const [mgmtOpen, setMgmtOpen] = useState(false);
   const [perfOpen, setPerfOpen] = useState(false);
   const [tradReviewOpen, setTradReviewOpen] = useState(false);
 
-  const isInternUser = isIntern || (!isAdmin && !isHR && !isManager);
+  const isInternUser = isIntern || (!isAdmin && !isHR && !isManager && !isInstructor);
 
   const baseNav = NAV_ITEMS.filter((item) => {
     if (item.hideForAdmin && isAdmin) return false;
@@ -120,7 +120,17 @@ const Sidebar = ({ onClose }: SidebarProps) => {
     { label: "Profile", to: "/dashboard?tab=profile", icon: User },
   ];
 
-  const filteredNav = isInternUser
+  const instructorNav: NavItem[] = [
+    { label: "Dashboard", to: "/japanese/dashboard", icon: LayoutDashboard, end: true },
+    { label: "Batches", to: "/japanese/batches", icon: Layers },
+    { label: "Evaluations", to: "/japanese/evaluations", icon: ClipboardCheck },
+    { label: "JLPT Tracking", to: "/japanese/jlpt", icon: Award },
+    { label: "Feedback", to: "/japanese/feedback", icon: MessageSquare },
+  ];
+
+  const filteredNav = isInstructor
+    ? instructorNav
+    : isInternUser
     ? internNav
     : baseNav.flatMap((item: NavItem): NavItem[] => {
         if (item.label === "My KPI Journey" && user?.id) {
@@ -215,7 +225,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
                   ? currentUrl === item.to
                   : item.end
                   ? location.pathname === item.to && !location.search
-                  : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard");
+                  : location.pathname === item.to || (location.pathname.startsWith(item.to) && item.to !== "/dashboard" && item.to !== "/japanese/dashboard");
 
                 return (
                   <NavLink
@@ -234,7 +244,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
         )}
 
         {/* Traditional Review Accordion */}
-        {!isAdmin && (isHR || isManager) && (
+        {!isAdmin && (isHR || isManager) && !isInstructor && (
           <div>
             <button
               onClick={() => setTradReviewOpen(!tradReviewOpen)}
@@ -298,7 +308,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
           </div>
         )}
         {/* Goals & KPI Management Accordion */}
-        {!isAdmin && !isInternUser && perfSubItems.length > 0 && (
+        {!isAdmin && !isInternUser && !isInstructor && perfSubItems.length > 0 && (
           <div>
             <button
               onClick={() => setPerfOpen(!perfOpen)}
@@ -343,7 +353,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
         )}
 
         {/* Organization Hub */}
-        {!isAdmin && isHR && (
+        {!isAdmin && isHR && !isInstructor && (
           <div>
             <button
               onClick={() => setMgmtOpen(!mgmtOpen)}
@@ -401,7 +411,7 @@ const Sidebar = ({ onClose }: SidebarProps) => {
                   {user?.staffName || (user as any)?.username || "Authorized User"}
                 </div>
                 <div className="text-[10px] font-medium text-purple-200 uppercase tracking-wider truncate">
-                  {isAdmin ? "Super Admin" : isHR ? "HR Partner" : isManager ? "Tech Manager" : "Intern"}
+                  {isAdmin ? "Super Admin" : isHR ? "HR Partner" : isInstructor ? "Japanese Instructor" : isManager ? "Tech Manager" : "Intern"}
                 </div>
               </div>
             </div>

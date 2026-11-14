@@ -46,6 +46,16 @@ class FeedbackViewSet(viewsets.ModelViewSet):
                 (Q(recipient=user, status=FeedbackStatus.PUBLISHED) & ~Q(visibility=FeedbackVisibility.MANAGER_ONLY)) |
                 Q(sender=user)
             )
+        elif user.role == 'INSTRUCTOR':
+            from apps.japanese.models import JapaneseBatch
+            assigned_batches = JapaneseBatch.objects.filter(instructors=user)
+            all_batches = JapaneseBatch.objects.filter(
+                Q(id__in=assigned_batches) | Q(parent_batch__in=assigned_batches)
+            )
+            qs = qs.filter(
+                Q(sender=user) |
+                Q(recipient__profile__japanese_batches__in=all_batches)
+            ).distinct()
         elif not (user.is_super_admin or user.is_hr):
             # Managers: feedback they sent, received, or for their direct reports
             qs = qs.filter(
@@ -74,6 +84,38 @@ class FeedbackViewSet(viewsets.ModelViewSet):
 
         if feedback_type_param and feedback_type_param.upper() != 'ALL':
             qs = qs.filter(feedback_type__iexact=feedback_type_param)
+
+        # Filters by batch and sub-batch
+        batch_param = self.request.query_params.get('batch')
+        if batch_param and batch_param.upper() != 'ALL':
+            qs = qs.filter(
+                Q(recipient__profile__japanese_batches__name__icontains=batch_param) |
+                Q(recipient__profile__japanese_batches__code__icontains=batch_param)
+            )
+
+        sub_batch_param = self.request.query_params.get('sub_batch')
+        if sub_batch_param and sub_batch_param.upper() != 'ALL':
+            qs = qs.filter(
+                Q(recipient__profile__japanese_batches__code__iexact=sub_batch_param) |
+                Q(recipient__profile__japanese_batches__name__icontains=sub_batch_param)
+            )
+
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param.upper() != 'ALL':
+            qs = qs.filter(status__iexact=status_param)
+
+        visibility_param = self.request.query_params.get('visibility')
+        if visibility_param and visibility_param.upper() != 'ALL':
+            qs = qs.filter(visibility__iexact=visibility_param)
+
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            qs = qs.filter(
+                Q(message__icontains=q) |
+                Q(recipient__profile__full_name__icontains=q) |
+                Q(recipient__profile__employee_code__icontains=q) |
+                Q(recipient__email__icontains=q)
+            )
 
         return qs
 

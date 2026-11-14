@@ -13,10 +13,10 @@
 ## 🔑 Login & Access Credentials
 | Field | Value |
 |---|---|
-| **Mentor Email** | `marcus.tech@company.com` |
-| **Mentor Username**| `manager_marcus` |
+| **Tech Manager Email** | `marcus.tech@company.com` |
+| **Tech Manager Username**| `manager_marcus` |
 | **Password** | `MarcusPassword123!` |
-| **QA Mentor Email** | `elena.qa@company.com` |
+| **QA Manager Email** | `elena.qa@company.com` |
 | **Password** | `ElenaPassword123!` |
 | **OTP Passcode** | Live via Resend / Universal: `123456` |
 | **Permissions Assigned** | `["ROLE_MANAGER", "GOAL_ASSIGN", "EVIDENCE_REVIEW", "APPRAISAL_EVALUATE", "APPRAISAL_VIEW_TEAM"]` |

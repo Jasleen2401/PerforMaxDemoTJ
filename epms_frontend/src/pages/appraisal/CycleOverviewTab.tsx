@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
   Calendar, CheckCircle2, AlertCircle, Clock, Users,
-  Sliders, ArrowRight, Play, ShieldAlert, Award
+  Sliders, ArrowRight, Play, ShieldAlert, Award, Layers, UserCheck
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAppraisalWorkspace } from './AppraisalWorkspaceContext';
@@ -69,6 +69,13 @@ export const CycleOverviewTab: React.FC = () => {
     deadlines_sequence_valid: true,
     participants_enrolled: activeCycle.participants_count > 0,
     participant_count: activeCycle.participants_count,
+    japanese_mandatory_explicit: activeCycle.japanese_evaluation_mandatory !== null,
+    technical_competencies_configured: false,
+    behavioral_competencies_configured: false,
+    technical_evaluators_assigned: false,
+    behavioral_evaluators_assigned: false,
+    japanese_criteria_configured: activeCycle.japanese_evaluation_mandatory !== true,
+    japanese_evaluators_assigned: activeCycle.japanese_evaluation_mandatory !== true,
   };
 
   const isReady = readiness ? readiness.is_ready : false;
@@ -343,6 +350,132 @@ export const CycleOverviewTab: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Item 7: Technical Competency Rubric */}
+            <div className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+              checklist.technical_competencies_configured
+                ? 'bg-emerald-50/40 border-emerald-100 text-emerald-900'
+                : 'bg-amber-50/40 border-amber-100 text-amber-900'
+            }`}>
+              {checklist.technical_competencies_configured ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <Layers className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold">7. Technical Capabilities Calibration</div>
+                  <div className="text-[11px] opacity-80 mt-0.5">
+                    {checklist.technical_competencies_configured
+                      ? `Calibrated: 100.00% across ${checklist.technical_competencies_count || 0} competencies.`
+                      : `Weights must sum to 100.00% (currently ${checklist.technical_weight_total ?? 0}%).`}
+                  </div>
+                </div>
+                {!checklist.technical_competencies_configured && (
+                  <button
+                    onClick={() => setActiveTab('competencies')}
+                    className="text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 shadow-2xs cursor-pointer"
+                  >
+                    Configure
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Item 8: Behavioral Competency Rubric */}
+            <div className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+              checklist.behavioral_competencies_configured
+                ? 'bg-emerald-50/40 border-emerald-100 text-emerald-900'
+                : 'bg-amber-50/40 border-amber-100 text-amber-900'
+            }`}>
+              {checklist.behavioral_competencies_configured ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <Layers className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold">8. Behavioral Competencies Calibration</div>
+                  <div className="text-[11px] opacity-80 mt-0.5">
+                    {checklist.behavioral_competencies_configured
+                      ? `Calibrated: 100.00% across ${checklist.behavioral_competencies_count || 0} competencies.`
+                      : `Weights must sum to 100.00% (currently ${checklist.behavioral_weight_total ?? 0}%).`}
+                  </div>
+                </div>
+                {!checklist.behavioral_competencies_configured && (
+                  <button
+                    onClick={() => setActiveTab('competencies')}
+                    className="text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 shadow-2xs cursor-pointer"
+                  >
+                    Configure
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Item 9: Technical & Behavioral Evaluator Assignments */}
+            <div className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+              checklist.technical_evaluators_assigned && checklist.behavioral_evaluators_assigned
+                ? 'bg-emerald-50/40 border-emerald-100 text-emerald-900'
+                : 'bg-amber-50/40 border-amber-100 text-amber-900'
+            }`}>
+              {checklist.technical_evaluators_assigned && checklist.behavioral_evaluators_assigned ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <UserCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold">9. Mentor Evaluator Assignments</div>
+                  <div className="text-[11px] opacity-80 mt-0.5">
+                    {checklist.technical_evaluators_assigned && checklist.behavioral_evaluators_assigned
+                      ? 'Technical & Behavioral evaluators assigned for all enrolled cohort interns.'
+                      : 'Evaluators missing for some interns in Technical or Behavioral sections.'}
+                  </div>
+                </div>
+                {!(checklist.technical_evaluators_assigned && checklist.behavioral_evaluators_assigned) && (
+                  <button
+                    onClick={() => setActiveTab('evaluators')}
+                    className="text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 shadow-2xs cursor-pointer"
+                  >
+                    Assign Mentors
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Item 10: Japanese Track Criteria & Instructors (when mandatory) */}
+            {activeCycle.japanese_evaluation_mandatory === true && (
+              <div className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+                checklist.japanese_criteria_configured && checklist.japanese_evaluators_assigned
+                  ? 'bg-emerald-50/40 border-emerald-100 text-emerald-900'
+                  : 'bg-amber-50/40 border-amber-100 text-amber-900'
+              }`}>
+                {checklist.japanese_criteria_configured && checklist.japanese_evaluators_assigned ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold">10. Japanese Criteria & Batch Sensei</div>
+                    <div className="text-[11px] opacity-80 mt-0.5">
+                      {checklist.japanese_criteria_configured && checklist.japanese_evaluators_assigned
+                        ? '100% Japanese criteria calibrated & batch instructors assigned.'
+                        : 'Criteria weights must sum to 100% and valid batch instructors must be assigned.'}
+                    </div>
+                  </div>
+                  {!(checklist.japanese_criteria_configured && checklist.japanese_evaluators_assigned) && (
+                    <button
+                      onClick={() => setActiveTab('evaluators')}
+                      className="text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 shadow-2xs cursor-pointer"
+                    >
+                      Assign Sensei
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Readiness Errors List (if any) */}

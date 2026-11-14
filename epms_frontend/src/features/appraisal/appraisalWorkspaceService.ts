@@ -64,6 +64,157 @@ export interface CycleReadinessChecklist {
   participants_enrolled: boolean;
   participant_count: number;
   japanese_mandatory_explicit?: boolean;
+  technical_competencies_configured?: boolean;
+  technical_weight_total?: number;
+  technical_competencies_count?: number;
+  behavioral_competencies_configured?: boolean;
+  behavioral_weight_total?: number;
+  behavioral_competencies_count?: number;
+  technical_evaluators_assigned?: boolean;
+  technical_evaluators_missing_count?: number;
+  behavioral_evaluators_assigned?: boolean;
+  behavioral_evaluators_missing_count?: number;
+  japanese_criteria_configured?: boolean;
+  japanese_weight_total?: number;
+  japanese_criteria_count?: number;
+  japanese_evaluators_assigned?: boolean;
+  japanese_evaluators_missing_count?: number;
+}
+
+export interface CycleCompetency {
+  id: string;
+  cycle: string;
+  cycle_id?: string;
+  section: 'TECHNICAL' | 'BEHAVIORAL';
+  section_display?: string;
+  name: string;
+  description: string;
+  weight: string;
+  benchmark_score: string;
+  rubric_descriptors: Record<string, string>;
+  order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CycleEvaluatorAssignment {
+  id: string;
+  cycle: string;
+  cycle_id?: string;
+  participant: string;
+  participant_id?: string;
+  employee_id?: string;
+  employee_code?: string;
+  employee_name?: string;
+  employee_email?: string;
+  evaluator?: string;
+  evaluator_id: string | null;
+  evaluator_name?: string | null;
+  evaluator_username?: string | null;
+  evaluator_email?: string | null;
+  section: 'TECHNICAL' | 'BEHAVIORAL' | 'JAPANESE' | 'HR_BEHAVIORAL';
+  section_display?: string;
+  is_mandatory: boolean;
+  assigned_by_name?: string;
+  created_at?: string;
+}
+
+export interface EvaluatorMatrixRow {
+  participant_id: string;
+  employee_id: string;
+  employee_code: string;
+  full_name: string;
+  email: string;
+  designation: string;
+  department: string;
+  manager: {
+    id: string;
+    username: string;
+    full_name: string;
+    email: string;
+  } | null;
+  japanese_batches: {
+    id: string;
+    name: string;
+    code: string;
+    instructors: {
+      id: string;
+      username: string;
+      full_name: string;
+      email: string;
+    }[];
+  }[];
+  batch_instructors_count: number;
+  assignments: {
+    technical: CycleEvaluatorAssignment | null;
+    behavioral: CycleEvaluatorAssignment | null;
+    japanese: CycleEvaluatorAssignment | null;
+  };
+  japanese_status: {
+    status_badge: 'ASSIGNED' | 'UNASSIGNED' | 'AMBIGUOUS' | 'NOT_REQUIRED' | 'NO_BATCH_INSTRUCTOR';
+    evaluation_status: string | null;
+    overall_score: string | null;
+    submitted_at: string | null;
+  };
+  is_fully_assigned: boolean;
+}
+
+export interface EvaluatorMatrixResponse {
+  cycle_id: string;
+  cycle_name: string;
+  status: string;
+  japanese_mandatory: boolean | null;
+  summary: {
+    total_participants: number;
+    fully_assigned_count: number;
+    technical_assigned_count: number;
+    behavioral_assigned_count: number;
+    japanese_assigned_count: number;
+    ambiguous_japanese_count: number;
+    unassigned_count: number;
+  };
+  matrix: EvaluatorMatrixRow[];
+  available_mentors: {
+    id: string;
+    username: string;
+    full_name: string;
+    email: string;
+    role: string;
+  }[];
+  available_instructors: {
+    id: string;
+    username: string;
+    full_name: string;
+    email: string;
+  }[];
+}
+
+export interface AutoAssignResult {
+  message: string;
+  total_participants: number;
+  technical_assigned: number;
+  behavioral_assigned: number;
+  japanese_assigned: number;
+  ambiguous_japanese_count: number;
+  unassigned_count: number;
+  preserved_manual_count?: number;
+  details: {
+    participant_id: string;
+    employee_name: string;
+    technical: string | null;
+    behavioral: string | null;
+    japanese: string | null;
+  }[];
+}
+
+export interface JapaneseEvalCriterion {
+  id: string;
+  cycle: string;
+  name: string;
+  description: string;
+  weight: string;
+  order: number;
 }
 
 export interface CycleReadiness {
@@ -222,6 +373,96 @@ export const appraisalWorkspaceService = {
     const url = `/api/performance/cycles/eligible-interns/${query.toString() ? `?${query.toString()}` : ''}`;
     const res = await fetch(url, { headers: getHeaders() });
     if (!res.ok) throw new Error('Failed to fetch eligible interns');
+    const data = await res.json();
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async getCompetencies(cycleId: string, section?: 'TECHNICAL' | 'BEHAVIORAL'): Promise<CycleCompetency[]> {
+    const query = new URLSearchParams();
+    if (section) query.set('section', section);
+    const url = `/api/performance/cycles/${cycleId}/competencies/${query.toString() ? `?${query.toString()}` : ''}`;
+    const res = await fetch(url, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch cycle competencies');
+    const data = await res.json();
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async createCompetency(cycleId: string, payload: Partial<CycleCompetency>): Promise<CycleCompetency> {
+    const res = await fetch(`/api/performance/cycles/${cycleId}/competencies/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = err.name?.[0] || err.weight?.[0] || err.detail || 'Failed to create competency';
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  async updateCompetency(cycleId: string, competencyId: string, payload: Partial<CycleCompetency>): Promise<CycleCompetency> {
+    const res = await fetch(`/api/performance/cycles/${cycleId}/competencies/${competencyId}/`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = err.name?.[0] || err.weight?.[0] || err.detail || 'Failed to update competency';
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  async deleteCompetency(cycleId: string, competencyId: string): Promise<void> {
+    const res = await fetch(`/api/performance/cycles/${cycleId}/competencies/${competencyId}/`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to delete competency');
+    }
+  },
+
+  async getEvaluatorMatrix(cycleId: string): Promise<EvaluatorMatrixResponse> {
+    const res = await fetch(`/api/performance/cycles/${cycleId}/evaluators/`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch evaluator assignment matrix');
+    return res.json();
+  },
+
+  async assignEvaluator(
+    cycleId: string,
+    payload: { participant_id: string; section: string; evaluator_id: string | null; is_mandatory?: boolean }
+  ): Promise<{ message: string; assignment?: CycleEvaluatorAssignment; unassigned?: boolean }> {
+    const res = await fetch(`/api/performance/cycles/${cycleId}/evaluators/assign/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || err.message || 'Failed to update evaluator assignment');
+    }
+    return res.json();
+  },
+
+  async autoAssignEvaluators(cycleId: string): Promise<AutoAssignResult> {
+    const res = await fetch(`/api/performance/cycles/${cycleId}/evaluators/auto-assign/`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || err.message || 'Failed to auto-assign evaluators');
+    }
+    return res.json();
+  },
+
+  async getJapaneseCriteria(cycleId: string): Promise<JapaneseEvalCriterion[]> {
+    const res = await fetch(`/api/japanese/eval-criteria/?cycle=${cycleId}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch Japanese criteria');
     const data = await res.json();
     return Array.isArray(data) ? data : data.results || [];
   },

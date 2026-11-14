@@ -13,6 +13,10 @@ from apps.performance.models import (
     CycleParticipant,
     CycleStatus,
     EvaluationCriterion,
+    CycleCompetency,
+    CycleEvaluatorAssignment,
+    EvaluatorSectionType,
+    CompetencySection,
     TechnicalCapabilityReview,
     Appraisal,
     AppraisalRating,
@@ -26,17 +30,20 @@ from apps.performance.serializers import (
     CycleParticipantSerializer,
     EligibleInternSerializer,
     EvaluationCriterionSerializer,
+    CycleCompetencySerializer,
+    CycleEvaluatorAssignmentSerializer,
+    AssignEvaluatorSerializer,
     AppraisalSerializer,
     SubmitAppraisalSerializer,
     PerformanceImprovementPlanSerializer,
     RecognitionRewardSerializer,
 )
 from apps.employees.models import EmployeeProfile, EmploymentStatus
-from apps.japanese.models import JapaneseEvaluation
+from apps.japanese.models import JapaneseEvaluation, JapaneseBatch, JapaneseEvalCriterion
 from apps.performance.services.scoring import ScoringService
-from apps.accounts.permissions import IsHR, IsManager
-from apps.accounts.models import UserRole
-from rest_framework.exceptions import PermissionDenied
+from apps.accounts.permissions import IsHR, IsManager, is_admin_user
+from apps.accounts.models import User, UserRole
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 class PerformanceCycleViewSet(viewsets.ModelViewSet):
     serializer_class = PerformanceCycleSerializer
@@ -75,7 +82,11 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
         ).select_related('created_by').prefetch_related('goals')
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 'activate', 'enroll_participants', 'unenroll_participant', 'eligible_interns']:
+        if self.action in [
+            'create', 'update', 'partial_update', 'destroy',
+            'activate', 'enroll_participants', 'unenroll_participant',
+            'eligible_interns', 'assign_evaluator', 'auto_assign_evaluators'
+        ]:
             return [IsHR()]
         return [permissions.IsAuthenticated()]
 
@@ -180,6 +191,115 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
         checklist['japanese_mandatory_explicit'] = japanese_configured
         if not japanese_configured:
             errors.append("Japanese evaluation requirement must be explicitly configured as either Mandatory or Not Mandatory before activation.")
+
+        # 8. Technical Competencies Configuration & 100% Weight Calibration
+        tech_comps = cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True)
+        tech_count = tech_comps.count()
+        tech_sum = sum((c.weight for c in tech_comps), Decimal('0.00'))
+        tech_configured = (tech_count >= 1 and tech_sum == Decimal('100.00'))
+        checklist['technical_competencies_configured'] = tech_configured
+        checklist['technical_competencies_count'] = tech_count
+        checklist['technical_weight_total'] = float(tech_sum)
+        if tech_count == 0:
+            errors.append("Technical competencies must be configured before activation (none found).")
+        elif tech_sum != Decimal('100.00'):
+            errors.append(f"Technical competency weights must sum to exactly 100.00% (currently {tech_sum}% across {tech_count} competencies).")
+
+        # 9. Behavioral Competencies Configuration & 100% Weight Calibration
+        behav_comps = cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True)
+        behav_count = behav_comps.count()
+        behav_sum = sum((c.weight for c in behav_comps), Decimal('0.00'))
+        behav_configured = (behav_count >= 1 and behav_sum == Decimal('100.00'))
+        checklist['behavioral_competencies_configured'] = behav_configured
+        checklist['behavioral_competencies_count'] = behav_count
+        checklist['behavioral_weight_total'] = float(behav_sum)
+        if behav_count == 0:
+            errors.append("Behavioral competencies must be configured before activation (none found).")
+        elif behav_sum != Decimal('100.00'):
+            errors.append(f"Behavioral competency weights must sum to exactly 100.00% (currently {behav_sum}% across {behav_count} competencies).")
+
+        # 10. Evaluator Assignments (Technical & Behavioral for all participants)
+        enrolled_participants = list(cycle.participants.select_related('employee').all())
+        participant_pks = [p.id for p in enrolled_participants]
+
+        if participant_count > 0:
+            tech_assigned = set(
+                CycleEvaluatorAssignment.objects.filter(
+                    cycle=cycle,
+                    participant_id__in=participant_pks,
+                    section=EvaluatorSectionType.TECHNICAL,
+                    evaluator__isnull=False
+                ).values_list('participant_id', flat=True)
+            )
+            tech_missing = participant_count - len(tech_assigned)
+            checklist['technical_evaluators_assigned'] = (tech_missing == 0)
+            checklist['technical_evaluators_missing_count'] = tech_missing
+            if tech_missing > 0:
+                errors.append(f"Mandatory Technical evaluators must be assigned for all participants ({tech_missing} unassigned).")
+
+            behav_assigned = set(
+                CycleEvaluatorAssignment.objects.filter(
+                    cycle=cycle,
+                    participant_id__in=participant_pks,
+                    section=EvaluatorSectionType.BEHAVIORAL,
+                    evaluator__isnull=False
+                ).values_list('participant_id', flat=True)
+            )
+            behav_missing = participant_count - len(behav_assigned)
+            checklist['behavioral_evaluators_assigned'] = (behav_missing == 0)
+            checklist['behavioral_evaluators_missing_count'] = behav_missing
+            if behav_missing > 0:
+                errors.append(f"Mandatory Behavioral evaluators must be assigned for all participants ({behav_missing} unassigned).")
+        else:
+            checklist['technical_evaluators_assigned'] = False
+            checklist['technical_evaluators_missing_count'] = 0
+            checklist['behavioral_evaluators_assigned'] = False
+            checklist['behavioral_evaluators_missing_count'] = 0
+
+        # 11. Japanese Track Criteria & Evaluators (if japanese_evaluation_mandatory is True)
+        if cycle.japanese_evaluation_mandatory is True:
+            jp_criteria = cycle.japanese_criteria.all()
+            jp_count = jp_criteria.count()
+            jp_sum = sum((c.weight for c in jp_criteria), Decimal('0.00'))
+            jp_crit_valid = (jp_count >= 1 and jp_sum == Decimal('100.00'))
+            checklist['japanese_criteria_configured'] = jp_crit_valid
+            checklist['japanese_criteria_count'] = jp_count
+            checklist['japanese_weight_total'] = float(jp_sum)
+            if jp_count == 0:
+                errors.append("Japanese evaluation criteria must be configured before activation when Japanese evaluation is mandatory.")
+            elif jp_sum != Decimal('100.00'):
+                errors.append(f"Japanese evaluation criteria weights must sum to exactly 100.00% (currently {jp_sum}% across {jp_count} criteria).")
+
+            if participant_count > 0:
+                try:
+                    jp_assignments = CycleEvaluatorAssignment.objects.filter(
+                        cycle=cycle,
+                        participant_id__in=participant_pks,
+                        section=EvaluatorSectionType.JAPANESE,
+                        evaluator__isnull=False
+                    ).select_related('participant__employee', 'evaluator')
+
+                    jp_valid_pks = set()
+                    for asgn in jp_assignments:
+                        intern_batches = asgn.participant.employee.japanese_batches.all()
+                        if asgn.evaluator.assigned_japanese_batches.filter(id__in=intern_batches).exists():
+                            jp_valid_pks.add(asgn.participant_id)
+
+                    jp_missing = participant_count - len(jp_valid_pks)
+                except Exception:
+                    jp_missing = participant_count
+
+                checklist['japanese_evaluators_assigned'] = (jp_missing == 0)
+                checklist['japanese_evaluators_missing_count'] = jp_missing
+                if jp_missing > 0:
+                    errors.append(f"Valid Japanese instructors must be assigned for all participants when Japanese evaluation is mandatory ({jp_missing} unassigned or invalid).")
+            else:
+                checklist['japanese_evaluators_assigned'] = False
+                checklist['japanese_evaluators_missing_count'] = 0
+        else:
+            checklist['japanese_criteria_configured'] = True
+            checklist['japanese_evaluators_assigned'] = True
+            checklist['japanese_evaluators_missing_count'] = 0
 
         is_ready = (len(errors) == 0)
         return Response({
@@ -417,6 +537,481 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
             "count": qs.count(),
             "results": serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get', 'post'], url_path='competencies', permission_classes=[permissions.IsAuthenticated])
+    def cycle_competencies(self, request, pk=None):
+        cycle = self.get_object()
+
+        if request.method == 'GET':
+            section = request.query_params.get('section')
+            qs = cycle.competencies.all()
+            if section:
+                qs = qs.filter(section=section)
+            qs = qs.order_by('section', 'order', 'name')
+
+            include_summary = (
+                request.query_params.get('include_summary') == 'true' or
+                request.query_params.get('format') == 'detailed'
+            )
+            if include_summary:
+                tech_comps = cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True)
+                behav_comps = cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True)
+                tech_sum = sum((c.weight for c in tech_comps), Decimal('0.00'))
+                behav_sum = sum((c.weight for c in behav_comps), Decimal('0.00'))
+                return Response({
+                    "cycle_id": str(cycle.id),
+                    "cycle_name": cycle.name,
+                    "results": CycleCompetencySerializer(qs, many=True).data,
+                    "summary": {
+                        "technical_weight_total": float(tech_sum),
+                        "behavioral_weight_total": float(behav_sum),
+                        "is_technical_balanced": tech_sum == Decimal('100.00'),
+                        "is_behavioral_balanced": behav_sum == Decimal('100.00'),
+                        "technical_count": tech_comps.count(),
+                        "behavioral_count": behav_comps.count(),
+                    }
+                }, status=status.HTTP_200_OK)
+
+            return Response(CycleCompetencySerializer(qs, many=True).data, status=status.HTTP_200_OK)
+
+        # POST: HR only
+        if not (is_admin_user(request.user) or getattr(request.user, 'role', '') in [UserRole.HR, UserRole.SUPER_ADMIN]):
+            raise PermissionDenied("Only HR and Super Admins can configure cycle competencies.")
+
+        if cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response(
+                {"detail": f"Cannot add competencies to a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payload = request.data
+        if isinstance(payload, list):
+            created_comps = []
+            with transaction.atomic():
+                for item in payload:
+                    item_data = item.copy() if hasattr(item, 'copy') else dict(item)
+                    item_data['cycle'] = str(cycle.id)
+                    serializer = CycleCompetencySerializer(data=item_data)
+                    serializer.is_valid(raise_exception=True)
+                    created_comps.append(serializer.save(cycle=cycle))
+            return Response(CycleCompetencySerializer(created_comps, many=True).data, status=status.HTTP_201_CREATED)
+
+        item_data = payload.copy() if hasattr(payload, 'copy') else dict(payload)
+        item_data['cycle'] = str(cycle.id)
+        serializer = CycleCompetencySerializer(data=item_data)
+        serializer.is_valid(raise_exception=True)
+        comp = serializer.save(cycle=cycle)
+        return Response(CycleCompetencySerializer(comp).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete', 'patch'], url_path=r'competencies/(?P<competency_id>[^/.]+)', permission_classes=[IsHR])
+    def cycle_competency_detail(self, request, pk=None, competency_id=None):
+        cycle = self.get_object()
+        if cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response(
+                {"detail": f"Cannot modify competencies on a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            comp = CycleCompetency.objects.get(cycle=cycle, id=competency_id)
+        except CycleCompetency.DoesNotExist:
+            return Response({"detail": "Competency not found in this cycle."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'DELETE':
+            if comp.technical_reviews.exists():
+                return Response(
+                    {
+                        "error": "HISTORICAL_REVIEWS_EXIST",
+                        "detail": f"Cannot delete competency '{comp.name}': it is referenced by {comp.technical_reviews.count()} existing technical review(s)."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            comp.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = CycleCompetencySerializer(comp, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='evaluators', permission_classes=[permissions.IsAuthenticated])
+    def evaluator_matrix(self, request, pk=None):
+        cycle = self.get_object()
+        participants = cycle.participants.select_related(
+            'employee', 'employee__user', 'employee__department', 'employee__manager'
+        ).prefetch_related(
+            'employee__japanese_batches__instructors',
+            'evaluator_assignments__evaluator'
+        ).order_by('employee__first_name', 'employee__last_name')
+
+        assignments_qs = CycleEvaluatorAssignment.objects.filter(cycle=cycle).select_related('evaluator', 'assigned_by')
+        asgn_map = {}
+        for a in assignments_qs:
+            asgn_map[(a.participant_id, a.section)] = a
+
+        jp_evals_qs = JapaneseEvaluation.objects.filter(cycle=cycle).select_related('evaluator')
+        jp_eval_map = {e.intern_id: e for e in jp_evals_qs}
+
+        matrix_rows = []
+        tech_assigned_count = 0
+        behav_assigned_count = 0
+        jp_assigned_count = 0
+        ambiguous_jp_count = 0
+        fully_assigned_count = 0
+
+        for p in participants:
+            emp = p.employee
+            tech_asgn = asgn_map.get((p.id, EvaluatorSectionType.TECHNICAL))
+            behav_asgn = asgn_map.get((p.id, EvaluatorSectionType.BEHAVIORAL))
+            jp_asgn = asgn_map.get((p.id, EvaluatorSectionType.JAPANESE))
+
+            if tech_asgn and tech_asgn.evaluator:
+                tech_assigned_count += 1
+            if behav_asgn and behav_asgn.evaluator:
+                behav_assigned_count += 1
+
+            batches_data = []
+            all_batch_instructors = set()
+            try:
+                emp_batches = emp.japanese_batches.all()
+                for b in emp_batches:
+                    instructors_data = []
+                    for inst in b.instructors.all():
+                        instructors_data.append({
+                            "id": str(inst.id),
+                            "username": inst.username,
+                            "full_name": inst.get_full_name(),
+                            "email": inst.email
+                        })
+                        all_batch_instructors.add(inst)
+                    batches_data.append({
+                        "id": str(b.id),
+                        "name": b.name,
+                        "code": b.code,
+                        "instructors": instructors_data
+                    })
+            except Exception:
+                pass
+
+            jp_inst_count = len(all_batch_instructors)
+            jp_eval_record = jp_eval_map.get(emp.id)
+
+            if cycle.japanese_evaluation_mandatory is False:
+                jp_badge = 'NOT_REQUIRED'
+            elif jp_asgn and jp_asgn.evaluator:
+                jp_badge = 'ASSIGNED'
+                jp_assigned_count += 1
+            elif jp_inst_count > 1:
+                jp_badge = 'AMBIGUOUS'
+                ambiguous_jp_count += 1
+            elif jp_inst_count == 1:
+                jp_badge = 'UNASSIGNED'
+            else:
+                jp_badge = 'NO_BATCH_INSTRUCTOR'
+
+            has_tech = bool(tech_asgn and tech_asgn.evaluator)
+            has_behav = bool(behav_asgn and behav_asgn.evaluator)
+            has_jp = bool(jp_asgn and jp_asgn.evaluator) if cycle.japanese_evaluation_mandatory is True else True
+
+            if has_tech and has_behav and has_jp:
+                fully_assigned_count += 1
+
+            matrix_rows.append({
+                "participant_id": str(p.id),
+                "employee_id": str(emp.id),
+                "employee_code": emp.employee_code,
+                "full_name": emp.full_name,
+                "email": emp.email,
+                "designation": emp.designation,
+                "department": emp.department.name if emp.department else '',
+                "manager": {
+                    "id": str(emp.manager.id),
+                    "username": emp.manager.username,
+                    "full_name": emp.manager.get_full_name(),
+                    "email": emp.manager.email
+                } if emp.manager else None,
+                "japanese_batches": batches_data,
+                "batch_instructors_count": jp_inst_count,
+                "assignments": {
+                    "technical": CycleEvaluatorAssignmentSerializer(tech_asgn).data if tech_asgn else None,
+                    "behavioral": CycleEvaluatorAssignmentSerializer(behav_asgn).data if behav_asgn else None,
+                    "japanese": CycleEvaluatorAssignmentSerializer(jp_asgn).data if jp_asgn else None,
+                },
+                "japanese_status": {
+                    "status_badge": jp_badge,
+                    "evaluation_status": jp_eval_record.status if jp_eval_record else None,
+                    "overall_score": str(jp_eval_record.overall_language_score) if jp_eval_record and jp_eval_record.overall_language_score is not None else None,
+                    "submitted_at": jp_eval_record.submitted_at.isoformat() if jp_eval_record and jp_eval_record.submitted_at else None,
+                },
+                "is_fully_assigned": bool(has_tech and has_behav and has_jp)
+            })
+
+        mentors_qs = User.objects.filter(
+            Q(role__in=[UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN, 'ADMIN']) |
+            Q(is_staff=True) |
+            Q(is_superuser=True)
+        ).distinct().order_by('username')
+
+        available_mentors = [
+            {"id": str(m.id), "username": m.username, "full_name": m.get_full_name(), "email": m.email, "role": m.role}
+            for m in mentors_qs
+        ]
+
+        try:
+            instructors_qs = User.objects.filter(
+                assigned_japanese_batches__isnull=False
+            ).distinct().order_by('username')
+
+            available_instructors = [
+                {"id": str(inst.id), "username": inst.username, "full_name": inst.get_full_name(), "email": inst.email}
+                for inst in instructors_qs
+            ]
+        except Exception:
+            available_instructors = []
+
+        return Response({
+            "cycle_id": str(cycle.id),
+            "cycle_name": cycle.name,
+            "status": cycle.status,
+            "japanese_mandatory": cycle.japanese_evaluation_mandatory,
+            "summary": {
+                "total_participants": participants.count(),
+                "fully_assigned_count": fully_assigned_count,
+                "technical_assigned_count": tech_assigned_count,
+                "behavioral_assigned_count": behav_assigned_count,
+                "japanese_assigned_count": jp_assigned_count,
+                "ambiguous_japanese_count": ambiguous_jp_count,
+                "unassigned_count": participants.count() - fully_assigned_count
+            },
+            "matrix": matrix_rows,
+            "available_mentors": available_mentors,
+            "available_instructors": available_instructors
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='evaluators/assign', permission_classes=[IsHR])
+    def assign_evaluator(self, request, pk=None):
+        cycle = self.get_object()
+        if cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response(
+                {"detail": f"Cannot modify evaluator assignments on a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = AssignEvaluatorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            participant = CycleParticipant.objects.select_related('employee').get(cycle=cycle, id=data['participant_id'])
+        except CycleParticipant.DoesNotExist:
+            return Response({"detail": "Participant not found in this cycle."}, status=status.HTTP_404_NOT_FOUND)
+
+        section = data['section']
+        evaluator_id = data.get('evaluator_id')
+        is_mandatory = data.get('is_mandatory', True)
+
+        if not evaluator_id:
+            CycleEvaluatorAssignment.objects.filter(
+                cycle=cycle,
+                participant=participant,
+                section=section
+            ).delete()
+            return Response({
+                "message": f"Evaluator unassigned for {section}.",
+                "unassigned": True,
+                "participant_id": str(participant.id),
+                "section": section
+            }, status=status.HTTP_200_OK)
+
+        try:
+            evaluator = User.objects.get(id=evaluator_id)
+        except User.DoesNotExist:
+            return Response({"detail": "Evaluator user not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if section == EvaluatorSectionType.JAPANESE:
+            intern_batches = participant.employee.japanese_batches.all()
+            if not intern_batches.exists():
+                return Response(
+                    {"detail": f"Intern '{participant.employee.full_name}' is not enrolled in any Japanese batch."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            is_valid_instructor = evaluator.assigned_japanese_batches.filter(id__in=intern_batches).exists()
+            if not is_valid_instructor:
+                return Response(
+                    {"detail": f"Evaluator '{evaluator.get_full_name()}' must be an assigned Japanese instructor for this intern's batch."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        elif section in [EvaluatorSectionType.TECHNICAL, EvaluatorSectionType.BEHAVIORAL, EvaluatorSectionType.HR_BEHAVIORAL]:
+            is_eligible = (
+                evaluator.role in [UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN, 'ADMIN'] or
+                evaluator.is_staff or evaluator.is_superuser
+            )
+            if not is_eligible:
+                return Response(
+                    {"detail": f"Evaluator '{evaluator.get_full_name()}' must have a Mentor, Manager, or HR role."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        assignment, created = CycleEvaluatorAssignment.objects.update_or_create(
+            cycle=cycle,
+            participant=participant,
+            section=section,
+            defaults={
+                'evaluator': evaluator,
+                'is_mandatory': is_mandatory,
+                'assigned_by': request.user
+            }
+        )
+
+        return Response({
+            "message": "Evaluator successfully assigned.",
+            "created": created,
+            "assignment": CycleEvaluatorAssignmentSerializer(assignment).data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='evaluators/auto-assign', permission_classes=[IsHR])
+    def auto_assign_evaluators(self, request, pk=None):
+        cycle = self.get_object()
+        if cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response(
+                {"detail": f"Cannot modify evaluator assignments on a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        participants = cycle.participants.select_related(
+            'employee', 'employee__manager', 'employee__user'
+        ).prefetch_related('employee__japanese_batches__instructors').all()
+
+        tech_assigned = 0
+        behav_assigned = 0
+        jp_assigned = 0
+        ambiguous_jp = 0
+        manual_preserved = 0
+        details = []
+
+        existing_assignments = {
+            (a.participant_id, a.section): a
+            for a in CycleEvaluatorAssignment.objects.filter(cycle=cycle).select_related('evaluator')
+        }
+
+        with transaction.atomic():
+            for p in participants:
+                emp = p.employee
+                row_detail = {
+                    "participant_id": str(p.id),
+                    "employee_name": emp.full_name,
+                    "technical": None,
+                    "behavioral": None,
+                    "japanese": None
+                }
+
+                # 1. Technical Evaluation Assignment
+                existing_tech = existing_assignments.get((p.id, EvaluatorSectionType.TECHNICAL))
+                if existing_tech and existing_tech.evaluator:
+                    tech_assigned += 1
+                    if emp.manager and existing_tech.evaluator_id != emp.manager.id:
+                        row_detail["technical"] = f"PRESERVED_MANUAL ({existing_tech.evaluator.username} differs from manager {emp.manager.username})"
+                        manual_preserved += 1
+                    else:
+                        row_detail["technical"] = f"PRESERVED ({existing_tech.evaluator.username})"
+                elif emp.manager:
+                    CycleEvaluatorAssignment.objects.create(
+                        cycle=cycle,
+                        participant=p,
+                        section=EvaluatorSectionType.TECHNICAL,
+                        evaluator=emp.manager,
+                        is_mandatory=True,
+                        assigned_by=request.user
+                    )
+                    tech_assigned += 1
+                    row_detail["technical"] = f"Assigned to {emp.manager.username}"
+                else:
+                    row_detail["technical"] = "UNASSIGNED (No manager configured)"
+
+                # 2. Behavioral Evaluation Assignment
+                existing_behav = existing_assignments.get((p.id, EvaluatorSectionType.BEHAVIORAL))
+                if existing_behav and existing_behav.evaluator:
+                    behav_assigned += 1
+                    if emp.manager and existing_behav.evaluator_id != emp.manager.id:
+                        row_detail["behavioral"] = f"PRESERVED_MANUAL ({existing_behav.evaluator.username} differs from manager {emp.manager.username})"
+                        manual_preserved += 1
+                    else:
+                        row_detail["behavioral"] = f"PRESERVED ({existing_behav.evaluator.username})"
+                elif emp.manager:
+                    CycleEvaluatorAssignment.objects.create(
+                        cycle=cycle,
+                        participant=p,
+                        section=EvaluatorSectionType.BEHAVIORAL,
+                        evaluator=emp.manager,
+                        is_mandatory=True,
+                        assigned_by=request.user
+                    )
+                    behav_assigned += 1
+                    row_detail["behavioral"] = f"Assigned to {emp.manager.username}"
+                else:
+                    row_detail["behavioral"] = "UNASSIGNED (No manager configured)"
+
+                # 3. Japanese -> unique instructor across intern's batches
+                if cycle.japanese_evaluation_mandatory is not False:
+                    existing_jp = existing_assignments.get((p.id, EvaluatorSectionType.JAPANESE))
+                    if existing_jp and existing_jp.evaluator:
+                        jp_assigned += 1
+                        try:
+                            batch_instructors = User.objects.filter(
+                                assigned_japanese_batches__in=emp.japanese_batches.all()
+                            ).distinct()
+                            b_ids = set(batch_instructors.values_list('id', flat=True))
+                            if existing_jp.evaluator_id not in b_ids:
+                                row_detail["japanese"] = f"PRESERVED_MANUAL ({existing_jp.evaluator.username} - outside batch)"
+                                manual_preserved += 1
+                            elif len(b_ids) > 1:
+                                row_detail["japanese"] = f"PRESERVED_MANUAL ({existing_jp.evaluator.username} selected from {len(b_ids)} instructors)"
+                                manual_preserved += 1
+                            else:
+                                row_detail["japanese"] = f"PRESERVED ({existing_jp.evaluator.username})"
+                        except Exception:
+                            row_detail["japanese"] = f"PRESERVED ({existing_jp.evaluator.username})"
+                    else:
+                        try:
+                            batch_instructors = User.objects.filter(
+                                assigned_japanese_batches__in=emp.japanese_batches.all()
+                            ).distinct()
+                            b_count = batch_instructors.count()
+
+                            if b_count == 1:
+                                inst = batch_instructors.first()
+                                CycleEvaluatorAssignment.objects.create(
+                                    cycle=cycle,
+                                    participant=p,
+                                    section=EvaluatorSectionType.JAPANESE,
+                                    evaluator=inst,
+                                    is_mandatory=True,
+                                    assigned_by=request.user
+                                )
+                                jp_assigned += 1
+                                row_detail["japanese"] = f"Assigned to {inst.username}"
+                            elif b_count > 1:
+                                ambiguous_jp += 1
+                                row_detail["japanese"] = f"AMBIGUOUS ({b_count} instructors in intern's batches)"
+                            else:
+                                row_detail["japanese"] = "UNASSIGNED (No instructor in batches)"
+                        except Exception:
+                            row_detail["japanese"] = "UNASSIGNED"
+
+                details.append(row_detail)
+
+        return Response({
+            "message": "Auto-assignment completed successfully.",
+            "total_participants": participants.count(),
+            "technical_assigned": tech_assigned,
+            "behavioral_assigned": behav_assigned,
+            "japanese_assigned": jp_assigned,
+            "ambiguous_japanese_count": ambiguous_jp,
+            "unassigned_count": participants.count() - tech_assigned,
+            "preserved_manual_count": manual_preserved,
+            "details": details
+        }, status=status.HTTP_200_OK)
+
 
     @action(detail=False, methods=['post'], url_path='create-template', permission_classes=[permissions.IsAuthenticated])
     def create_template(self, request):
@@ -724,3 +1319,75 @@ class CycleParticipantViewSet(viewsets.ModelViewSet):
 
         participant.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CycleCompetencyViewSet(viewsets.ModelViewSet):
+    serializer_class = CycleCompetencySerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['cycle', 'section', 'is_active']
+    search_fields = ['name', 'description']
+    ordering_fields = ['order', 'weight', 'name', 'created_at']
+
+    def get_queryset(self):
+        qs = CycleCompetency.objects.select_related('cycle')
+        cycle_id = self.request.query_params.get('cycle')
+        if cycle_id:
+            qs = qs.filter(cycle_id=cycle_id)
+        section = self.request.query_params.get('section')
+        if section:
+            qs = qs.filter(section=section)
+        return qs.order_by('section', 'order', 'name')
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsHR()]
+    def perform_create(self, serializer):
+        cycle = serializer.validated_data.get('cycle')
+        if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied("Cannot add competencies to a finalized or closed cycle.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        cycle = serializer.instance.cycle
+        if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied("Cannot modify competencies on a finalized or closed cycle.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        cycle = instance.cycle
+        if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied("Cannot delete competencies from a finalized or closed cycle.")
+        if instance.technical_reviews.exists():
+            raise ValidationError(
+                f"Cannot delete competency '{instance.name}': it is referenced by {instance.technical_reviews.count()} existing technical review(s)."
+            )
+        instance.delete()
+
+
+class CycleEvaluatorAssignmentViewSet(viewsets.ModelViewSet):
+    serializer_class = CycleEvaluatorAssignmentSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['cycle', 'participant', 'section', 'is_mandatory']
+    search_fields = ['participant__employee__first_name', 'participant__employee__last_name', 'evaluator__username']
+    ordering_fields = ['section', 'created_at']
+
+    def get_queryset(self):
+        qs = CycleEvaluatorAssignment.objects.select_related(
+            'cycle', 'participant', 'participant__employee', 'evaluator', 'assigned_by'
+        )
+        cycle_id = self.request.query_params.get('cycle')
+        if cycle_id:
+            qs = qs.filter(cycle_id=cycle_id)
+        participant_id = self.request.query_params.get('participant')
+        if participant_id:
+            qs = qs.filter(participant_id=participant_id)
+        section = self.request.query_params.get('section')
+        if section:
+            qs = qs.filter(section=section)
+        return qs
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsHR()]

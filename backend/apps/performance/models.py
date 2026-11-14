@@ -155,6 +155,66 @@ class EvaluatorSectionType(models.TextChoices):
 
 
 # ---------------------------------------------------------------------------
+# CompetencySection — sections for CycleCompetency
+# ---------------------------------------------------------------------------
+class CompetencySection(models.TextChoices):
+    TECHNICAL = 'TECHNICAL', 'Technical Capability'
+    BEHAVIORAL = 'BEHAVIORAL', 'Behavioral Capability'
+
+
+# ---------------------------------------------------------------------------
+# CycleCompetency — cycle-scoped competency definitions & rubric anchors
+# ---------------------------------------------------------------------------
+class CycleCompetency(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cycle = models.ForeignKey(
+        PerformanceCycle,
+        on_delete=models.CASCADE,
+        related_name='competencies'
+    )
+    section = models.CharField(
+        max_length=20,
+        choices=CompetencySection.choices,
+        default=CompetencySection.TECHNICAL,
+        db_index=True,
+        help_text='Evaluation section: Technical or Behavioral'
+    )
+    name = models.CharField(max_length=150)
+    description = models.TextField(blank=True, default='')
+    weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('20.00'),
+        help_text='Weight in percentage within this section (must sum to 100.00% per section for activation)',
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('100.00'))]
+    )
+    benchmark_score = models.DecimalField(
+        max_digits=4,
+        decimal_places=1,
+        default=Decimal('5.0'),
+        help_text='Expected benchmark score on configured rating scale'
+    )
+    rubric_descriptors = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Proficiency anchors for scale levels 1 through 5 (e.g. {"1": "...", "2": "...", ...})'
+    )
+    order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Cycle Competency'
+        verbose_name_plural = 'Cycle Competencies'
+        unique_together = ('cycle', 'section', 'name')
+        ordering = ['cycle', 'section', 'order', 'name']
+
+    def __str__(self):
+        return f"{self.cycle.name} › {self.get_section_display()}: {self.name} ({self.weight}%)"
+
+
+# ---------------------------------------------------------------------------
 # CycleEvaluatorAssignment — who evaluates which section for which intern
 # ---------------------------------------------------------------------------
 class CycleEvaluatorAssignment(models.Model):
@@ -464,7 +524,16 @@ class TechnicalCapabilityReview(models.Model):
     parameter = models.ForeignKey(
         TechnicalCapabilityParameter,
         on_delete=models.CASCADE,
-        related_name='reviews'
+        related_name='reviews',
+        null=True,
+        blank=True
+    )
+    competency = models.ForeignKey(
+        CycleCompetency,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='technical_reviews'
     )
     employee = models.ForeignKey(
         'employees.EmployeeProfile',

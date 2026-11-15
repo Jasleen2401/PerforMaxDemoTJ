@@ -13,6 +13,9 @@ from apps.performance.models import (
     AppraisalStatus,
     EvaluationCriterion,
     TechnicalCapabilityParameter,
+    CycleParticipant,
+    CycleEvaluatorAssignment,
+    EvaluatorSectionType,
 )
 
 class ManagerMentorModuleTestCase(TestCase):
@@ -64,6 +67,7 @@ class ManagerMentorModuleTestCase(TestCase):
             status="ACTIVE",
             created_by=self.manager
         )
+        self.participant = CycleParticipant.objects.create(cycle=self.cycle, employee=self.intern_profile)
 
         # Evaluation Criteria
         self.crit1 = EvaluationCriterion.objects.create(
@@ -148,7 +152,13 @@ class ManagerMentorModuleTestCase(TestCase):
         self.assertGreaterEqual(len(get_res.json().get('data', [])), 1)
 
     def test_m05_review_technical_capability(self):
-        """M-05: Review technical capability parameters against mentee."""
+        """M-05: Review technical capability parameters against mentee with assigned evaluator."""
+        CycleEvaluatorAssignment.objects.create(
+            cycle=self.cycle,
+            participant=self.participant,
+            evaluator=self.manager,
+            section=EvaluatorSectionType.TECHNICAL
+        )
         param = TechnicalCapabilityParameter.objects.create(
             name='Database Modeling',
             category='Backend',
@@ -165,6 +175,95 @@ class ManagerMentorModuleTestCase(TestCase):
                 'mentor_assessment': 'Excellent query optimization'
             }]
         }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 200)
+
+    def test_direct_manager_without_assignment_cannot_post_technical_review(self):
+        """Direct manager relationship alone MUST NOT grant permission to post technical evaluations."""
+        # Note: self.intern_profile.manager == self.manager, but NO CycleEvaluatorAssignment exists
+        param = TechnicalCapabilityParameter.objects.create(
+            name='System Architecture',
+            category='Backend',
+            benchmark_score=Decimal('4.0'),
+            weight=Decimal('20.0'),
+            created_by=self.manager
+        )
+        res = self.client.post('/api/manager/technical-reviews/', data=json.dumps({
+            'employee_id': str(self.intern_profile.id),
+            'status': 'SUBMITTED',
+            'reviews': [{
+                'parameter_id': str(param.id),
+                'score': 4.5,
+                'mentor_assessment': 'Direct manager write attempt'
+            }]
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 403)
+        self.assertIn("Direct manager relationship alone does not grant permission", res.json().get('message', ''))
+
+    def test_direct_manager_can_read_historical_technical_reviews(self):
+        """Direct manager CAN view/retrieve technical reviews for direct report (read-only preserved)."""
+        # Manager has no evaluator assignment, but is direct manager
+        res = self.client.get(f'/api/manager/technical-reviews/?employee_id={self.intern_profile.id}', **self.manager_headers)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json().get('code'), 200)
+        self.assertEqual(res.json().get('data', {}).get('employeeId'), str(self.intern_profile.id))
+
+    def test_assigned_evaluator_can_post_technical_review(self):
+        """Assigned technical evaluator in CycleEvaluatorAssignment can successfully post reviews."""
+        CycleEvaluatorAssignment.objects.create(
+            cycle=self.cycle,
+            participant=self.participant,
+            evaluator=self.manager,
+            section=EvaluatorSectionType.TECHNICAL
+        )
+        param = TechnicalCapabilityParameter.objects.create(
+            name='API Engineering',
+            category='Backend',
+            benchmark_score=Decimal('4.0'),
+            weight=Decimal('20.0'),
+            created_by=self.manager
+        )
+        res = self.client.post('/api/manager/technical-reviews/', data=json.dumps({
+            'employee_id': str(self.intern_profile.id),
+            'status': 'SUBMITTED',
+            'reviews': [{
+                'parameter_id': str(param.id),
+                'score': 4.8,
+                'mentor_assessment': 'Outstanding API contract design'
+            }]
+        }), content_type='application/json', **self.manager_headers)
+        self.assertEqual(res.status_code, 200)
+
+    def test_hr_admin_can_post_technical_review_without_assignment(self):
+        """HR / Super Admin can post technical reviews without an explicit evaluator assignment."""
+        hr_user = User.objects.create_user(
+            username="hr_director",
+            email="hr.director@company.com",
+            password="HrPassword123!",
+            role=UserRole.HR
+        )
+        login_res = self.client.post('/api/auth/login/', data=json.dumps({
+            'email': hr_user.email,
+            'password': 'HrPassword123!'
+        }), content_type='application/json')
+        hr_token = login_res.json().get('access') or login_res.json().get('accessToken')
+        hr_headers = {'HTTP_AUTHORIZATION': f'Bearer {hr_token}'}
+
+        param = TechnicalCapabilityParameter.objects.create(
+            name='DevOps & CI/CD',
+            category='Infrastructure',
+            benchmark_score=Decimal('4.0'),
+            weight=Decimal('20.0'),
+            created_by=hr_user
+        )
+        res = self.client.post('/api/manager/technical-reviews/', data=json.dumps({
+            'employee_id': str(self.intern_profile.id),
+            'status': 'SUBMITTED',
+            'reviews': [{
+                'parameter_id': str(param.id),
+                'score': 4.0,
+                'mentor_assessment': 'HR authorized evaluation'
+            }]
+        }), content_type='application/json', **hr_headers)
         self.assertEqual(res.status_code, 200)
 
     def test_m06_view_and_review_evidence(self):
@@ -413,3 +512,120 @@ class ManagerMentorModuleTestCase(TestCase):
         """Security: Intern role cannot access manager endpoints."""
         res = self.client.get('/api/manager/mentees/', **self.intern_headers)
         self.assertEqual(res.status_code, 403)
+
+    def test_manager_submit_breakdown_non_zero_contributions(self):
+        """
+        Regression test: Manager submission under a Competency Framework cycle
+        correctly extracts nested section contributions and does not report zero.
+        Technical: 80% score * 60% weight = 48.00
+        Behavioral: 90% score * 40% weight = 36.00
+        Composite Score = 84.00
+        """
+        from apps.performance.models import (
+            AppraisalType,
+            CycleCompetency,
+            CompetencySection,
+            TechnicalCapabilityReview,
+            BehavioralCapabilityReview,
+        )
+
+        today = timezone.localdate()
+        cycle = PerformanceCycle.objects.create(
+            name="Competency 60/40 Cycle",
+            start_date=today,
+            end_date=today + timezone.timedelta(days=90),
+            status="ACTIVE",
+            technical_weight=Decimal('60.00'),
+            behavioral_weight=Decimal('40.00'),
+            rating_scale_max=Decimal('5.0'),
+            japanese_evaluation_mandatory=False,
+            created_by=self.manager
+        )
+        participant = CycleParticipant.objects.create(cycle=cycle, employee=self.intern_profile)
+
+        # 1 Technical Competency (100% weight of technical section)
+        tech_comp = CycleCompetency.objects.create(
+            cycle=cycle,
+            name="Python Architecture",
+            section=CompetencySection.TECHNICAL,
+            weight=Decimal('100.00'),
+            benchmark_score=Decimal('3.0'),
+            order=1,
+            is_active=True
+        )
+
+        # 1 Behavioral Competency (100% weight of behavioral section)
+        behav_comp = CycleCompetency.objects.create(
+            cycle=cycle,
+            name="Team Collaboration",
+            section=CompetencySection.BEHAVIORAL,
+            weight=Decimal('100.00'),
+            benchmark_score=Decimal('3.0'),
+            order=1,
+            is_active=True
+        )
+
+        # Evaluator assignments
+        CycleEvaluatorAssignment.objects.create(
+            cycle=cycle,
+            participant=participant,
+            evaluator=self.manager,
+            section=EvaluatorSectionType.TECHNICAL
+        )
+        CycleEvaluatorAssignment.objects.create(
+            cycle=cycle,
+            participant=participant,
+            evaluator=self.manager,
+            section=EvaluatorSectionType.BEHAVIORAL
+        )
+
+        # Technical score: 4.0 out of 5.0 = 80.0%
+        TechnicalCapabilityReview.objects.create(
+            cycle=cycle,
+            employee=self.intern_profile,
+            competency=tech_comp,
+            reviewer=self.manager,
+            score=Decimal('4.0'),
+            status='SUBMITTED'
+        )
+
+        # Behavioral score: 4.5 out of 5.0 = 90.0%
+        BehavioralCapabilityReview.objects.create(
+            cycle=cycle,
+            employee=self.intern_profile,
+            competency=behav_comp,
+            reviewer=self.manager,
+            score=Decimal('4.5'),
+            status='SUBMITTED'
+        )
+
+        appraisal = Appraisal.objects.create(
+            employee=self.intern_profile,
+            cycle=cycle,
+            status=AppraisalStatus.DRAFT,
+            reviewer=self.manager,
+            appraisal_type=AppraisalType.MANAGER
+        )
+
+        submit_res = self.client.post(
+            f'/api/manager/appraisals/{appraisal.id}/submit/',
+            data=json.dumps({
+                'reviewer_comments': 'Full competency sign-off.',
+                'technical_strengths': 'Clean code',
+                'areas_for_growth': 'Documentation',
+                'recommended_training': 'Advanced Python'
+            }),
+            content_type='application/json',
+            **self.manager_headers
+        )
+        self.assertEqual(submit_res.status_code, 200)
+        data = submit_res.json().get('data', {})
+        self.assertEqual(data.get('status'), 'SUBMITTED')
+
+        # Assert weighted contributions are calculated and NOT zero:
+        # 80.00% * 60% = 48.00
+        self.assertEqual(data.get('weightedTechnicalScore60'), 48.0)
+        # 90.00% * 40% = 36.00
+        self.assertEqual(data.get('deliverableExecutionScore40'), 36.0)
+        # Composite: 48.00 + 36.00 = 84.00
+        self.assertEqual(data.get('overallScore'), 84.0)

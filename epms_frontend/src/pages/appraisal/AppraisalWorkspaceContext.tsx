@@ -10,7 +10,7 @@ import type {
   CycleReadiness,
 } from '../../features/appraisal/appraisalWorkspaceService';
 
-export type WorkspaceTab = 'overview' | 'setup' | 'participants' | 'competencies' | 'evaluators';
+export type WorkspaceTab = 'overview' | 'setup' | 'participants' | 'competencies' | 'evaluators' | 'progress';
 
 interface AppraisalWorkspaceContextType {
   cycles: PerformanceCycle[];
@@ -42,7 +42,7 @@ export const AppraisalWorkspaceProvider: React.FC<{ children: React.ReactNode }>
   // Sync tab from URL search params
   const activeTab = useMemo<WorkspaceTab>(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam === 'setup' || tabParam === 'participants' || tabParam === 'competencies' || tabParam === 'evaluators') {
+    if (tabParam === 'setup' || tabParam === 'participants' || tabParam === 'competencies' || tabParam === 'evaluators' || tabParam === 'progress') {
       return tabParam;
     }
     return 'overview';

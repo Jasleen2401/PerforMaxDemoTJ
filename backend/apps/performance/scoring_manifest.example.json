@@ -1,0 +1,15 @@
+{
+  "_comment": "Example scoring model classification manifest for Performax deployment operators.",
+  "_instructions": "Specify cycle UUIDs as keys, with either a model string ('LEGACY_CRITERIA' or 'COMPETENCY_FRAMEWORK') or an object with scoring_model and reason. Hybrid cycles (cycles with both legacy ratings and transitional technical parameters) require 'acknowledged_hybrid': true when classified as LEGACY_CRITERIA.",
+  "<standard-ambiguous-cycle-uuid>": {
+    "scoring_model": "COMPETENCY_FRAMEWORK",
+    "reviewed_by": "operator@performax.internal",
+    "reason": "Verified modern draft cycle with no legacy ratings"
+  },
+  "<transitional-hybrid-cycle-uuid>": {
+    "scoring_model": "LEGACY_CRITERIA",
+    "acknowledged_hybrid": true,
+    "reviewed_by": "lead-architect@performax.internal",
+    "reason": "Transitional cycle with technical parameters reviewed and intentionally classified as legacy criteria"
+  }
+}

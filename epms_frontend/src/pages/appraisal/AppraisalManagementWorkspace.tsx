@@ -14,6 +14,7 @@ import { CycleSetupTab } from './CycleSetupTab';
 import { CohortEnrollmentTab } from './CohortEnrollmentTab';
 import { CompetencyRubricsTab } from './CompetencyRubricsTab';
 import { EvaluatorAssignmentTab } from './EvaluatorAssignmentTab';
+import { HREvaluationProgressTab } from './HREvaluationProgressTab';
 
 const WorkspaceContent: React.FC = () => {
   const navigate = useNavigate();
@@ -174,19 +175,26 @@ const WorkspaceContent: React.FC = () => {
           Tab 5: Evaluator Assignments
         </button>
 
-        {/* Deferred Workstream Tabs (PR #4) */}
+        {/* Workstream 2 Active Tab */}
+        <button
+          onClick={() => setActiveTab('progress')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'progress'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+          }`}
+        >
+          <CheckSquare className="w-4 h-4" />
+          Tab 6: Evaluation Progress
+        </button>
+
+        {/* Deferred Workstream Tab (Workstream 3) */}
         <div className="h-5 w-px bg-slate-200 mx-1 shrink-0" />
 
-        <div className="flex items-center gap-1.5 px-3 py-2 text-slate-400 text-xs font-medium cursor-not-allowed shrink-0" title="Assessment progress tracker (PR #4)">
-          <CheckSquare className="w-3.5 h-3.5" />
-          <span>Progress</span>
-          <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded">PR #4</span>
-        </div>
-
-        <div className="flex items-center gap-1.5 px-3 py-2 text-slate-400 text-xs font-medium cursor-not-allowed shrink-0" title="HR review, normalization and publication desk (PR #4)">
+        <div className="flex items-center gap-1.5 px-3 py-2 text-slate-400 text-xs font-medium cursor-not-allowed shrink-0" title="HR review, normalization and publication desk (Workstream 3)">
           <Lock className="w-3.5 h-3.5" />
           <span>Review & Publish</span>
-          <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded">PR #4</span>
+          <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded">WS 3</span>
         </div>
       </div>
 
@@ -197,6 +205,7 @@ const WorkspaceContent: React.FC = () => {
         {activeTab === 'participants' && <CohortEnrollmentTab />}
         {activeTab === 'competencies' && <CompetencyRubricsTab />}
         {activeTab === 'evaluators' && <EvaluatorAssignmentTab />}
+        {activeTab === 'progress' && <HREvaluationProgressTab />}
       </div>
     </div>
   );

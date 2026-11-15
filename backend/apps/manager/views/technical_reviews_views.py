@@ -4,7 +4,14 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from apps.evidence.models import EvidenceSubmission
-from apps.performance.models import PerformanceCycle, TechnicalCapabilityParameter, TechnicalCapabilityReview
+from apps.performance.models import (
+    PerformanceCycle,
+    CycleStatus,
+    TechnicalCapabilityParameter,
+    TechnicalCapabilityReview,
+    CycleEvaluatorAssignment,
+    EvaluatorSectionType,
+)
 from apps.employees.models import EmployeeProfile
 from apps.accounts.models import UserRole
 from .base import IsManagerUser
@@ -35,11 +42,25 @@ class ManagerTechnicalReviewsView(APIView):
         if not profile:
             return Response({'code': 404, 'message': 'Intern/Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if profile.manager != request.user:
+        is_hr_admin = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR] or
+            request.user.is_staff or
+            request.user.is_superuser
+        )
+
+        if not is_hr_admin:
+            is_direct_manager = (profile.manager == request.user)
+            is_assigned_evaluator = CycleEvaluatorAssignment.objects.filter(
+                participant__employee=profile,
+                evaluator=request.user,
+                section=EvaluatorSectionType.TECHNICAL
+            ).exists()
+            if not is_direct_manager and not is_assigned_evaluator:
                 return Response({
                     'code': 403,
-                    'message': 'You can only review technical capabilities for employees assigned to you by HR or Super Admin.'
+                    'message': 'You can only view technical capabilities for employees assigned to you or reporting directly to you.'
                 }, status=status.HTTP_403_FORBIDDEN)
 
         params = TechnicalCapabilityParameter.objects.filter(is_active=True).order_by('category', 'name')
@@ -120,14 +141,34 @@ class ManagerTechnicalReviewsView(APIView):
         if not profile:
             return Response({'code': 404, 'message': 'Intern/Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if profile.manager != request.user:
+        is_hr_admin = (
+            getattr(request.user, 'is_hr', False) or
+            getattr(request.user, 'is_super_admin', False) or
+            getattr(request.user, 'role', '') in [UserRole.SUPER_ADMIN, UserRole.HR] or
+            request.user.is_staff or
+            request.user.is_superuser
+        )
+
+        if not is_hr_admin:
+            is_assigned_evaluator = CycleEvaluatorAssignment.objects.filter(
+                participant__employee=profile,
+                evaluator=request.user,
+                section=EvaluatorSectionType.TECHNICAL
+            ).exists()
+            if not is_assigned_evaluator:
                 return Response({
                     'code': 403,
-                    'message': 'You can only review technical capabilities for employees assigned to you by HR or Super Admin.'
+                    'message': 'Direct manager relationship alone does not grant permission to review technical capabilities. You must be explicitly assigned as the Technical evaluator by HR or Super Admin.'
                 }, status=status.HTTP_403_FORBIDDEN)
 
         active_cycle = PerformanceCycle.objects.filter(status='ACTIVE').first() or PerformanceCycle.objects.first()
+
+        if active_cycle and active_cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response({
+                'code': 400,
+                'error': 'CYCLE_CLOSED',
+                'message': f"Cannot submit or modify technical assessments for a cycle in '{active_cycle.get_status_display()}' status."
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         is_finalizing = raw_status in ['FINALIZE', 'FINALIZED', 'LOCKED_FOR_APPRAISAL', 'SUBMITTED']
         stored_status = 'LOCKED_FOR_APPRAISAL' if is_finalizing else 'SAVED_DRAFT'

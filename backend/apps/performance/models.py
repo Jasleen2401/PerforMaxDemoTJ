@@ -27,6 +27,11 @@ class MIRAIStage(models.TextChoices):
     Q4 = 'Q4', 'Q4 – Professional Readiness'
 
 
+class ScoringModel(models.TextChoices):
+    LEGACY_CRITERIA = 'LEGACY_CRITERIA', 'Legacy Evaluation Criteria'
+    COMPETENCY_FRAMEWORK = 'COMPETENCY_FRAMEWORK', 'Competency Framework'
+
+
 class PerformanceCycle(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=150, unique=True)
@@ -93,6 +98,13 @@ class PerformanceCycle(models.Model):
         max_digits=4, decimal_places=1, default=Decimal('5.0'),
         help_text='Maximum rating value on the configured scale (default: 5)'
     )
+    scoring_model = models.CharField(
+        max_length=30,
+        choices=ScoringModel.choices,
+        default=ScoringModel.COMPETENCY_FRAMEWORK,
+        editable=False,
+        help_text='Evaluation and scoring framework used by this cycle'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -106,6 +118,18 @@ class PerformanceCycle(models.Model):
                 name='cycle_end_date_gte_start_date'
             )
         ]
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.pk:
+            orig = PerformanceCycle.objects.filter(pk=self.pk).values('scoring_model').first()
+            if orig and self.scoring_model != orig['scoring_model']:
+                raise ValidationError({'scoring_model': 'The scoring model of a performance cycle is immutable once created.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.get_status_display()})"
@@ -212,6 +236,14 @@ class CycleCompetency(models.Model):
 
     def __str__(self):
         return f"{self.cycle.name} › {self.get_section_display()}: {self.name} ({self.weight}%)"
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        has_tech = self.technical_reviews.exists()
+        has_behav = hasattr(self, 'behavioral_reviews') and self.behavioral_reviews.exists()
+        if has_tech or has_behav:
+            raise ValidationError(f"Cannot delete competency '{self.name}': historical review records exist.")
+        super().delete(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -530,7 +562,7 @@ class TechnicalCapabilityReview(models.Model):
     )
     competency = models.ForeignKey(
         CycleCompetency,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name='technical_reviews'
@@ -557,11 +589,138 @@ class TechnicalCapabilityReview(models.Model):
     score = models.DecimalField(
         max_digits=4,
         decimal_places=2,
-        default=Decimal('0.00'),
+        null=True,
+        blank=True,
+        default=None,
         validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('10.00'))]
     )
     mentor_assessment = models.TextField(blank=True, default='')
     evidence_url = models.URLField(max_length=500, blank=True, default='')
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('DRAFT', 'Draft'),
+            ('SUBMITTED', 'Submitted'),
+            ('SAVED_DRAFT', 'Saved Draft'),
+            ('LOCKED_FOR_APPRAISAL', 'Locked for Appraisal'),
+        ],
+        default='DRAFT'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Technical Capability Review'
+        verbose_name_plural = 'Technical Capability Reviews'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['competency', 'employee'],
+                condition=models.Q(competency__isnull=False),
+                name='unique_tech_review_per_competency'
+            ),
+            models.UniqueConstraint(
+                fields=['parameter', 'employee', 'cycle'],
+                condition=models.Q(parameter__isnull=False),
+                name='unique_tech_review_per_parameter'
+            ),
+            models.CheckConstraint(
+                check=(
+                    (models.Q(competency__isnull=False) & models.Q(parameter__isnull=True)) |
+                    (models.Q(competency__isnull=True) & models.Q(parameter__isnull=False))
+                ),
+                name='tech_review_exactly_one_reference'
+            ),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        from apps.performance.models import CycleParticipant
+        if self.pk:
+            orig = TechnicalCapabilityReview.objects.filter(pk=self.pk).values(
+                'employee_id', 'cycle_id', 'competency_id', 'parameter_id'
+            ).first()
+            if orig:
+                if self.employee_id != orig['employee_id']:
+                    raise ValidationError({'employee': 'Employee cannot be modified on an existing technical review.'})
+                if self.cycle_id != orig['cycle_id']:
+                    raise ValidationError({'cycle': 'Performance cycle cannot be modified on an existing technical review.'})
+                if self.competency_id != orig['competency_id']:
+                    raise ValidationError({'competency': 'Competency reference cannot be modified on an existing technical review.'})
+                if self.parameter_id != orig['parameter_id']:
+                    raise ValidationError({'parameter': 'Parameter reference cannot be modified on an existing technical review.'})
+
+        if bool(self.competency) == bool(self.parameter):
+            raise ValidationError('A technical review must reference exactly one of CycleCompetency or TechnicalCapabilityParameter.')
+        if self.competency:
+            if self.competency.section != CompetencySection.TECHNICAL:
+                raise ValidationError({'competency': 'Referenced competency must be in TECHNICAL section.'})
+            if not self.cycle_id:
+                self.cycle = self.competency.cycle
+            elif self.competency.cycle_id != self.cycle_id:
+                raise ValidationError({'cycle': 'Review cycle must match competency cycle.'})
+        elif self.parameter:
+            if not self.cycle_id:
+                if self.parameter.cycle_id:
+                    self.cycle = self.parameter.cycle
+                else:
+                    raise ValidationError({'cycle': 'Performance cycle is required for parameter-based technical reviews.'})
+            elif self.parameter.cycle_id and self.parameter.cycle_id != self.cycle_id:
+                raise ValidationError({'cycle': 'Review cycle must match parameter cycle.'})
+
+        if self.cycle_id and self.employee_id:
+            if not CycleParticipant.objects.filter(cycle_id=self.cycle_id, employee_id=self.employee_id).exists():
+                raise ValidationError({'employee': 'Employee is not enrolled as a participant in the specified cycle.'})
+
+        if self.score is not None and self.cycle:
+            scale_max = self.cycle.rating_scale_max or Decimal('5.0')
+            if self.score < Decimal('0.00') or self.score > scale_max:
+                raise ValidationError({'score': f'Score must be between 0.00 and {scale_max}.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        target_name = self.competency.name if self.competency else (self.parameter.name if self.parameter else 'Unknown')
+        score_display = f"{self.score}" if self.score is not None else "UNSCORED"
+        return f"{self.employee.full_name} - {target_name}: {score_display} [{self.status}]"
+
+
+class BehavioralCapabilityReview(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    competency = models.ForeignKey(
+        CycleCompetency,
+        on_delete=models.PROTECT,
+        related_name='behavioral_reviews',
+        limit_choices_to={'section': CompetencySection.BEHAVIORAL}
+    )
+    employee = models.ForeignKey(
+        'employees.EmployeeProfile',
+        on_delete=models.CASCADE,
+        related_name='behavioral_reviews'
+    )
+    cycle = models.ForeignKey(
+        PerformanceCycle,
+        on_delete=models.CASCADE,
+        related_name='behavioral_reviews'
+    )
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='given_behavioral_reviews'
+    )
+    score = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        default=None,
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    hr_assessment = models.TextField(blank=True, default='')
     status = models.CharField(
         max_length=20,
         choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted')],
@@ -571,13 +730,56 @@ class TechnicalCapabilityReview(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = 'Technical Capability Review'
-        verbose_name_plural = 'Technical Capability Reviews'
-        unique_together = ('parameter', 'employee', 'cycle')
-        ordering = ['parameter__name']
+        verbose_name = 'Behavioral Capability Review'
+        verbose_name_plural = 'Behavioral Capability Reviews'
+        ordering = ['competency__order', 'competency__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['competency', 'employee'],
+                name='unique_behavioral_review_per_competency'
+            )
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        from apps.performance.models import CycleParticipant
+        if self.pk:
+            orig = BehavioralCapabilityReview.objects.filter(pk=self.pk).values(
+                'employee_id', 'cycle_id', 'competency_id'
+            ).first()
+            if orig:
+                if self.employee_id != orig['employee_id']:
+                    raise ValidationError({'employee': 'Employee cannot be modified on an existing behavioral review.'})
+                if self.cycle_id != orig['cycle_id']:
+                    raise ValidationError({'cycle': 'Performance cycle cannot be modified on an existing behavioral review.'})
+                if self.competency_id != orig['competency_id']:
+                    raise ValidationError({'competency': 'Competency reference cannot be modified on an existing behavioral review.'})
+
+        if not self.competency_id:
+            raise ValidationError({'competency': 'Competency reference is required.'})
+        if self.competency and self.competency.section != CompetencySection.BEHAVIORAL:
+            raise ValidationError({'competency': 'Referenced competency must be in BEHAVIORAL section.'})
+        if not self.cycle_id and self.competency:
+            self.cycle = self.competency.cycle
+        elif self.competency and self.cycle and self.competency.cycle_id != self.cycle_id:
+            raise ValidationError({'cycle': 'Review cycle must match competency cycle.'})
+
+        if self.cycle_id and self.employee_id:
+            if not CycleParticipant.objects.filter(cycle_id=self.cycle_id, employee_id=self.employee_id).exists():
+                raise ValidationError({'employee': 'Employee is not enrolled as a participant in the specified cycle.'})
+
+        if self.score is not None and self.cycle:
+            scale_max = self.cycle.rating_scale_max or Decimal('5.0')
+            if self.score < Decimal('0.00') or self.score > scale_max:
+                raise ValidationError({'score': f'Score must be between 0.00 and {scale_max}.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.employee.full_name} - {self.parameter.name}: {self.score}/10"
+        score_display = f"{self.score}" if self.score is not None else "UNSCORED"
+        return f"{self.employee.full_name} - {self.competency.name}: {score_display} [{self.status}]"
 
 
 # ==============================================================================

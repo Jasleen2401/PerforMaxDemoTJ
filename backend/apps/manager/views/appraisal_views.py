@@ -64,7 +64,14 @@ class ManagerAppraisalSubmissionsView(APIView):
             return Response({'code': 404, 'message': 'Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if profile.manager != request.user:
+            is_direct_manager = (profile.manager == request.user)
+            from apps.performance.models import CycleEvaluatorAssignment, EvaluatorSectionType
+            is_assigned_evaluator = CycleEvaluatorAssignment.objects.filter(
+                participant__employee=profile,
+                evaluator=request.user,
+                section=EvaluatorSectionType.TECHNICAL
+            ).exists()
+            if not is_direct_manager and not is_assigned_evaluator:
                 return Response({
                     'code': 403,
                     'message': 'You can only conduct performance reviews for employees assigned to you by HR or Super Admin.'
@@ -187,7 +194,14 @@ class ManagerSubmitAppraisalView(APIView):
             return Response({'code': 404, 'message': 'Appraisal not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         if request.user.role == UserRole.MANAGER and not (request.user.is_hr or request.user.is_super_admin or request.user.is_staff):
-            if appraisal.employee.manager != request.user:
+            is_direct_mgr = (appraisal.employee.manager == request.user)
+            from apps.performance.models import CycleEvaluatorAssignment, EvaluatorSectionType
+            is_assigned_evaluator = CycleEvaluatorAssignment.objects.filter(
+                participant__employee=appraisal.employee,
+                evaluator=request.user,
+                section=EvaluatorSectionType.TECHNICAL
+            ).exists()
+            if not is_direct_mgr and not is_assigned_evaluator:
                 return Response({
                     'code': 403,
                     'message': 'You can only submit reviews for employees assigned to you by HR or Super Admin.'
@@ -215,41 +229,67 @@ class ManagerSubmitAppraisalView(APIView):
                     defaults={'score': Decimal(str(score)), 'comments': note}
                 )
 
-        ratings = appraisal.ratings.select_related('criterion').all()
-        if ratings.exists():
-            def _get_weight(criterion):
-                if not criterion:
-                    return Decimal('1.00')
-                return getattr(criterion, 'weight', getattr(criterion, 'weightage', Decimal('1.00'))) or Decimal('1.00')
+        if appraisal.cycle and appraisal.cycle.competencies.filter(is_active=True).exists():
+            from apps.performance.services.scoring import ScoringService
+            calc = ScoringService.calculate_cycle_score(appraisal.employee, appraisal.cycle)
+            if calc.get('is_complete') and calc.get('final_score') is not None:
+                composite_score = Decimal(str(calc['final_score']))
+                tech_sec = calc.get('technical_section') or {}
+                behav_sec = calc.get('behavioral_section') or {}
 
-            total_weight = sum(_get_weight(r.criterion) for r in ratings)
-            if total_weight > 0:
-                composite_score = sum(r.score * (_get_weight(r.criterion) / total_weight) for r in ratings)
+                if tech_sec.get('weighted_contribution') is not None:
+                    weighted_60_tech = round(Decimal(str(tech_sec['weighted_contribution'])), 2)
+                else:
+                    tech_raw = tech_sec.get('section_score') or calc.get('technical_section_score') or Decimal('0.00')
+                    tech_weight = appraisal.cycle.technical_weight or Decimal('0.00')
+                    weighted_60_tech = round(Decimal(str(tech_raw)) * (tech_weight / Decimal('100.00')), 2)
+
+                if behav_sec.get('weighted_contribution') is not None:
+                    weighted_40_deliv = round(Decimal(str(behav_sec['weighted_contribution'])), 2)
+                else:
+                    behav_raw = behav_sec.get('section_score') or calc.get('behavioral_section_score') or Decimal('0.00')
+                    behav_weight = appraisal.cycle.behavioral_weight or Decimal('0.00')
+                    weighted_40_deliv = round(Decimal(str(behav_raw)) * (behav_weight / Decimal('100.00')), 2)
             else:
-                composite_score = sum(r.score for r in ratings) / Decimal(str(len(ratings)))
-            composite_score = round(Decimal(str(composite_score)), 2)
-            weighted_60_tech = composite_score
-            weighted_40_deliv = Decimal('0.00')
+                composite_score = None
+                weighted_60_tech = Decimal('0.00')
+                weighted_40_deliv = Decimal('0.00')
         else:
-            # 2. Pre-condition Check: 8 Core Competencies Graded
-            tech_reviews = TechnicalCapabilityReview.objects.filter(employee=appraisal.employee)
-            tech_count = tech_reviews.count()
-            avg_tech_val = Decimal('0.00')
-            if tech_count > 0:
-                avg_tech_val = sum(r.score for r in tech_reviews) / Decimal(str(tech_count))
+            ratings = appraisal.ratings.select_related('criterion').all()
+            if ratings.exists():
+                def _get_weight(criterion):
+                    if not criterion:
+                        return Decimal('1.00')
+                    return getattr(criterion, 'weight', getattr(criterion, 'weightage', Decimal('1.00'))) or Decimal('1.00')
 
-            # 3. Deliverable Execution Score
-            goals = Goal.objects.filter(employee=appraisal.employee)
-            total_goals = goals.count()
-            completed_goals = goals.filter(status=GoalStatus.COMPLETED).count()
-            deliverable_rate = (Decimal(str(completed_goals)) / Decimal(str(total_goals)) * Decimal('100.00')) if total_goals > 0 else Decimal('85.00')
+                total_weight = sum(_get_weight(r.criterion) for r in ratings)
+                if total_weight > 0:
+                    composite_score = sum(r.score * (_get_weight(r.criterion) / total_weight) for r in ratings)
+                else:
+                    composite_score = sum(r.score for r in ratings) / Decimal(str(len(ratings)))
+                composite_score = round(Decimal(str(composite_score)), 2)
+                weighted_60_tech = composite_score
+                weighted_40_deliv = Decimal('0.00')
+            else:
+                # 2. Pre-condition Check: 8 Core Competencies Graded
+                tech_reviews = TechnicalCapabilityReview.objects.filter(employee=appraisal.employee)
+                tech_count = tech_reviews.count()
+                avg_tech_val = Decimal('0.00')
+                if tech_count > 0:
+                    avg_tech_val = sum(r.score for r in tech_reviews) / Decimal(str(tech_count))
 
-            # 4. Synthesize 60% Technical Capability Score
-            # (Tech score is on 1-10 scale, so (avg / 10) * 100 * 0.60)
-            technical_scaled = (avg_tech_val / Decimal('10.00')) * Decimal('100.00') if avg_tech_val > 0 else Decimal('80.00')
-            weighted_60_tech = round(technical_scaled * Decimal('0.60'), 2)
-            weighted_40_deliv = round(deliverable_rate * Decimal('0.40'), 2)
-            composite_score = round(weighted_60_tech + weighted_40_deliv, 2)
+                # 3. Deliverable Execution Score
+                goals = Goal.objects.filter(employee=appraisal.employee)
+                total_goals = goals.count()
+                completed_goals = goals.filter(status=GoalStatus.COMPLETED).count()
+                deliverable_rate = (Decimal(str(completed_goals)) / Decimal(str(total_goals)) * Decimal('100.00')) if total_goals > 0 else Decimal('85.00')
+
+                # 4. Synthesize 60% Technical Capability Score
+                # (Tech score is on 1-10 scale, so (avg / 10) * 100 * 0.60)
+                technical_scaled = (avg_tech_val / Decimal('10.00')) * Decimal('100.00') if avg_tech_val > 0 else Decimal('80.00')
+                weighted_60_tech = round(technical_scaled * Decimal('0.60'), 2)
+                weighted_40_deliv = round(deliverable_rate * Decimal('0.40'), 2)
+                composite_score = round(weighted_60_tech + weighted_40_deliv, 2)
 
         technical_strengths = request.data.get('technical_strengths') or request.data.get('technicalStrengths', '')
         areas_for_growth = request.data.get('areas_for_growth') or request.data.get('areasForGrowth', '')
@@ -276,7 +316,7 @@ class ManagerSubmitAppraisalView(APIView):
             'data': {
                 'id': str(appraisal.id),
                 'status': appraisal.status,
-                'overallScore': float(composite_score),
+                'overallScore': float(composite_score) if composite_score is not None else None,
                 'weightedTechnicalScore60': float(weighted_60_tech),
                 'deliverableExecutionScore40': float(weighted_40_deliv),
                 'verifiedEvidenceCount': evidence_count,

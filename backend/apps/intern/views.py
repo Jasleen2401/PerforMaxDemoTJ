@@ -1498,10 +1498,17 @@ class InternPublishedFeedbackView(APIView):
 
     def get(self, request):
         profile = get_authenticated_intern_profile(request.user)
-        published_appraisal = Appraisal.objects.filter(
+        cycle_id = request.query_params.get('cycleId') or request.query_params.get('cycle_id')
+
+        published_appraisal_qs = Appraisal.objects.filter(
             employee=profile,
+            appraisal_type=AppraisalType.MANAGER,
             status=AppraisalStatus.PUBLISHED
-        ).select_related('cycle', 'reviewer').order_by('-published_at', '-created_at').first()
+        )
+        if cycle_id:
+            published_appraisal_qs = published_appraisal_qs.filter(cycle_id=cycle_id)
+
+        published_appraisal = published_appraisal_qs.select_related('cycle', 'reviewer').order_by('-published_at', '-created_at').first()
 
         if not published_appraisal:
             return Response({
@@ -1546,7 +1553,6 @@ class InternPublishedFeedbackView(APIView):
                 'strengths': published_appraisal.strengths,
                 'areasForImprovement': areas_for_improvement,
                 'recommendations': published_appraisal.recommendations,
-                'allowInternReply': published_appraisal.allow_intern_reply,
                 'weightDistribution': weight_dist,
                 'evaluationParameters': eval_params,
                 'replies': [{

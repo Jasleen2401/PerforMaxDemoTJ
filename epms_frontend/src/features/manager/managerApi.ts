@@ -136,6 +136,117 @@ export interface TechnicalReviewDossier {
   availableEvidence: Array<{ id: string; title: string; external_url?: string }>;
 }
 
+// Phase 2 Workstream 1: Mentor Technical Evaluation Types
+export interface AssignedEvaluationProgress {
+  total_competencies: number;
+  scored_competencies: number;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED';
+  has_configuration_error?: boolean;
+  configuration_error?: string | null;
+  last_updated_at: string | null;
+}
+
+export interface AssignedEvaluationItem {
+  assignment_id: string;
+  participant_id: string;
+  employee_id: string;
+  employee_code: string;
+  full_name: string;
+  department: string;
+  employment_status: string;
+  is_mandatory: boolean;
+  assigned_at: string;
+  progress: AssignedEvaluationProgress;
+}
+
+export interface EligibleCycleItem {
+  id: string;
+  name: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  rating_scale_max: number;
+}
+
+export interface SelectedCycleDetails {
+  id: string;
+  name: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  rating_scale_max: number;
+  scoring_model: string;
+}
+
+export interface MentorAssignedEvaluationsResponse {
+  requires_cycle_selection: boolean;
+  selected_cycle: SelectedCycleDetails | null;
+  eligible_cycles: EligibleCycleItem[];
+  assigned_evaluations: AssignedEvaluationItem[];
+  message?: string;
+}
+
+export interface TechnicalCompetencyReview {
+  id: string | null;
+  score: number | null;
+  mentor_assessment: string;
+  evidence_url: string;
+  status: 'DRAFT' | 'SUBMITTED';
+  updated_at: string | null;
+}
+
+export interface TechnicalCompetencyEvaluation {
+  competency_id: string;
+  name: string;
+  description: string;
+  weight: number;
+  benchmark_score: number;
+  rubric_descriptors: Record<string, string>;
+  review: TechnicalCompetencyReview;
+}
+
+export interface AvailableEvidenceItem {
+  id: string;
+  title: string;
+  external_url?: string | null;
+  review_status: string;
+}
+
+export interface TechnicalEvaluationSheetResponse {
+  cycle_id: string;
+  cycle_name: string;
+  rating_scale_max: number;
+  participant_id: string;
+  employee_id: string;
+  employee_code: string;
+  full_name: string;
+  department: string;
+  competencies: TechnicalCompetencyEvaluation[];
+  available_evidence: AvailableEvidenceItem[];
+}
+
+export interface SaveTechnicalEvaluationReviewInput {
+  competency_id: string;
+  score: number | null;
+  mentor_assessment?: string;
+  evidence_url?: string;
+}
+
+export interface SaveTechnicalEvaluationPayload {
+  participant_id: string;
+  cycle_id?: string;
+  status: 'DRAFT' | 'SUBMITTED';
+  reviews: SaveTechnicalEvaluationReviewInput[];
+}
+
+export interface SaveTechnicalEvaluationResponse {
+  message: string;
+  status: 'DRAFT' | 'SUBMITTED';
+  saved_count: number;
+  cycle_id: string;
+  participant_id: string;
+}
+
 export interface EvidenceItem {
   id: string;
   employeeId: string;
@@ -322,6 +433,48 @@ export const managerApi = api.injectEndpoints({
         body,
       }),
       invalidatesTags: ["Manager"],
+    }),
+
+    // Phase 2 Workstream 1: Mentor Technical Evaluation Execution
+    getMentorAssignedEvaluations: builder.query<
+      MentorAssignedEvaluationsResponse,
+      { cycle_id?: string } | void
+    >({
+      query: (params) => ({
+        url: "performance/evaluations/mentor/assigned/",
+        params: params || {},
+      }),
+      providesTags: ["Manager", "Cycle"],
+    }),
+
+    getTechnicalEvaluationSheet: builder.query<
+      TechnicalEvaluationSheetResponse,
+      { participant_id?: string; employee_id?: string; cycle_id?: string }
+    >({
+      query: (params) => ({
+        url: "performance/evaluations/technical/",
+        params,
+      }),
+      providesTags: (_res, _err, arg) => [
+        { type: "Appraisal" as const, id: arg.participant_id || arg.employee_id || "SHEET" },
+        "Manager",
+      ],
+    }),
+
+    saveTechnicalEvaluation: builder.mutation<
+      SaveTechnicalEvaluationResponse,
+      SaveTechnicalEvaluationPayload
+    >({
+      query: (body) => ({
+        url: "performance/evaluations/technical/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, arg) => [
+        { type: "Appraisal" as const, id: arg.participant_id },
+        "Manager",
+        "Cycle",
+      ],
     }),
 
     // M-06: View Evidence & Review
@@ -514,4 +667,7 @@ export const {
   useGetEmployeeFeedbacksQuery,
   useCommentOnEmployeeFeedbackMutation,
   useGetHistoricalReviewsQuery,
+  useGetMentorAssignedEvaluationsQuery,
+  useGetTechnicalEvaluationSheetQuery,
+  useSaveTechnicalEvaluationMutation,
 } = managerApi;

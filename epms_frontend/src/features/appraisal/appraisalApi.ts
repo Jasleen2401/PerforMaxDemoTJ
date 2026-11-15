@@ -144,6 +144,252 @@ export interface AppraisalResponse {
   finalGrade?: string;
 }
 
+// Phase 2 Workstream 2: HR Progress Dashboard & Behavioral Evaluation Types
+export interface TechnicalProgressSummary {
+  submitted: number;
+  in_progress: number;
+  not_started: number;
+  unassigned_evaluators: number;
+}
+
+export interface BehavioralProgressSummary {
+  submitted: number;
+  in_progress: number;
+  not_started: number;
+  unassigned_evaluators: number;
+}
+
+export interface JapaneseProgressSummary {
+  mode: 'MANDATORY' | 'OPTIONAL' | 'UNCONFIGURED';
+  accepted: number;
+  submitted_or_resubmitted: number;
+  draft_or_pending: number;
+  returned: number;
+  not_started: number;
+  no_evaluator_assigned: number;
+  blocking_count: number;
+}
+
+export interface ProgressCohortSummary {
+  total_participants: number;
+  fully_ready_count: number;
+  technical_summary: TechnicalProgressSummary;
+  behavioral_summary: BehavioralProgressSummary;
+  japanese_summary: JapaneseProgressSummary;
+}
+
+export interface ProgressParticipantItem {
+  participant_id: string;
+  employee_id: string;
+  employee_code: string;
+  full_name: string;
+  department: string;
+  employment_status: string;
+  technical_evaluator_assigned: boolean;
+  behavioral_evaluator_assigned: boolean;
+  technical: {
+    status: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'UNCONFIGURED';
+    total_competencies: number;
+    scored_competencies: number;
+    evaluator_id: string | null;
+    evaluator_name: string | null;
+    is_assigned: boolean;
+    last_updated_at: string | null;
+  };
+  behavioral: {
+    status: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'UNCONFIGURED';
+    total_competencies: number;
+    scored_competencies: number;
+    evaluator_id: string | null;
+    evaluator_name: string | null;
+    is_assigned: boolean;
+    last_updated_at: string | null;
+  };
+  japanese: {
+    mode: 'MANDATORY' | 'OPTIONAL' | 'UNCONFIGURED';
+    status: string;
+    status_display: string;
+    is_blocking: boolean;
+    overall_score: number | null;
+    evaluator_name: string | null;
+    batch_name: string | null;
+    submitted_at: string | null;
+  };
+  operational_telemetry: {
+    goals_count: number;
+    completed_goals: number;
+    avg_goal_progress: number;
+    self_assessment_submitted: boolean;
+  };
+  publication_status: 'PUBLISHED' | 'BLOCKED' | 'READY_TO_PUBLISH' | 'DRAFT';
+  is_ready_for_review: boolean;
+  evaluation_incomplete: boolean;
+  evaluation_incomplete_reasons: string[];
+  has_configuration_blockers: boolean;
+  configuration_blockers: string[];
+  readiness_blockers: string[];
+  scorecard?: {
+    has_scores: boolean;
+    technical_score: number | null;
+    behavioral_score: number | null;
+    final_score: number | null;
+    is_complete: boolean;
+  };
+  appraisal?: {
+    id: string | null;
+    status: string;
+    published_at: string | null;
+  };
+}
+
+export interface HREvaluationProgressResponse {
+  cycle_id: string;
+  cycle_name: string;
+  status: string;
+  rating_scale_max: number;
+  scoring_model: string;
+  japanese_evaluation_mandatory: boolean | null;
+  configuration_health: {
+    is_valid: boolean;
+    errors: string[];
+    technical_competencies_count: number;
+    technical_weight_total: number;
+    behavioral_competencies_count: number;
+    behavioral_weight_total: number;
+    japanese_configured: boolean;
+  };
+  summary: ProgressCohortSummary;
+  participants: ProgressParticipantItem[];
+}
+
+export interface BehavioralReviewDetail {
+  id: string | null;
+  score: number | null;
+  hr_assessment: string;
+  status: 'DRAFT' | 'SUBMITTED';
+  updated_at: string | null;
+}
+
+export interface BehavioralCompetencyItem {
+  competency_id: string;
+  name: string;
+  description: string;
+  weight: number;
+  benchmark_score: number;
+  rubric_descriptors: Record<string, string>;
+  review: BehavioralReviewDetail;
+}
+
+export interface BehavioralEvaluationSheetResponse {
+  cycle_id: string;
+  cycle_name: string;
+  rating_scale_max: number;
+  participant_id: string;
+  employee_id: string;
+  employee_code: string;
+  full_name: string;
+  department: string;
+  competencies: BehavioralCompetencyItem[];
+}
+
+export interface SaveBehavioralReviewItem {
+  competency_id: string;
+  score: number | string | null;
+  hr_assessment?: string;
+}
+
+export interface SaveBehavioralEvaluationPayload {
+  participant_id: string;
+  cycle_id?: string;
+  status: 'DRAFT' | 'SUBMITTED';
+  reviews: SaveBehavioralReviewItem[];
+}
+
+export interface SaveBehavioralEvaluationResponse {
+  message: string;
+  status: 'DRAFT' | 'SUBMITTED';
+  saved_count: number;
+  cycle_id: string;
+  participant_id: string;
+}
+
+export interface PublishEvaluationPayload {
+  strengths?: string[];
+  areas_for_improvement?: string[];
+  recommendations?: string;
+  final_comments?: string;
+}
+
+export interface PublishEvaluationResponse {
+  status: string;
+  message: string;
+  appraisal_id: string;
+  overall_score: number;
+  published_at: string;
+  score_calculation: any;
+}
+
+export interface CompetencyScoreBreakdown {
+  competency_id: string;
+  competency_name: string;
+  weight: number;
+  raw_score: number | null;
+  benchmark_score: number;
+  normalized_percentage: number | null;
+  status: string;
+}
+
+export interface EvaluationSummaryResponse {
+  participant_id: string;
+  employee_id: string;
+  full_name: string;
+  employee_code: string;
+  cycle_id: string;
+  cycle_name: string;
+  score_calculation: {
+    is_complete: boolean;
+    verification_errors?: string[];
+    rating_scale_max: number;
+    final_score: number | null;
+    cycle_weights: {
+      technical_weight: number;
+      behavioral_weight: number;
+    };
+    technical_section: {
+      section_score: number | null;
+      weight: number;
+      weighted_contribution: number | null;
+      total_competencies: number;
+      scored_competencies: number;
+      breakdown: CompetencyScoreBreakdown[];
+    };
+    behavioral_section: {
+      section_score: number | null;
+      weight: number;
+      weighted_contribution: number | null;
+      total_competencies: number;
+      scored_competencies: number;
+      breakdown: CompetencyScoreBreakdown[];
+    };
+    operational_telemetry?: {
+      goals?: {
+        total_goals: number;
+        completed_goals: number;
+        average_completion_percentage: number;
+      };
+      self_assessment?: {
+        submitted: boolean;
+        status: string;
+      };
+      japanese?: {
+        mandatory: boolean;
+        accepted: boolean;
+        status: string;
+      };
+    };
+  };
+}
+
 const transformResponse = (response: any) => response?.data ?? response;
 
 export const appraisalApi = api.injectEndpoints({
@@ -522,6 +768,86 @@ export const appraisalApi = api.injectEndpoints({
       transformResponse,
       providesTags: ['Appraisal'],
     }),
+
+    // Phase 2 Workstream 2: HR Progress Dashboard & Behavioral Evaluation
+    getHREvaluationProgress: builder.query<HREvaluationProgressResponse, { cycle_id: string }>({
+      query: ({ cycle_id }) => ({
+        url: `performance/cycles/${cycle_id}/evaluation-progress/`,
+      }),
+      transformResponse,
+      providesTags: (_res, _err, arg) => [
+        { type: 'Cycle', id: arg.cycle_id },
+        { type: 'Appraisal', id: 'PROGRESS' },
+      ],
+    }),
+
+    getHRBehavioralEvaluationSheet: builder.query<
+      BehavioralEvaluationSheetResponse,
+      { participant_id?: string; employee_id?: string; cycle_id?: string }
+    >({
+      query: (params) => ({
+        url: 'performance/evaluations/behavioral/',
+        params,
+      }),
+      transformResponse,
+      providesTags: (_res, _err, arg) => [
+        { type: 'Appraisal', id: arg.participant_id || arg.employee_id || 'BEHAV_SHEET' },
+      ],
+    }),
+
+    saveHRBehavioralEvaluation: builder.mutation<
+      SaveBehavioralEvaluationResponse,
+      SaveBehavioralEvaluationPayload
+    >({
+      query: (body) => ({
+        url: 'performance/evaluations/behavioral/',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (_res, _err, arg) => [
+        { type: 'Appraisal', id: arg.participant_id },
+        { type: 'Appraisal', id: 'PROGRESS' },
+        { type: 'Cycle', id: arg.cycle_id || 'ACTIVE' },
+      ],
+    }),
+
+    // Phase 2 Workstream 3: Final Scoring, Calibration & Publication
+    getEvaluationSummary: builder.query<
+      EvaluationSummaryResponse,
+      { cycleId?: string; participantId?: string; employeeId?: string }
+    >({
+      query: ({ cycleId, participantId, employeeId }) => ({
+        url: 'performance/evaluations/summary/',
+        params: {
+          cycle_id: cycleId,
+          participant_id: participantId,
+          employee_id: employeeId,
+        },
+      }),
+      transformResponse,
+      providesTags: (_res, _err, arg) => [
+        { type: 'Appraisal', id: arg.participantId || arg.employeeId || 'SUMMARY' },
+      ],
+    }),
+
+    publishParticipantEvaluation: builder.mutation<
+      PublishEvaluationResponse,
+      { cycleId: string; participantId: string; data?: PublishEvaluationPayload }
+    >({
+      query: ({ cycleId, participantId, data }) => ({
+        url: `performance/cycles/${cycleId}/participants/${participantId}/publish/`,
+        method: 'POST',
+        body: data || {},
+      }),
+      transformResponse,
+      invalidatesTags: (_res, _err, arg) => [
+        { type: 'Appraisal', id: 'PROGRESS' },
+        { type: 'Cycle', id: arg.cycleId },
+        { type: 'Appraisal', id: arg.participantId },
+        'Score',
+        'FinalScore',
+      ],
+    }),
   }),
 });
 
@@ -575,4 +901,9 @@ export const {
   useFinalizeAppraisalMutation,
   useGetScoreBreakdownQuery,
   useGetFeedbackFormsByCycleQuery,
+  useGetHREvaluationProgressQuery,
+  useGetHRBehavioralEvaluationSheetQuery,
+  useSaveHRBehavioralEvaluationMutation,
+  useGetEvaluationSummaryQuery,
+  usePublishParticipantEvaluationMutation,
 } = appraisalApi;

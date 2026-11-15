@@ -59,6 +59,8 @@ class MiraiJourneyServiceTestCase(TestCase):
             end_date=datetime.date(2025, 12, 31),
             status="ACTIVE"
         )
+        from apps.performance.models import CycleParticipant
+        CycleParticipant.objects.create(cycle=self.cycle, employee=self.intern_profile)
 
     def test_get_or_initialize_quarters(self):
         quarters = MiraiJourneyService.get_or_initialize_quarters(self.intern_profile)
@@ -106,6 +108,7 @@ class MiraiJourneyServiceTestCase(TestCase):
         TechnicalCapabilityReview.objects.create(
             parameter=param,
             employee=self.intern_profile,
+            cycle=self.cycle,
             reviewer=self.mentor_user,
             score=Decimal('4.5')
         )
@@ -160,6 +163,7 @@ class MiraiJourneyServiceTestCase(TestCase):
         TechnicalCapabilityReview.objects.create(
             parameter=param,
             employee=self.intern_profile,
+            cycle=self.cycle,
             reviewer=self.mentor_user,
             score=Decimal('3.8')
         )

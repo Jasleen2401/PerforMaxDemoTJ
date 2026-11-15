@@ -15,6 +15,8 @@ from apps.performance.models import (
     AppraisalRating,
     PerformanceImprovementPlan,
     RecognitionReward,
+    TechnicalCapabilityReview,
+    BehavioralCapabilityReview,
 )
 from apps.employees.models import EmployeeProfile
 
@@ -32,14 +34,18 @@ class PerformanceCycleSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'start_date', 'end_date',
             'mirai_stage', 'status', 'current_phase',
             'technical_weight', 'behavioral_weight', 'rating_scale_max',
+            'scoring_model',
             'japanese_evaluation_mandatory',
             'self_assessment_deadline', 'evidence_deadline', 'evaluator_deadline',
             'created_by', 'created_by_name', 'goals_count', 'participants_count',
             'created_at', 'updated_at'
         )
-        read_only_fields = ('id', 'status', 'created_by', 'created_by_name', 'goals_count', 'participants_count', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'status', 'scoring_model', 'created_by', 'created_by_name', 'goals_count', 'participants_count', 'created_at', 'updated_at')
 
     def validate(self, attrs):
+        if self.instance is not None and 'scoring_model' in attrs:
+            if attrs['scoring_model'] != self.instance.scoring_model:
+                raise serializers.ValidationError({"scoring_model": "The scoring model of a performance cycle is immutable once created."})
         start = attrs.get('start_date', getattr(self.instance, 'start_date', None))
         end = attrs.get('end_date', getattr(self.instance, 'end_date', None))
         if start and end and end < start:
@@ -245,6 +251,7 @@ class AppraisalSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'employee', 'employee_name', 'employee_code', 'cycle', 'cycle_name',
             'reviewer', 'reviewer_name', 'appraisal_type', 'status', 'overall_score',
+            'classification', 'strengths', 'areas_for_improvement', 'recommendations',
             'self_comments', 'reviewer_comments', 'final_comments', 'ratings',
             'submitted_at', 'published_at', 'created_at', 'updated_at'
         )
@@ -284,3 +291,137 @@ class RecognitionRewardSerializer(serializers.ModelSerializer):
         model = RecognitionReward
         fields = ('id', 'recipient', 'recipient_name', 'awarded_by', 'awarded_by_name', 'title', 'description', 'awarded_at')
         read_only_fields = ('id', 'awarded_by', 'awarded_at')
+
+
+class TechnicalCapabilityReviewSerializer(serializers.ModelSerializer):
+    competency_name = serializers.CharField(source='competency.name', read_only=True)
+    competency_weight = serializers.DecimalField(source='competency.weight', max_digits=5, decimal_places=2, read_only=True)
+    benchmark_score = serializers.DecimalField(source='competency.benchmark_score', max_digits=4, decimal_places=1, read_only=True)
+    rubric_descriptors = serializers.JSONField(source='competency.rubric_descriptors', read_only=True)
+    parameter_name = serializers.CharField(source='parameter.name', read_only=True)
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    reviewer_name = serializers.CharField(source='reviewer.username', read_only=True)
+
+    class Meta:
+        model = TechnicalCapabilityReview
+        fields = (
+            'id', 'competency', 'competency_name', 'competency_weight',
+            'benchmark_score', 'rubric_descriptors',
+            'parameter', 'parameter_name',
+            'employee', 'employee_name', 'employee_code',
+            'cycle', 'reviewer', 'reviewer_name',
+            'score', 'mentor_assessment', 'evidence_url',
+            'status', 'created_at', 'updated_at'
+        )
+        read_only_fields = ('id', 'reviewer', 'created_at', 'updated_at')
+
+    def validate(self, attrs):
+        if self.instance is not None:
+            if 'employee' in attrs and attrs['employee'] != self.instance.employee:
+                raise serializers.ValidationError({"employee": "Target employee cannot be modified on an existing technical review."})
+            if 'cycle' in attrs and attrs['cycle'] != self.instance.cycle:
+                raise serializers.ValidationError({"cycle": "Performance cycle cannot be modified on an existing technical review."})
+            if 'competency' in attrs and attrs['competency'] != self.instance.competency:
+                raise serializers.ValidationError({"competency": "Competency cannot be modified on an existing technical review."})
+            if 'parameter' in attrs and attrs['parameter'] != self.instance.parameter:
+                raise serializers.ValidationError({"parameter": "Parameter cannot be modified on an existing technical review."})
+
+        competency = attrs.get('competency', getattr(self.instance, 'competency', None))
+        parameter = attrs.get('parameter', getattr(self.instance, 'parameter', None))
+        if bool(competency) == bool(parameter):
+            raise serializers.ValidationError(
+                "A technical review must reference exactly one of 'competency' or 'parameter'."
+            )
+        cycle = attrs.get('cycle', getattr(self.instance, 'cycle', None))
+        employee = attrs.get('employee', getattr(self.instance, 'employee', None))
+
+        if competency:
+            if competency.section != CompetencySection.TECHNICAL:
+                raise serializers.ValidationError({"competency": "Referenced competency must be in TECHNICAL section."})
+            if not cycle:
+                attrs['cycle'] = competency.cycle
+                cycle = competency.cycle
+            elif competency.cycle_id != cycle.id:
+                raise serializers.ValidationError({"cycle": "Review cycle must match competency cycle."})
+        elif parameter:
+            if not cycle:
+                if parameter.cycle:
+                    attrs['cycle'] = parameter.cycle
+                    cycle = parameter.cycle
+                else:
+                    raise serializers.ValidationError({"cycle": "Performance cycle is required for parameter-based technical reviews."})
+            elif parameter.cycle_id and parameter.cycle_id != cycle.id:
+                raise serializers.ValidationError({"cycle": "Review cycle must match parameter cycle."})
+
+        if cycle and employee:
+            from apps.performance.models import CycleParticipant
+            if not CycleParticipant.objects.filter(cycle=cycle, employee=employee).exists():
+                raise serializers.ValidationError({"employee": "Employee is not enrolled as a participant in the specified cycle."})
+
+        score = attrs.get('score', getattr(self.instance, 'score', None))
+        if score is not None:
+            scale_max = (cycle.rating_scale_max if cycle else None) or Decimal('5.0')
+            if score < Decimal('0.00') or score > scale_max:
+                raise serializers.ValidationError({"score": f"Score must be between 0.00 and {scale_max}."})
+
+        return attrs
+
+
+class BehavioralCapabilityReviewSerializer(serializers.ModelSerializer):
+    competency_name = serializers.CharField(source='competency.name', read_only=True)
+    competency_weight = serializers.DecimalField(source='competency.weight', max_digits=5, decimal_places=2, read_only=True)
+    benchmark_score = serializers.DecimalField(source='competency.benchmark_score', max_digits=4, decimal_places=1, read_only=True)
+    rubric_descriptors = serializers.JSONField(source='competency.rubric_descriptors', read_only=True)
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    reviewer_name = serializers.CharField(source='reviewer.username', read_only=True)
+
+    class Meta:
+        model = BehavioralCapabilityReview
+        fields = (
+            'id', 'competency', 'competency_name', 'competency_weight',
+            'benchmark_score', 'rubric_descriptors',
+            'employee', 'employee_name', 'employee_code',
+            'cycle', 'reviewer', 'reviewer_name',
+            'score', 'hr_assessment', 'status',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = ('id', 'reviewer', 'created_at', 'updated_at')
+
+    def validate(self, attrs):
+        if self.instance is not None:
+            if 'employee' in attrs and attrs['employee'] != self.instance.employee:
+                raise serializers.ValidationError({"employee": "Target employee cannot be modified on an existing behavioral review."})
+            if 'cycle' in attrs and attrs['cycle'] != self.instance.cycle:
+                raise serializers.ValidationError({"cycle": "Performance cycle cannot be modified on an existing behavioral review."})
+            if 'competency' in attrs and attrs['competency'] != self.instance.competency:
+                raise serializers.ValidationError({"competency": "Competency cannot be modified on an existing behavioral review."})
+
+        competency = attrs.get('competency', getattr(self.instance, 'competency', None))
+        if not competency:
+            raise serializers.ValidationError({"competency": "Competency reference is required."})
+        if competency.section != CompetencySection.BEHAVIORAL:
+            raise serializers.ValidationError({"competency": "Referenced competency must be in BEHAVIORAL section."})
+
+        cycle = attrs.get('cycle', getattr(self.instance, 'cycle', None))
+        employee = attrs.get('employee', getattr(self.instance, 'employee', None))
+
+        if not cycle:
+            attrs['cycle'] = competency.cycle
+            cycle = competency.cycle
+        elif competency.cycle_id != cycle.id:
+            raise serializers.ValidationError({"cycle": "Review cycle must match competency cycle."})
+
+        if cycle and employee:
+            from apps.performance.models import CycleParticipant
+            if not CycleParticipant.objects.filter(cycle=cycle, employee=employee).exists():
+                raise serializers.ValidationError({"employee": "Employee is not enrolled as a participant in the specified cycle."})
+
+        score = attrs.get('score', getattr(self.instance, 'score', None))
+        if score is not None:
+            scale_max = (cycle.rating_scale_max if cycle else None) or Decimal('5.0')
+            if score < Decimal('0.00') or score > scale_max:
+                raise serializers.ValidationError({"score": f"Score must be between 0.00 and {scale_max}."})
+
+        return attrs

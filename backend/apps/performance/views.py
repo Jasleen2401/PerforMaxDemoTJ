@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.db import transaction, connection
 from django.db.models import Q
 from rest_framework import viewsets, permissions, status
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -18,12 +19,14 @@ from apps.performance.models import (
     EvaluatorSectionType,
     CompetencySection,
     TechnicalCapabilityReview,
+    BehavioralCapabilityReview,
     Appraisal,
     AppraisalRating,
     AppraisalType,
     AppraisalStatus,
     PerformanceImprovementPlan,
     RecognitionReward,
+    ScoringModel,
 )
 from apps.performance.serializers import (
     PerformanceCycleSerializer,
@@ -37,13 +40,188 @@ from apps.performance.serializers import (
     SubmitAppraisalSerializer,
     PerformanceImprovementPlanSerializer,
     RecognitionRewardSerializer,
+    TechnicalCapabilityReviewSerializer,
+    BehavioralCapabilityReviewSerializer,
 )
 from apps.employees.models import EmployeeProfile, EmploymentStatus
 from apps.japanese.models import JapaneseEvaluation, JapaneseBatch, JapaneseEvalCriterion
-from apps.performance.services.scoring import ScoringService
+from apps.performance.services.scoring import ScoringService, IncompleteEvaluationError
 from apps.accounts.permissions import IsHR, IsManager, is_admin_user
 from apps.accounts.models import User, UserRole
 from rest_framework.exceptions import PermissionDenied, ValidationError
+
+def check_participant_readiness_10_gates(cycle, participant):
+    """
+    Validates all 10 gates of the shared readiness contract for an individual cycle participant.
+    Mutually exclusive status precedence:
+    1. PUBLISHED (Canonical MANAGER appraisal already published)
+    2. BLOCKED (Configuration/governance/assignment blockers exist)
+    3. DRAFT (Evaluation work incomplete without configuration blockers)
+    4. READY_TO_PUBLISH (All 10 gates pass)
+    """
+    from apps.japanese.models import JapaneseEvaluation, EvaluationStatus
+    from decimal import Decimal
+
+    config_blockers = []
+    eval_reasons = []
+
+    # 1. Cycle publication eligibility (Gate 1)
+    if cycle.status in [CycleStatus.DRAFT, CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+        config_blockers.append(f"Cycle '{cycle.name}' is in '{cycle.get_status_display()}' status and is not eligible for evaluation publication.")
+
+    # Rating Scale Maximum Validation (Gate 1 Configuration)
+    if not cycle.rating_scale_max or cycle.rating_scale_max <= Decimal('0.0'):
+        config_blockers.append(f"Cycle '{cycle.name}' rating scale maximum is unconfigured or non-positive. Must be strictly greater than 0.")
+
+    # 2. Participant Active Status (Gate 2)
+    is_participant_active = getattr(participant, 'is_active', True)
+    if hasattr(participant, 'employee'):
+        emp = participant.employee
+        if hasattr(emp, 'user') and emp.user and not emp.user.is_active:
+            is_participant_active = False
+        if hasattr(emp, 'employment_status') and emp.employment_status in ['TERMINATED', 'INACTIVE']:
+            is_participant_active = False
+
+    if not is_participant_active:
+        config_blockers.append(f"Participant '{getattr(participant.employee, 'full_name', str(participant.id))}' is inactive and cannot be published.")
+
+    # 3. Active Technical Competencies & 100.00% Weight Total (Gate 3)
+    tech_comps = list(cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True).order_by('order', 'name'))
+    tech_sum = sum((Decimal(str(c.weight)) for c in tech_comps), Decimal('0.00'))
+    total_tech_comps = len(tech_comps)
+
+    if total_tech_comps == 0:
+        config_blockers.append(f"No active Technical competencies configured for cycle '{cycle.name}'.")
+    elif tech_sum != Decimal('100.00'):
+        config_blockers.append(f"Technical competency weights sum to {tech_sum}%, expected exactly 100.00% across active competencies.")
+
+    # 4. Active Behavioral Competencies & 100.00% Weight Total (Gate 4)
+    behav_comps = list(cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True).order_by('order', 'name'))
+    behav_sum = sum((Decimal(str(c.weight)) for c in behav_comps), Decimal('0.00'))
+    total_behav_comps = len(behav_comps)
+
+    if total_behav_comps == 0:
+        config_blockers.append(f"No active Behavioral competencies configured for cycle '{cycle.name}'.")
+    elif behav_sum != Decimal('100.00'):
+        config_blockers.append(f"Behavioral competency weights sum to {behav_sum}%, expected exactly 100.00% across active competencies.")
+
+    # 5. Cycle Section Weights Sum (Gate 5)
+    tw = cycle.technical_weight or Decimal('0.00')
+    bw = cycle.behavioral_weight or Decimal('0.00')
+    cycle_weights_sum = tw + bw
+    if cycle_weights_sum != Decimal('100.00'):
+        config_blockers.append(f"Technical ({tw}%) and Behavioral ({bw}%) section weights must sum to exactly 100.00% (currently {cycle_weights_sum}%).")
+
+    # 6. Japanese Cycle Configuration & Criteria (Gate 6 & 7)
+    japanese_mandatory = cycle.japanese_evaluation_mandatory
+    if japanese_mandatory is None:
+        config_blockers.append("Cycle Japanese evaluation requirement is unconfigured (None). Must be explicitly set to Mandatory (True) or Optional (False).")
+    elif japanese_mandatory is True:
+        jp_criteria = list(cycle.japanese_criteria.all())
+        jp_crit_sum = sum((Decimal(str(c.weight)) for c in jp_criteria), Decimal('0.00'))
+        if len(jp_criteria) == 0:
+            config_blockers.append("Japanese evaluation criteria must be configured when Japanese evaluation is mandatory.")
+        elif jp_crit_sum != Decimal('100.00'):
+            config_blockers.append(f"Japanese evaluation criteria weights sum to {jp_crit_sum}%, expected exactly 100.00% across criteria.")
+
+        # 7. Japanese Evaluation Acceptance (Gate 8)
+        jp_eval = JapaneseEvaluation.objects.filter(cycle=cycle, intern=participant.employee).first()
+        if not jp_eval:
+            has_jp_inst = False
+            try:
+                for b in participant.employee.japanese_batches.all():
+                    if b.instructors.exists():
+                        has_jp_inst = True
+                        break
+            except Exception:
+                pass
+            has_jp_asgn = CycleEvaluatorAssignment.objects.filter(
+                cycle=cycle, participant=participant, section=EvaluatorSectionType.JAPANESE, evaluator__isnull=False
+            ).exists()
+            if not has_jp_asgn and not has_jp_inst:
+                config_blockers.append("Mandatory Japanese evaluation has no instructor or batch assigned.")
+            else:
+                config_blockers.append("Mandatory Japanese evaluation not started by instructor.")
+        elif jp_eval.status != EvaluationStatus.ACCEPTED:
+            config_blockers.append(f"Mandatory Japanese evaluation is not accepted (current status: {jp_eval.get_status_display()}).")
+
+    # 8. Valid Evaluator Assignments (Gate 9)
+    has_tech_asgn = CycleEvaluatorAssignment.objects.filter(
+        cycle=cycle, participant=participant, section=EvaluatorSectionType.TECHNICAL, evaluator__isnull=False
+    ).exists()
+    if not has_tech_asgn:
+        config_blockers.append("Missing required Technical evaluator assignment.")
+
+    has_behav_asgn = CycleEvaluatorAssignment.objects.filter(
+        cycle=cycle, participant=participant, section=EvaluatorSectionType.BEHAVIORAL, evaluator__isnull=False
+    ).exists()
+    if not has_behav_asgn:
+        config_blockers.append("Missing required Behavioral evaluator assignment.")
+
+    # 9. Review Submission & Score Integrity (Gate 10)
+    scale_max = cycle.rating_scale_max if (cycle.rating_scale_max and cycle.rating_scale_max > Decimal('0.0')) else Decimal('5.0')
+    emp = participant.employee
+    active_tech_ids = {c.id for c in tech_comps}
+    tech_reviews = list(TechnicalCapabilityReview.objects.filter(
+        cycle=cycle, employee=emp, competency__in=tech_comps
+    ))
+    submitted_tech_ids = {
+        r.competency_id for r in tech_reviews
+        if r.status == 'SUBMITTED' and r.score is not None and Decimal('0.00') <= Decimal(str(r.score)) <= scale_max
+    }
+    scored_tech_ids = {
+        r.competency_id for r in tech_reviews
+        if r.score is not None and Decimal('0.00') <= Decimal(str(r.score)) <= scale_max
+    }
+
+    if total_tech_comps > 0:
+        if not active_tech_ids.issubset(submitted_tech_ids):
+            if len(scored_tech_ids) > 0 or len(tech_reviews) > 0:
+                eval_reasons.append(f"Technical evaluation in progress ({len(submitted_tech_ids)} of {total_tech_comps} competencies submitted).")
+            else:
+                eval_reasons.append(f"Technical evaluation not started (0 of {total_tech_comps} competencies scored).")
+
+    active_behav_ids = {c.id for c in behav_comps}
+    behav_reviews = list(BehavioralCapabilityReview.objects.filter(
+        cycle=cycle, employee=emp, competency__in=behav_comps
+    ))
+    submitted_behav_ids = {
+        r.competency_id for r in behav_reviews
+        if r.status == 'SUBMITTED' and r.score is not None and Decimal('0.00') <= Decimal(str(r.score)) <= scale_max
+    }
+    scored_behav_ids = {
+        r.competency_id for r in behav_reviews
+        if r.score is not None and Decimal('0.00') <= Decimal(str(r.score)) <= scale_max
+    }
+
+    if total_behav_comps > 0:
+        if not active_behav_ids.issubset(submitted_behav_ids):
+            if len(scored_behav_ids) > 0 or len(behav_reviews) > 0:
+                eval_reasons.append(f"Behavioral evaluation in progress ({len(submitted_behav_ids)} of {total_behav_comps} competencies submitted).")
+            else:
+                eval_reasons.append(f"Behavioral evaluation not started (0 of {total_behav_comps} competencies scored).")
+
+    config_blockers = list(dict.fromkeys(config_blockers))
+    eval_reasons = list(dict.fromkeys(eval_reasons))
+    all_blockers = list(dict.fromkeys(config_blockers + eval_reasons))
+
+    mgr_appraisal = Appraisal.objects.filter(
+        cycle=cycle, employee=emp, appraisal_type=AppraisalType.MANAGER
+    ).first()
+    is_published = bool(mgr_appraisal and mgr_appraisal.status == AppraisalStatus.PUBLISHED)
+
+    if is_published:
+        pub_status = 'PUBLISHED'
+    elif len(config_blockers) > 0:
+        pub_status = 'BLOCKED'
+    elif len(eval_reasons) > 0:
+        pub_status = 'DRAFT'
+    else:
+        pub_status = 'READY_TO_PUBLISH'
+
+    is_ready = (pub_status == 'READY_TO_PUBLISH')
+    return is_ready, pub_status, config_blockers, eval_reasons, all_blockers
+
 
 class PerformanceCycleViewSet(viewsets.ModelViewSet):
     serializer_class = PerformanceCycleSerializer
@@ -85,7 +263,8 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
         if self.action in [
             'create', 'update', 'partial_update', 'destroy',
             'activate', 'enroll_participants', 'unenroll_participant',
-            'eligible_interns', 'assign_evaluator', 'auto_assign_evaluators'
+            'eligible_interns', 'assign_evaluator', 'auto_assign_evaluators',
+            'evaluation_progress', 'publish_participant_evaluation'
         ]:
             return [IsHR()]
         return [permissions.IsAuthenticated()]
@@ -618,11 +797,18 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Competency not found in this cycle."}, status=status.HTTP_404_NOT_FOUND)
 
         if request.method == 'DELETE':
-            if comp.technical_reviews.exists():
+            has_tech = comp.technical_reviews.exists()
+            has_behav = hasattr(comp, 'behavioral_reviews') and comp.behavioral_reviews.exists()
+            if has_tech or has_behav:
+                review_types = []
+                if has_tech:
+                    review_types.append(f"{comp.technical_reviews.count()} existing technical review(s)")
+                if has_behav:
+                    review_types.append(f"{comp.behavioral_reviews.count()} existing behavioral review(s)")
                 return Response(
                     {
                         "error": "HISTORICAL_REVIEWS_EXIST",
-                        "detail": f"Cannot delete competency '{comp.name}': it is referenced by {comp.technical_reviews.count()} existing technical review(s)."
+                        "detail": f"Cannot delete competency '{comp.name}': it is referenced by {' and '.join(review_types)}."
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -1012,6 +1198,627 @@ class PerformanceCycleViewSet(viewsets.ModelViewSet):
             "details": details
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='evaluation-progress', permission_classes=[IsHR])
+    def evaluation_progress(self, request, pk=None):
+        """
+        HR Evaluation Progress Dashboard endpoint.
+        Returns cohort-wide progress across Technical, Behavioral, and Japanese tracks.
+        Computes deterministic readiness_blockers and is_ready_for_review without N+1 queries.
+        """
+        cycle = self.get_object()
+
+        from apps.japanese.models import JapaneseEvaluation, EvaluationStatus
+        from apps.goals.models import Goal, GoalStatus
+
+        # 1. Cycle Configuration Health
+        tech_comps = list(
+            cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True).order_by('order', 'name')
+        )
+        behav_comps = list(
+            cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True).order_by('order', 'name')
+        )
+
+        tech_sum = sum((Decimal(str(c.weight)) for c in tech_comps), Decimal('0.00'))
+        behav_sum = sum((Decimal(str(c.weight)) for c in behav_comps), Decimal('0.00'))
+        tw = cycle.technical_weight or Decimal('0.00')
+        bw = cycle.behavioral_weight or Decimal('0.00')
+        cycle_weights_sum = tw + bw
+
+        cycle_errors = []
+        if len(tech_comps) == 0:
+            cycle_errors.append(f"No active Technical competencies configured for cycle '{cycle.name}'.")
+        elif tech_sum != Decimal('100.00'):
+            cycle_errors.append(f"Technical competency weights sum to {tech_sum}%, expected exactly 100.00% across active competencies.")
+
+        if len(behav_comps) == 0:
+            cycle_errors.append(f"No active Behavioral competencies configured for cycle '{cycle.name}'.")
+        elif behav_sum != Decimal('100.00'):
+            cycle_errors.append(f"Behavioral competency weights sum to {behav_sum}%, expected exactly 100.00% across active competencies.")
+
+        if cycle_weights_sum != Decimal('100.00'):
+            cycle_errors.append(f"Technical ({tw}%) and Behavioral ({bw}%) section weights must sum to exactly 100.00% (currently {cycle_weights_sum}%).")
+
+        japanese_mandatory = cycle.japanese_evaluation_mandatory
+        if japanese_mandatory is None:
+            cycle_errors.append("Cycle Japanese evaluation requirement is unconfigured (None). Must be explicitly set to Mandatory (True) or Optional (False).")
+        elif japanese_mandatory is True:
+            jp_criteria = list(cycle.japanese_criteria.all())
+            jp_crit_sum = sum((Decimal(str(c.weight)) for c in jp_criteria), Decimal('0.00'))
+            if len(jp_criteria) == 0:
+                cycle_errors.append("Japanese evaluation criteria must be configured when Japanese evaluation is mandatory.")
+            elif jp_crit_sum != Decimal('100.00'):
+                cycle_errors.append(f"Japanese evaluation criteria weights sum to {jp_crit_sum}%, expected exactly 100.00% across criteria.")
+
+        # 2. Bulk Fetch Participants & Related Data
+        participants = list(
+            cycle.participants.select_related(
+                'employee', 'employee__user', 'employee__department', 'employee__manager'
+            ).prefetch_related(
+                'employee__japanese_batches__instructors'
+            ).order_by('employee__first_name', 'employee__last_name')
+        )
+
+        emp_ids = [p.employee_id for p in participants]
+        participant_pks = [p.id for p in participants]
+
+        # Assignments: fetch all assignments for this cycle and order deterministically
+        assignments_qs = CycleEvaluatorAssignment.objects.filter(
+            cycle=cycle,
+            participant_id__in=participant_pks,
+            evaluator__isnull=False
+        ).select_related('evaluator').order_by('-created_at', 'id')
+
+        asgn_map = {}
+        for a in assignments_qs:
+            key = (a.participant_id, a.section)
+            if key not in asgn_map:
+                asgn_map[key] = a
+
+        # Bulk fetch Technical & Behavioral Reviews
+        tech_comp_ids = [c.id for c in tech_comps]
+        behav_comp_ids = [c.id for c in behav_comps]
+
+        tech_reviews_by_emp = {}
+        if emp_ids and tech_comp_ids:
+            tech_reviews_qs = TechnicalCapabilityReview.objects.filter(
+                cycle=cycle,
+                employee_id__in=emp_ids,
+                competency_id__in=tech_comp_ids
+            )
+            for r in tech_reviews_qs:
+                tech_reviews_by_emp.setdefault(r.employee_id, []).append(r)
+
+        behav_reviews_by_emp = {}
+        if emp_ids and behav_comp_ids:
+            behav_reviews_qs = BehavioralCapabilityReview.objects.filter(
+                cycle=cycle,
+                employee_id__in=emp_ids,
+                competency_id__in=behav_comp_ids
+            )
+            for r in behav_reviews_qs:
+                behav_reviews_by_emp.setdefault(r.employee_id, []).append(r)
+
+        # Bulk fetch Japanese Evaluations
+        jp_eval_map = {}
+        if emp_ids:
+            jp_evals_qs = JapaneseEvaluation.objects.filter(
+                cycle=cycle,
+                intern_id__in=emp_ids
+            ).select_related('evaluator')
+            for e in jp_evals_qs:
+                jp_eval_map[e.intern_id] = e
+
+        # Bulk fetch Goals & Self-Assessments
+        goals_by_emp = {}
+        if emp_ids:
+            goals_qs = Goal.objects.filter(cycle=cycle, employee_id__in=emp_ids)
+            for g in goals_qs:
+                goals_by_emp.setdefault(g.employee_id, []).append(g)
+
+        self_appraisals_by_emp = {}
+        if emp_ids:
+            self_appraisals_qs = Appraisal.objects.filter(
+                cycle=cycle,
+                employee_id__in=emp_ids,
+                appraisal_type=AppraisalType.SELF
+            )
+            for sa in self_appraisals_qs:
+                self_appraisals_by_emp[sa.employee_id] = sa
+
+        manager_appraisals_by_emp = {}
+        if emp_ids:
+            manager_appraisals_qs = Appraisal.objects.filter(
+                cycle=cycle,
+                employee_id__in=emp_ids,
+                appraisal_type=AppraisalType.MANAGER
+            )
+            for ma in manager_appraisals_qs:
+                manager_appraisals_by_emp[ma.employee_id] = ma
+
+        # 3. Process Each Participant
+        participants_data = []
+        fully_ready_count = 0
+        tech_summary = {'submitted': 0, 'in_progress': 0, 'not_started': 0, 'unassigned_evaluators': 0}
+        behav_summary = {'submitted': 0, 'in_progress': 0, 'not_started': 0, 'unassigned_evaluators': 0}
+        jp_summary = {
+            'mode': 'MANDATORY' if japanese_mandatory is True else ('OPTIONAL' if japanese_mandatory is False else 'UNCONFIGURED'),
+            'accepted': 0,
+            'submitted_or_resubmitted': 0,
+            'draft_or_pending': 0,
+            'returned': 0,
+            'not_started': 0,
+            'no_evaluator_assigned': 0,
+            'blocking_count': 0
+        }
+
+        total_tech_comps = len(tech_comps)
+        total_behav_comps = len(behav_comps)
+        tech_comp_map = {c.id: c for c in tech_comps}
+        behav_comp_map = {c.id: c for c in behav_comps}
+        rating_scale_max = cycle.rating_scale_max or Decimal('5.0')
+
+        for p in participants:
+            emp = p.employee
+            blockers = list(cycle_errors)
+            config_blockers = list(cycle_errors)
+            eval_incomplete_reasons = []
+
+            # --- Participant Active Status (Gate 2) ---
+            p_is_active = getattr(p, 'is_active', True)
+            if hasattr(emp, 'user') and emp.user and not emp.user.is_active:
+                p_is_active = False
+            if hasattr(emp, 'employment_status') and emp.employment_status in ['TERMINATED', 'INACTIVE']:
+                p_is_active = False
+
+            if not p_is_active:
+                msg = f"Participant '{emp.full_name}' is inactive and cannot be published."
+                blockers.append(msg)
+                config_blockers.append(msg)
+
+            # --- Technical Track ---
+            tech_asgn = asgn_map.get((p.id, EvaluatorSectionType.TECHNICAL))
+            has_tech_asgn = bool(tech_asgn and tech_asgn.evaluator_id is not None)
+            if not has_tech_asgn:
+                blockers.append("Missing required Technical evaluator assignment.")
+                config_blockers.append("Missing required Technical evaluator assignment.")
+                tech_summary['unassigned_evaluators'] += 1
+
+            emp_tech_reviews = tech_reviews_by_emp.get(emp.id, [])
+            active_tech_comp_ids = {c.id for c in tech_comps}
+            submitted_tech_comp_ids = {
+                r.competency_id for r in emp_tech_reviews
+                if r.score is not None and r.status == 'SUBMITTED' and Decimal('0.00') <= Decimal(str(r.score)) <= rating_scale_max
+            }
+            scored_tech_comp_ids = {
+                r.competency_id for r in emp_tech_reviews
+                if r.score is not None and Decimal('0.00') <= Decimal(str(r.score)) <= rating_scale_max
+            }
+            tech_last_updated = max((r.updated_at for r in emp_tech_reviews), default=None)
+
+            if total_tech_comps == 0:
+                tech_status = 'UNCONFIGURED'
+                blockers.append("No active Technical competencies configured for cycle.")
+                config_blockers.append("No active Technical competencies configured for cycle.")
+            elif active_tech_comp_ids.issubset(submitted_tech_comp_ids):
+                tech_status = 'SUBMITTED'
+                tech_summary['submitted'] += 1
+            elif len(scored_tech_comp_ids) > 0 or len(emp_tech_reviews) > 0:
+                tech_status = 'IN_PROGRESS'
+                tech_summary['in_progress'] += 1
+                msg = f"Technical evaluation in progress ({len(submitted_tech_comp_ids)} of {total_tech_comps} competencies submitted)."
+                blockers.append(msg)
+                eval_incomplete_reasons.append(msg)
+            else:
+                tech_status = 'NOT_STARTED'
+                tech_summary['not_started'] += 1
+                msg = f"Technical evaluation not started (0 of {total_tech_comps} competencies scored)."
+                blockers.append(msg)
+                eval_incomplete_reasons.append(msg)
+
+            # --- Behavioral Track ---
+            behav_asgn = asgn_map.get((p.id, EvaluatorSectionType.BEHAVIORAL))
+            has_behav_asgn = bool(behav_asgn and behav_asgn.evaluator_id is not None)
+            if not has_behav_asgn:
+                blockers.append("Missing required Behavioral evaluator assignment.")
+                config_blockers.append("Missing required Behavioral evaluator assignment.")
+                behav_summary['unassigned_evaluators'] += 1
+
+            emp_behav_reviews = behav_reviews_by_emp.get(emp.id, [])
+            active_behav_comp_ids = {c.id for c in behav_comps}
+            submitted_behav_comp_ids = {
+                r.competency_id for r in emp_behav_reviews
+                if r.score is not None and r.status == 'SUBMITTED' and Decimal('0.00') <= Decimal(str(r.score)) <= rating_scale_max
+            }
+            scored_behav_comp_ids = {
+                r.competency_id for r in emp_behav_reviews
+                if r.score is not None and Decimal('0.00') <= Decimal(str(r.score)) <= rating_scale_max
+            }
+            behav_last_updated = max((r.updated_at for r in emp_behav_reviews), default=None)
+
+            if total_behav_comps == 0:
+                behav_status = 'UNCONFIGURED'
+                blockers.append("No active Behavioral competencies configured for cycle.")
+                config_blockers.append("No active Behavioral competencies configured for cycle.")
+            elif active_behav_comp_ids.issubset(submitted_behav_comp_ids):
+                behav_status = 'SUBMITTED'
+                behav_summary['submitted'] += 1
+            elif len(scored_behav_comp_ids) > 0 or len(emp_behav_reviews) > 0:
+                behav_status = 'IN_PROGRESS'
+                behav_summary['in_progress'] += 1
+                msg = f"Behavioral evaluation in progress ({len(submitted_behav_comp_ids)} of {total_behav_comps} competencies submitted)."
+                blockers.append(msg)
+                eval_incomplete_reasons.append(msg)
+            else:
+                behav_status = 'NOT_STARTED'
+                behav_summary['not_started'] += 1
+                msg = f"Behavioral evaluation not started (0 of {total_behav_comps} competencies scored)."
+                blockers.append(msg)
+                eval_incomplete_reasons.append(msg)
+
+            # --- Japanese Track ---
+            jp_eval = jp_eval_map.get(emp.id)
+            jp_asgn = asgn_map.get((p.id, EvaluatorSectionType.JAPANESE))
+
+            # Batch and instructor lookup
+            batch_names = []
+            batch_instructors = []
+            try:
+                for b in emp.japanese_batches.all():
+                    batch_names.append(b.name)
+                    for inst in b.instructors.all():
+                        batch_instructors.append(inst)
+            except Exception:
+                pass
+
+            jp_batch_str = ", ".join(batch_names) if batch_names else None
+            unique_instructors = list({i.id: i for i in batch_instructors}.values())
+            first_inst = unique_instructors[0] if unique_instructors else None
+
+            if jp_eval and jp_eval.evaluator:
+                jp_evaluator_name = jp_eval.evaluator.get_full_name() or jp_eval.evaluator.username
+            elif jp_asgn and jp_asgn.evaluator:
+                jp_evaluator_name = jp_asgn.evaluator.get_full_name() or jp_asgn.evaluator.username
+            elif first_inst:
+                jp_evaluator_name = first_inst.get_full_name() or first_inst.username
+            else:
+                jp_evaluator_name = None
+
+            if japanese_mandatory is None:
+                jp_mode = 'UNCONFIGURED'
+                jp_status = 'UNCONFIGURED'
+                jp_status_display = 'Unconfigured Setting'
+                jp_is_blocking = True
+                jp_summary['blocking_count'] += 1
+                msg = "Japanese evaluation configuration is unconfigured (must be explicitly set to Mandatory or Optional)."
+                blockers.append(msg)
+                config_blockers.append(msg)
+            elif japanese_mandatory is False:
+                jp_mode = 'OPTIONAL'
+                jp_is_blocking = False
+                if jp_eval:
+                    jp_status = jp_eval.status
+                    jp_status_display = f"Optional ({jp_eval.get_status_display()})"
+                else:
+                    jp_status = 'NOT_REQUIRED'
+                    jp_status_display = 'Optional (No Eval)'
+            else:
+                # japanese_mandatory is True
+                jp_mode = 'MANDATORY'
+                if not jp_eval:
+                    if not jp_asgn and not unique_instructors:
+                        jp_status = 'NO_EVALUATOR_ASSIGNED'
+                        jp_status_display = 'Unassigned Instructor'
+                        jp_is_blocking = True
+                        jp_summary['no_evaluator_assigned'] += 1
+                        jp_summary['blocking_count'] += 1
+                        msg = "Mandatory Japanese evaluation has no instructor or batch assigned."
+                        blockers.append(msg)
+                        config_blockers.append(msg)
+                    else:
+                        jp_status = 'NOT_STARTED'
+                        jp_status_display = 'Not Started'
+                        jp_is_blocking = True
+                        jp_summary['not_started'] += 1
+                        jp_summary['blocking_count'] += 1
+                        msg = "Mandatory Japanese evaluation not started by instructor."
+                        blockers.append(msg)
+                        config_blockers.append(msg)
+                else:
+                    jp_status = jp_eval.status
+                    jp_status_display = jp_eval.get_status_display()
+                    if jp_eval.status == EvaluationStatus.ACCEPTED:
+                        jp_is_blocking = False
+                        jp_summary['accepted'] += 1
+                    else:
+                        jp_is_blocking = True
+                        jp_summary['blocking_count'] += 1
+                        msg = f"Mandatory Japanese evaluation is not accepted (current status: {jp_status_display})."
+                        blockers.append(msg)
+                        config_blockers.append(msg)
+                        if jp_eval.status in [EvaluationStatus.SUBMITTED, EvaluationStatus.RESUBMITTED]:
+                            jp_summary['submitted_or_resubmitted'] += 1
+                        elif jp_eval.status in [EvaluationStatus.DRAFT, EvaluationStatus.PENDING]:
+                            jp_summary['draft_or_pending'] += 1
+                        elif jp_eval.status == EvaluationStatus.RETURNED:
+                            jp_summary['returned'] += 1
+
+            # --- Operational Telemetry ---
+            emp_goals = goals_by_emp.get(emp.id, [])
+            total_goals = len(emp_goals)
+            completed_goals = len([g for g in emp_goals if g.status == GoalStatus.COMPLETED])
+            avg_goal_pct = float(round(Decimal(str(sum((g.completion_percentage for g in emp_goals), 0) / (total_goals or 1))), 2)) if total_goals else 0.0
+
+            self_appraisal = self_appraisals_by_emp.get(emp.id)
+            self_submitted = bool(self_appraisal and self_appraisal.status in ['SUBMITTED', 'PUBLISHED'])
+
+            # --- Canonical Appraisal & 4-State Publication Status ---
+            mgr_appraisal = manager_appraisals_by_emp.get(emp.id)
+            is_published = bool(mgr_appraisal and mgr_appraisal.status == AppraisalStatus.PUBLISHED)
+
+            config_blockers = list(dict.fromkeys(config_blockers))
+            eval_incomplete_reasons = list(dict.fromkeys(eval_incomplete_reasons))
+            has_config_blockers = len(config_blockers) > 0
+            is_eval_incomplete = len(eval_incomplete_reasons) > 0
+
+            # Deduplicate Blockers & Compute Readiness
+            deduped_blockers = list(dict.fromkeys(blockers))
+            is_ready = (len(deduped_blockers) == 0)
+            if is_ready:
+                fully_ready_count += 1
+
+            if is_published:
+                pub_status = 'PUBLISHED'
+            elif has_config_blockers:
+                pub_status = 'BLOCKED'
+            elif is_eval_incomplete:
+                pub_status = 'DRAFT'
+            else:
+                pub_status = 'READY_TO_PUBLISH'
+
+            # --- Deterministic Scorecard Calculation ---
+            if (
+                total_tech_comps > 0 and
+                total_behav_comps > 0 and
+                active_tech_comp_ids.issubset(submitted_tech_comp_ids) and
+                active_behav_comp_ids.issubset(submitted_behav_comp_ids)
+            ):
+                t_sum = Decimal('0.0000')
+                for r in emp_tech_reviews:
+                    if r.competency_id in tech_comp_map and r.score is not None and r.status == 'SUBMITTED':
+                        c = tech_comp_map[r.competency_id]
+                        n_pct = min(Decimal('100.00'), max(Decimal('0.00'), (Decimal(str(r.score)) / rating_scale_max) * Decimal('100.00')))
+                        t_sum += n_pct * (Decimal(str(c.weight)) / Decimal('100.00'))
+
+                b_sum = Decimal('0.0000')
+                for r in emp_behav_reviews:
+                    if r.competency_id in behav_comp_map and r.score is not None and r.status == 'SUBMITTED':
+                        c = behav_comp_map[r.competency_id]
+                        n_pct = min(Decimal('100.00'), max(Decimal('0.00'), (Decimal(str(r.score)) / rating_scale_max) * Decimal('100.00')))
+                        b_sum += n_pct * (Decimal(str(c.weight)) / Decimal('100.00'))
+
+                t_score = round(t_sum, 2)
+                b_score = round(b_sum, 2)
+                t_contrib = round(t_score * (tw / Decimal('100.00')), 2)
+                b_contrib = round(b_score * (bw / Decimal('100.00')), 2)
+                f_score = min(Decimal('100.00'), max(Decimal('0.00'), round(t_contrib + b_contrib, 2)))
+                scorecard = {
+                    'has_scores': True,
+                    'technical_score': float(t_score),
+                    'behavioral_score': float(b_score),
+                    'final_score': float(f_score),
+                    'is_complete': True,
+                }
+            elif mgr_appraisal and mgr_appraisal.overall_score is not None:
+                scorecard = {
+                    'has_scores': True,
+                    'technical_score': None,
+                    'behavioral_score': None,
+                    'final_score': float(mgr_appraisal.overall_score),
+                    'is_complete': False,
+                }
+            else:
+                scorecard = {
+                    'has_scores': False,
+                    'technical_score': None,
+                    'behavioral_score': None,
+                    'final_score': None,
+                    'is_complete': False,
+                }
+
+            participants_data.append({
+                'participant_id': str(p.id),
+                'employee_id': str(emp.id),
+                'employee_code': emp.employee_code,
+                'full_name': emp.full_name,
+                'department': emp.department.name if emp.department else '',
+                'employment_status': getattr(emp, 'employment_status', 'ACTIVE'),
+                'technical_evaluator_assigned': has_tech_asgn,
+                'behavioral_evaluator_assigned': has_behav_asgn,
+                'publication_status': pub_status,
+                'evaluation_incomplete': is_eval_incomplete,
+                'evaluation_incomplete_reasons': eval_incomplete_reasons,
+                'has_configuration_blockers': has_config_blockers,
+                'configuration_blockers': config_blockers,
+                'scorecard': scorecard,
+                'appraisal': {
+                    'id': str(mgr_appraisal.id) if mgr_appraisal else None,
+                    'status': mgr_appraisal.status if mgr_appraisal else 'NOT_CREATED',
+                    'published_at': mgr_appraisal.published_at.isoformat() if (mgr_appraisal and mgr_appraisal.published_at) else None,
+                },
+                'technical': {
+                    'status': tech_status,
+                    'total_competencies': total_tech_comps,
+                    'scored_competencies': len(scored_tech_comp_ids),
+                    'evaluator_id': str(tech_asgn.evaluator_id) if has_tech_asgn else None,
+                    'evaluator_name': (tech_asgn.evaluator.get_full_name() or tech_asgn.evaluator.username) if has_tech_asgn else None,
+                    'is_assigned': has_tech_asgn,
+                    'last_updated_at': tech_last_updated.isoformat() if tech_last_updated else None,
+                },
+                'behavioral': {
+                    'status': behav_status,
+                    'total_competencies': total_behav_comps,
+                    'scored_competencies': len(scored_behav_comp_ids),
+                    'evaluator_id': str(behav_asgn.evaluator_id) if has_behav_asgn else None,
+                    'evaluator_name': (behav_asgn.evaluator.get_full_name() or behav_asgn.evaluator.username) if has_behav_asgn else None,
+                    'is_assigned': has_behav_asgn,
+                    'last_updated_at': behav_last_updated.isoformat() if behav_last_updated else None,
+                },
+                'japanese': {
+                    'mode': jp_mode,
+                    'status': jp_status,
+                    'status_display': jp_status_display,
+                    'is_blocking': jp_is_blocking,
+                    'overall_score': float(jp_eval.overall_language_score) if jp_eval and jp_eval.overall_language_score is not None else None,
+                    'evaluator_name': jp_evaluator_name,
+                    'batch_name': jp_batch_str,
+                    'submitted_at': jp_eval.submitted_at.isoformat() if jp_eval and jp_eval.submitted_at else None,
+                },
+                'operational_telemetry': {
+                    'goals_count': total_goals,
+                    'completed_goals': completed_goals,
+                    'avg_goal_progress': avg_goal_pct,
+                    'self_assessment_submitted': self_submitted,
+                },
+                'is_ready_for_review': is_ready,
+                'readiness_blockers': deduped_blockers,
+            })
+
+        return Response({
+            'cycle_id': str(cycle.id),
+            'cycle_name': cycle.name,
+            'status': cycle.status,
+            'rating_scale_max': float(cycle.rating_scale_max or Decimal('5.0')),
+            'scoring_model': cycle.scoring_model,
+            'japanese_evaluation_mandatory': japanese_mandatory,
+            'configuration_health': {
+                'is_valid': len(cycle_errors) == 0,
+                'errors': cycle_errors,
+                'technical_competencies_count': total_tech_comps,
+                'technical_weight_total': float(tech_sum),
+                'behavioral_competencies_count': total_behav_comps,
+                'behavioral_weight_total': float(behav_sum),
+                'section_weights_sum': float(cycle_weights_sum),
+                'japanese_configured': (japanese_mandatory is not None),
+            },
+            'summary': {
+                'total_participants': len(participants),
+                'fully_ready_count': fully_ready_count,
+                'technical_summary': tech_summary,
+                'behavioral_summary': behav_summary,
+                'japanese_summary': jp_summary,
+            },
+            'participants': participants_data,
+        }, status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path=r'participants/(?P<participant_id>[^/.]+)/publish',
+        permission_classes=[IsHR]
+    )
+    def publish_participant_evaluation(self, request, pk=None, participant_id=None):
+        """
+        HR publishes an individual participant's canonical MANAGER evaluation with verified score.
+        Route: POST /api/performance/cycles/{pk}/participants/{participant_id}/publish/
+        """
+        cycle = self.get_object()
+
+        with transaction.atomic():
+            # 1. Resolve and lock CycleParticipant
+            try:
+                participant = CycleParticipant.objects.select_for_update().select_related(
+                    'cycle', 'employee', 'employee__user', 'employee__manager'
+                ).get(id=participant_id, cycle=cycle)
+            except (CycleParticipant.DoesNotExist, ValueError):
+                return Response({
+                    'error': 'PARTICIPANT_NOT_FOUND',
+                    'detail': f"Participant '{participant_id}' was not found in cycle '{cycle.name}'."
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 2. Idempotency Check under transaction: if already published, return HTTP 409 Conflict
+            existing_published = Appraisal.objects.select_for_update().filter(
+                cycle=cycle,
+                employee=participant.employee,
+                appraisal_type=AppraisalType.MANAGER,
+                status=AppraisalStatus.PUBLISHED
+            ).first()
+            if existing_published:
+                return Response({
+                    'error': 'ALREADY_PUBLISHED',
+                    'detail': f"Appraisal for this participant has already been published on {existing_published.published_at.isoformat() if existing_published.published_at else 'previous date'}.",
+                    'appraisal_id': str(existing_published.id),
+                    'published_at': existing_published.published_at.isoformat() if existing_published.published_at else None
+                }, status=status.HTTP_409_CONFLICT)
+
+            # 3. Check 10-Gate Shared Readiness Contract inside transaction
+            is_ready, pub_status, config_blockers, eval_reasons, all_blockers = check_participant_readiness_10_gates(cycle, participant)
+            if not is_ready:
+                return Response({
+                    'error': 'READINESS_CHECK_FAILED',
+                    'detail': 'Participant evaluation is not ready for publication.',
+                    'publication_status': pub_status,
+                    'configuration_blockers': config_blockers,
+                    'evaluation_incomplete_reasons': eval_reasons,
+                    'readiness_blockers': all_blockers
+                }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            # 4. Retrieve or create canonical Appraisal record (strictly AppraisalType.MANAGER)
+            reviewer_user = participant.employee.manager if participant.employee.manager else None
+            appraisal = Appraisal.objects.select_for_update().filter(
+                cycle=cycle,
+                employee=participant.employee,
+                appraisal_type=AppraisalType.MANAGER
+            ).first()
+            if not appraisal:
+                appraisal = Appraisal.objects.create(
+                    cycle=cycle,
+                    employee=participant.employee,
+                    appraisal_type=AppraisalType.MANAGER,
+                    status=AppraisalStatus.DRAFT,
+                    reviewer=reviewer_user
+                )
+            elif not appraisal.reviewer and reviewer_user:
+                appraisal.reviewer = reviewer_user
+
+            # 5. Deterministic Score Calculation
+            calculation = ScoringService.calculate_cycle_score(participant.employee, cycle, raise_on_incomplete=True)
+            final_sc = calculation.get('final_score')
+            if final_sc is None:
+                return Response({
+                    'error': 'EVALUATION_INCOMPLETE',
+                    'detail': 'Cannot publish appraisal: scoring calculation could not determine final score.',
+                    'verification_errors': calculation.get('verification_errors', [])
+                }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            # 6. Atomic Persistence of Score and Qualitative HR Feedback
+            appraisal.overall_score = Decimal(str(final_sc))
+            appraisal.status = AppraisalStatus.PUBLISHED
+            appraisal.published_at = timezone.now()
+
+            strengths = request.data.get('strengths')
+            if strengths is not None:
+                appraisal.strengths = strengths if isinstance(strengths, list) else [str(strengths)]
+            areas = request.data.get('areas_for_improvement')
+            if areas is not None:
+                appraisal.areas_for_improvement = areas if isinstance(areas, list) else [str(areas)]
+            recommendations = request.data.get('recommendations')
+            if recommendations is not None:
+                appraisal.recommendations = str(recommendations)
+            final_comments = request.data.get('final_comments')
+            if final_comments is not None:
+                appraisal.final_comments = str(final_comments)
+
+            appraisal.save()
+
+            return Response({
+                'status': 'SUCCESS',
+                'message': 'Appraisal successfully published.',
+                'appraisal_id': str(appraisal.id),
+                'overall_score': float(appraisal.overall_score),
+                'published_at': appraisal.published_at.isoformat(),
+                'score_calculation': calculation
+            }, status=status.HTTP_200_OK)
+
 
     @action(detail=False, methods=['post'], url_path='create-template', permission_classes=[permissions.IsAuthenticated])
     def create_template(self, request):
@@ -1138,6 +1945,21 @@ class AppraisalViewSet(viewsets.ModelViewSet):
         comments = serializer.validated_data.get('comments', '')
         ratings_data = serializer.validated_data.get('ratings', [])
 
+        if ratings_data:
+            from apps.performance.models import ScoringModel
+            if getattr(appraisal.cycle, 'scoring_model', ScoringModel.COMPETENCY_FRAMEWORK) == ScoringModel.COMPETENCY_FRAMEWORK:
+                return Response(
+                    {
+                        "error": "LEGACY_RATINGS_NOT_ALLOWED",
+                        "detail": (
+                            f"Performance cycle '{appraisal.cycle.name}' uses the Competency Framework. "
+                            "Criterion-based legacy ratings are not accepted on competency-based cycles. "
+                            "Please submit technical and behavioral evaluations through their respective evaluation endpoints."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         if appraisal.appraisal_type == AppraisalType.SELF:
             appraisal.self_comments = comments
         else:
@@ -1167,23 +1989,219 @@ class AppraisalViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsHR], url_path='publish')
     def publish_appraisal(self, request, pk=None):
-        """HR publishes final evaluation with verified composite score."""
-        appraisal = self.get_object()
+        """
+        HR publishes final canonical MANAGER evaluation with verified composite score.
+        Enforces 10-Gate shared readiness contract, row locks, canonical MANAGER type,
+        and idempotency under an atomic transaction.
+        """
+        unlocked_appraisal = self.get_object()
 
-        # Compute overall score via ScoringService
-        calculation = ScoringService.calculate_cycle_score(appraisal.employee, appraisal.cycle)
-        appraisal.overall_score = Decimal(str(calculation['overall_score']))
-        appraisal.status = AppraisalStatus.PUBLISHED
-        appraisal.published_at = timezone.now()
+        with transaction.atomic():
+            # 1. Enforce canonical appraisal type
+            if unlocked_appraisal.appraisal_type != AppraisalType.MANAGER:
+                return Response({
+                    'error': 'INVALID_APPRAISAL_TYPE',
+                    'detail': 'Only canonical MANAGER appraisals can be published.'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-        final_notes = request.data.get('final_comments', '')
-        if final_notes:
-            appraisal.final_comments = final_notes
-        appraisal.save()
+            # 2. Consistent lock hierarchy: lock CycleParticipant first, then Appraisal
+            participant = CycleParticipant.objects.select_for_update().select_related(
+                'cycle', 'employee', 'employee__user', 'employee__manager'
+            ).filter(cycle=unlocked_appraisal.cycle, employee=unlocked_appraisal.employee).first()
 
-        resp_data = AppraisalSerializer(appraisal).data
-        resp_data['score_calculation'] = calculation
-        return Response(resp_data, status=status.HTTP_200_OK)
+            if not participant:
+                return Response({
+                    'error': 'PARTICIPANT_NOT_FOUND',
+                    'detail': f"Participant for employee '{unlocked_appraisal.employee.full_name}' was not found in cycle '{unlocked_appraisal.cycle.name}'."
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            is_legacy = (getattr(unlocked_appraisal.cycle, 'scoring_model', ScoringModel.COMPETENCY_FRAMEWORK) == ScoringModel.LEGACY_CRITERIA)
+
+            appraisal = Appraisal.objects.select_for_update().select_related(
+                'cycle', 'employee', 'reviewer'
+            ).get(pk=unlocked_appraisal.pk)
+
+            # 3. Idempotency Check under transaction: if already published, return HTTP 409 Conflict
+            if appraisal.status == AppraisalStatus.PUBLISHED:
+                return Response({
+                    'error': 'ALREADY_PUBLISHED',
+                    'detail': f"Appraisal for this participant has already been published on {appraisal.published_at.isoformat() if appraisal.published_at else 'previous date'}.",
+                    'appraisal_id': str(appraisal.id),
+                    'published_at': appraisal.published_at.isoformat() if appraisal.published_at else None
+                }, status=status.HTTP_409_CONFLICT)
+
+            # 4. For Legacy Cycles: execute legacy scoring path with lifecycle and governance checks
+            if is_legacy:
+                # 4a. Cycle publication eligibility
+                if appraisal.cycle.status in [CycleStatus.DRAFT, CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+                    return Response({
+                        'error': 'CYCLE_NOT_ELIGIBLE',
+                        'detail': f"Cycle '{appraisal.cycle.name}' is in '{appraisal.cycle.get_status_display()}' status and is not eligible for publication."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 4b. Participant eligibility
+                is_participant_active = getattr(participant, 'is_active', True)
+                emp = participant.employee
+                if hasattr(emp, 'user') and emp.user and not emp.user.is_active:
+                    is_participant_active = False
+                if hasattr(emp, 'employment_status') and emp.employment_status in ['TERMINATED', 'INACTIVE']:
+                    is_participant_active = False
+
+                if not is_participant_active:
+                    return Response({
+                        'error': 'PARTICIPANT_NOT_ELIGIBLE',
+                        'detail': f"Participant '{getattr(participant.employee, 'full_name', str(participant.id))}' is inactive or terminated and cannot be published.",
+                        'publication_status': 'BLOCKED',
+                        'configuration_blockers': [f"Participant '{getattr(participant.employee, 'full_name', str(participant.id))}' is inactive and cannot be published."]
+                    }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+                # 4c. Japanese evaluation tri-state
+                if appraisal.cycle.japanese_evaluation_mandatory is None:
+                    return Response({
+                        'error': 'READINESS_CHECK_FAILED',
+                        'detail': f"Cycle '{appraisal.cycle.name}' Japanese evaluation requirement is unconfigured (None). Must be explicitly set to Mandatory (True) or Optional (False).",
+                        'publication_status': 'BLOCKED',
+                        'configuration_blockers': ["Cycle Japanese evaluation requirement is unconfigured (None). Must be explicitly set to Mandatory (True) or Optional (False)."]
+                    }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+                if appraisal.cycle.japanese_evaluation_mandatory is True:
+                    from apps.japanese.models import JapaneseEvaluation, EvaluationStatus
+                    jp_eval = JapaneseEvaluation.objects.filter(intern=appraisal.employee, cycle=appraisal.cycle).first()
+                    if not jp_eval or jp_eval.status != EvaluationStatus.ACCEPTED:
+                        return Response({
+                            'error': 'JAPANESE_EVALUATION_NOT_ACCEPTED',
+                            'detail': 'Japanese evaluation is mandatory for this cycle and must be in ACCEPTED status before publication.',
+                            'publication_status': 'BLOCKED',
+                            'configuration_blockers': ["Mandatory Japanese evaluation is not accepted."]
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 4d. Deterministic Legacy Evaluation Scoring
+                try:
+                    calculation = ScoringService.calculate_cycle_score(appraisal.employee, appraisal.cycle, raise_on_incomplete=True)
+                except IncompleteEvaluationError as exc:
+                    return Response({
+                        'error': 'EVALUATION_INCOMPLETE',
+                        'detail': f"Cannot publish appraisal: {str(exc)}",
+                        'verification_errors': [str(exc)]
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                if not calculation.get('is_complete', False) or calculation.get('final_score') is None:
+                    return Response({
+                        'error': 'EVALUATION_INCOMPLETE',
+                        'detail': f"Cannot publish appraisal: {'; '.join(calculation.get('verification_errors', []))}",
+                        'score_calculation': calculation
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 4e. Reviewer attribution preservation
+                reviewer_user = participant.employee.manager if participant.employee.manager else None
+                if not appraisal.reviewer and reviewer_user:
+                    appraisal.reviewer = reviewer_user
+
+                # 4f. Atomic Persistence
+                final_sc = calculation.get('final_score') if calculation.get('final_score') is not None else calculation.get('overall_score')
+                appraisal.overall_score = Decimal(str(final_sc))
+                appraisal.status = AppraisalStatus.PUBLISHED
+                appraisal.published_at = timezone.now()
+                final_notes = request.data.get('final_comments', '')
+                if final_notes:
+                    appraisal.final_comments = final_notes
+                appraisal.save()
+
+                resp_data = AppraisalSerializer(appraisal).data
+                resp_data['score_calculation'] = calculation
+                resp_data['publication_status'] = 'SUCCESS'
+                resp_data['appraisal_id'] = str(appraisal.id)
+                resp_data['overall_score'] = float(appraisal.overall_score)
+                resp_data['published_at'] = appraisal.published_at.isoformat()
+                return Response(resp_data, status=status.HTTP_200_OK)
+
+            # 5. For Modern Competency Cycles: Check 10-Gate Shared Readiness Contract
+            is_ready, pub_status, config_blockers, eval_reasons, all_blockers = check_participant_readiness_10_gates(appraisal.cycle, participant)
+            if not is_ready:
+                # Compatibility check: if mandatory Japanese evaluation is unaccepted, return legacy error code
+                if appraisal.cycle.japanese_evaluation_mandatory is True:
+                    from apps.japanese.models import JapaneseEvaluation, EvaluationStatus
+                    jp_eval = JapaneseEvaluation.objects.filter(intern=appraisal.employee, cycle=appraisal.cycle).first()
+                    if not jp_eval or jp_eval.status != EvaluationStatus.ACCEPTED:
+                        return Response({
+                            'error': 'JAPANESE_EVALUATION_NOT_ACCEPTED',
+                            'detail': 'Japanese evaluation is mandatory for this cycle and must be in ACCEPTED status before publication.',
+                            'publication_status': pub_status,
+                            'configuration_blockers': config_blockers,
+                            'evaluation_incomplete_reasons': eval_reasons,
+                            'readiness_blockers': all_blockers
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Compatibility check: if evaluation has incomplete or unconfigured competencies
+                if any('competencies configured' in b for b in config_blockers) or (not config_blockers and eval_reasons):
+                    return Response({
+                        'error': 'EVALUATION_INCOMPLETE',
+                        'detail': f"Cannot publish appraisal: {'; '.join(all_blockers)}",
+                        'publication_status': pub_status,
+                        'configuration_blockers': config_blockers,
+                        'evaluation_incomplete_reasons': eval_reasons,
+                        'readiness_blockers': all_blockers
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                return Response({
+                    'error': 'READINESS_CHECK_FAILED',
+                    'detail': 'Participant evaluation is not ready for publication.',
+                    'publication_status': pub_status,
+                    'configuration_blockers': config_blockers,
+                    'evaluation_incomplete_reasons': eval_reasons,
+                    'readiness_blockers': all_blockers
+                }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            # 6. Deterministic Score Calculation
+            try:
+                calculation = ScoringService.calculate_cycle_score(participant.employee, appraisal.cycle, raise_on_incomplete=True)
+            except IncompleteEvaluationError as exc:
+                return Response({
+                    'error': 'EVALUATION_INCOMPLETE',
+                    'detail': str(exc),
+                    'missing_competencies': exc.missing_competencies
+                }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            final_sc = calculation.get('final_score')
+            if final_sc is None:
+                return Response({
+                    'error': 'EVALUATION_INCOMPLETE',
+                    'detail': 'Cannot publish appraisal: scoring calculation could not determine final score.',
+                    'verification_errors': calculation.get('verification_errors', [])
+                }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            # 7. Preserve reviewer attribution (do not overwrite with HR publisher)
+            reviewer_user = participant.employee.manager if participant.employee.manager else None
+            if not appraisal.reviewer and reviewer_user:
+                appraisal.reviewer = reviewer_user
+
+            # 8. Atomic Persistence of Score and Feedback
+            appraisal.overall_score = Decimal(str(final_sc))
+            appraisal.status = AppraisalStatus.PUBLISHED
+            appraisal.published_at = timezone.now()
+
+            strengths = request.data.get('strengths')
+            if strengths is not None:
+                appraisal.strengths = strengths if isinstance(strengths, list) else [str(strengths)]
+            areas = request.data.get('areas_for_improvement')
+            if areas is not None:
+                appraisal.areas_for_improvement = areas if isinstance(areas, list) else [str(areas)]
+            recommendations = request.data.get('recommendations')
+            if recommendations is not None:
+                appraisal.recommendations = str(recommendations)
+            final_comments = request.data.get('final_comments') or request.data.get('finalComment')
+            if final_comments is not None:
+                appraisal.final_comments = str(final_comments)
+
+            appraisal.save()
+
+            resp_data = AppraisalSerializer(appraisal).data
+            resp_data['score_calculation'] = calculation
+            resp_data['publication_status'] = 'SUCCESS'
+            resp_data['appraisal_id'] = str(appraisal.id)
+            resp_data['overall_score'] = float(appraisal.overall_score)
+            resp_data['published_at'] = appraisal.published_at.isoformat()
+            return Response(resp_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='score-breakdown')
     def score_breakdown(self, request, pk=None):
@@ -1342,6 +2360,7 @@ class CycleCompetencyViewSet(viewsets.ModelViewSet):
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.IsAuthenticated()]
         return [IsHR()]
+
     def perform_create(self, serializer):
         cycle = serializer.validated_data.get('cycle')
         if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
@@ -1354,13 +2373,43 @@ class CycleCompetencyViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Cannot modify competencies on a finalized or closed cycle.")
         serializer.save()
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        cycle = instance.cycle
+        if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response(
+                {"detail": f"Cannot modify competencies on a cycle in '{cycle.get_status_display()}' status."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if instance.technical_reviews.exists():
+            return Response(
+                {
+                    "error": "HISTORICAL_REVIEWS_EXIST",
+                    "detail": f"Cannot delete competency '{instance.name}': it is referenced by {instance.technical_reviews.count()} existing technical review(s)."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if hasattr(instance, 'behavioral_reviews') and instance.behavioral_reviews.exists():
+            return Response(
+                {
+                    "error": "HISTORICAL_REVIEWS_EXIST",
+                    "detail": f"Cannot delete competency '{instance.name}': it is referenced by {instance.behavioral_reviews.count()} existing behavioral review(s)."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         cycle = instance.cycle
         if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
-            raise PermissionDenied("Cannot delete competencies from a finalized or closed cycle.")
+            raise PermissionDenied(f"Cannot modify competencies on a cycle in '{cycle.get_status_display()}' status.")
         if instance.technical_reviews.exists():
             raise ValidationError(
                 f"Cannot delete competency '{instance.name}': it is referenced by {instance.technical_reviews.count()} existing technical review(s)."
+            )
+        if hasattr(instance, 'behavioral_reviews') and instance.behavioral_reviews.exists():
+            raise ValidationError(
+                f"Cannot delete competency '{instance.name}': it is referenced by {instance.behavioral_reviews.count()} existing behavioral review(s)."
             )
         instance.delete()
 
@@ -1391,3 +2440,845 @@ class CycleEvaluatorAssignmentViewSet(viewsets.ModelViewSet):
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.IsAuthenticated()]
         return [IsHR()]
+
+    @action(detail=False, methods=['get'], url_path='my-assignments', permission_classes=[permissions.IsAuthenticated])
+    def my_assignments(self, request):
+        user = request.user
+        cycle_id = request.query_params.get('cycle_id') or request.query_params.get('cycle')
+        if not cycle_id:
+            cycle = PerformanceCycle.objects.filter(status=CycleStatus.ACTIVE).first() or PerformanceCycle.objects.first()
+        else:
+            cycle = PerformanceCycle.objects.filter(id=cycle_id).first()
+        if not cycle:
+            return Response({'cycle_id': None, 'count': 0, 'assignments': []}, status=status.HTTP_200_OK)
+
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+
+        if is_hr_admin:
+            assignments = CycleEvaluatorAssignment.objects.filter(cycle=cycle).select_related(
+                'participant', 'participant__employee', 'participant__employee__department', 'evaluator'
+            )
+        else:
+            assignments = CycleEvaluatorAssignment.objects.filter(cycle=cycle, evaluator=user).select_related(
+                'participant', 'participant__employee', 'participant__employee__department', 'evaluator'
+            )
+
+        data = []
+        for a in assignments:
+            emp = a.participant.employee
+            if a.section == EvaluatorSectionType.TECHNICAL:
+                tech_reviews = TechnicalCapabilityReview.objects.filter(employee=emp, cycle=cycle)
+                scored_count = tech_reviews.filter(score__isnull=False).count()
+                total_count = cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True).count()
+                rev_status = 'SUBMITTED' if tech_reviews.filter(status='SUBMITTED').exists() and scored_count >= total_count and total_count > 0 else ('IN_PROGRESS' if scored_count > 0 else 'PENDING')
+            elif a.section == EvaluatorSectionType.BEHAVIORAL:
+                behav_reviews = BehavioralCapabilityReview.objects.filter(employee=emp, cycle=cycle)
+                scored_count = behav_reviews.filter(score__isnull=False).count()
+                total_count = cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True).count()
+                rev_status = 'SUBMITTED' if behav_reviews.filter(status='SUBMITTED').exists() and scored_count >= total_count and total_count > 0 else ('IN_PROGRESS' if scored_count > 0 else 'PENDING')
+            else:
+                rev_status = 'N/A'
+
+            data.append({
+                'assignment_id': str(a.id),
+                'cycle_id': str(cycle.id),
+                'cycle_name': cycle.name,
+                'participant_id': str(a.participant.id),
+                'employee_id': str(emp.id),
+                'employee_code': emp.employee_code,
+                'full_name': emp.full_name,
+                'email': emp.email,
+                'department': emp.department.name if emp.department else '',
+                'section': a.section,
+                'section_display': a.get_section_display(),
+                'is_mandatory': a.is_mandatory,
+                'evaluator_id': str(a.evaluator.id),
+                'evaluator_name': a.evaluator.username,
+                'evaluation_status': rev_status,
+            })
+
+        return Response({
+            'cycle_id': str(cycle.id),
+            'cycle_name': cycle.name,
+            'count': len(data),
+            'assignments': data
+        }, status=status.HTTP_200_OK)
+
+
+class TechnicalCapabilityReviewViewSet(viewsets.ModelViewSet):
+    serializer_class = TechnicalCapabilityReviewSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['cycle', 'employee', 'competency', 'status']
+    ordering_fields = ['created_at', 'score']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = TechnicalCapabilityReview.objects.select_related('competency', 'parameter', 'employee', 'cycle', 'reviewer')
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+        if is_hr_admin:
+            return qs.all()
+        if getattr(user, 'role', '') == 'INTERN':
+            return qs.none()
+
+        cycle_param = self.request.query_params.get('cycle') or self.request.query_params.get('cycle_id')
+        assignments = CycleEvaluatorAssignment.objects.filter(
+            evaluator=user, section=EvaluatorSectionType.TECHNICAL
+        )
+        if cycle_param:
+            assignments = assignments.filter(cycle_id=cycle_param)
+            assigned_emp_ids = assignments.values_list('participant__employee_id', flat=True)
+            return qs.filter(cycle_id=cycle_param, employee__id__in=assigned_emp_ids)
+
+        assignment_pairs = list(assignments.values('cycle_id', 'participant__employee_id'))
+        if not assignment_pairs:
+            return qs.none()
+
+        pair_filter = Q()
+        for pair in assignment_pairs:
+            pair_filter |= Q(cycle_id=pair['cycle_id'], employee_id=pair['participant__employee_id'])
+        return qs.filter(pair_filter)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+
+        validated_data = serializer.validated_data
+        cycle = validated_data.get('cycle')
+        employee = validated_data.get('employee')
+        competency = validated_data.get('competency')
+        if not cycle and competency:
+            cycle = competency.cycle
+
+        if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied(f"Cannot create technical reviews on a cycle in '{cycle.get_status_display()}' status.")
+
+        if not is_hr_admin:
+            if not cycle or not employee:
+                raise PermissionDenied("Cycle and employee are required to verify evaluator authorization.")
+            is_assigned = CycleEvaluatorAssignment.objects.filter(
+                cycle=cycle,
+                participant__employee=employee,
+                evaluator=user,
+                section=EvaluatorSectionType.TECHNICAL
+            ).exists()
+            if not is_assigned:
+                raise PermissionDenied("You are not assigned as the Technical evaluator for this participant in this cycle.")
+
+        instance = serializer.save(reviewer=user)
+        return instance
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = self.get_object()
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+
+        target_employee = serializer.validated_data.get('employee', instance.employee)
+        target_cycle = serializer.validated_data.get('cycle', instance.cycle)
+
+        if instance.cycle and instance.cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied(f"Cannot modify technical reviews on a cycle in '{instance.cycle.get_status_display()}' status.")
+
+        if not is_hr_admin:
+            if target_employee != instance.employee:
+                raise PermissionDenied("You cannot transfer a technical review to another employee.")
+            if target_cycle != instance.cycle:
+                raise PermissionDenied("You cannot change the performance cycle of an existing technical review.")
+
+            is_assigned = CycleEvaluatorAssignment.objects.filter(
+                cycle=target_cycle,
+                participant__employee=target_employee,
+                evaluator=user,
+                section=EvaluatorSectionType.TECHNICAL
+            ).exists()
+            if not is_assigned:
+                raise PermissionDenied("You are not assigned as the Technical evaluator for this participant in this cycle.")
+
+        serializer.save(reviewer=user)
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+        if not is_hr_admin:
+            raise PermissionDenied("Only HR and Super Admins may delete technical capability reviews.")
+        if instance.cycle and instance.cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied(f"Cannot delete technical reviews on a cycle in '{instance.cycle.get_status_display()}' status.")
+        instance.delete()
+
+
+class BehavioralCapabilityReviewViewSet(viewsets.ModelViewSet):
+    serializer_class = BehavioralCapabilityReviewSerializer
+    permission_classes = [IsHR]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['cycle', 'employee', 'competency', 'status']
+    ordering_fields = ['created_at', 'score']
+
+    def get_queryset(self):
+        return BehavioralCapabilityReview.objects.select_related('competency', 'employee', 'cycle', 'reviewer').all()
+
+    def perform_create(self, serializer):
+        cycle = serializer.validated_data.get('cycle')
+        competency = serializer.validated_data.get('competency')
+        if not cycle and competency:
+            cycle = competency.cycle
+        if cycle and cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied(f"Cannot create behavioral reviews on a cycle in '{cycle.get_status_display()}' status.")
+        return serializer.save(reviewer=self.request.user)
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        target_employee = serializer.validated_data.get('employee', instance.employee)
+        target_cycle = serializer.validated_data.get('cycle', instance.cycle)
+        if instance.cycle and instance.cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied(f"Cannot modify behavioral reviews on a cycle in '{instance.cycle.get_status_display()}' status.")
+        if target_employee != instance.employee:
+            raise PermissionDenied("You cannot transfer a behavioral review to another employee.")
+        if target_cycle != instance.cycle:
+            raise PermissionDenied("You cannot change the performance cycle of an existing behavioral review.")
+        serializer.save(reviewer=self.request.user)
+
+    def perform_destroy(self, instance):
+        if instance.cycle and instance.cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            raise PermissionDenied(f"Cannot delete behavioral reviews on a cycle in '{instance.cycle.get_status_display()}' status.")
+        instance.delete()
+
+
+class TechnicalEvaluationView(APIView):
+    """
+    Technical Evaluation Sheet and Review Submission.
+    Restricted to assigned TECHNICAL evaluator or HR/Super Admin.
+    Direct manager status alone does NOT grant permission without assignment.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _resolve_context(self, request):
+        user = request.user
+        participant_id = request.query_params.get('participant_id') or (request.data.get('participant_id') if isinstance(request.data, dict) else None)
+        employee_id = request.query_params.get('employee_id') or (request.data.get('employee_id') if isinstance(request.data, dict) else None)
+        cycle_id = request.query_params.get('cycle_id') or (request.data.get('cycle_id') if isinstance(request.data, dict) else None)
+
+        if not participant_id and not employee_id:
+            raise ValidationError("Either participant_id or employee_id is required.")
+
+        cycle = None
+        if cycle_id:
+            cycle = PerformanceCycle.objects.filter(id=cycle_id).first()
+            if not cycle:
+                raise ValidationError("Specified performance cycle was not found.")
+
+        participant = None
+        if participant_id:
+            participant = CycleParticipant.objects.filter(id=participant_id).select_related('cycle', 'employee', 'employee__department').first()
+            if not participant:
+                raise ValidationError("Participant not found.")
+            if cycle and participant.cycle_id != cycle.id:
+                raise ValidationError("Participant does not belong to the specified cycle.")
+            cycle = participant.cycle
+        elif employee_id:
+            if not cycle:
+                raise ValidationError("cycle_id is required when participant_id is not provided.")
+            participant = CycleParticipant.objects.filter(
+                Q(cycle=cycle) & (Q(employee__id=employee_id) | Q(employee__user__id=employee_id) | Q(employee__employee_code__iexact=str(employee_id)))
+            ).select_related('cycle', 'employee', 'employee__department').first()
+            if not participant:
+                raise ValidationError("Participant is not enrolled in the specified cycle.")
+
+        # Authorization: Must be assigned TECHNICAL evaluator or HR/Super Admin
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+        if not is_hr_admin:
+            is_assigned = CycleEvaluatorAssignment.objects.filter(
+                cycle=cycle,
+                participant=participant,
+                section=EvaluatorSectionType.TECHNICAL,
+                evaluator=user
+            ).exists()
+            if not is_assigned:
+                raise PermissionDenied("You are not assigned as the Technical evaluator for this participant.")
+
+        return cycle, participant
+
+    def get(self, request):
+        try:
+            cycle, participant = self._resolve_context(request)
+        except (ValidationError, PermissionDenied) as exc:
+            return Response({'error': str(exc.detail if hasattr(exc, 'detail') else exc)}, status=getattr(exc, 'status_code', status.HTTP_400_BAD_REQUEST))
+
+        emp = participant.employee
+        active_comps = cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True).order_by('order', 'name')
+        existing_reviews = {
+            r.competency_id: r
+            for r in TechnicalCapabilityReview.objects.filter(cycle=cycle, employee=emp, competency__in=active_comps)
+        }
+
+        from apps.evidence.models import EvidenceSubmission
+        evidence_qs = EvidenceSubmission.objects.filter(employee=emp).values('id', 'title', 'external_url', 'review_status')
+
+        competencies_data = []
+        for comp in active_comps:
+            rev = existing_reviews.get(comp.id)
+            competencies_data.append({
+                'competency_id': str(comp.id),
+                'name': comp.name,
+                'description': comp.description,
+                'weight': float(comp.weight),
+                'benchmark_score': float(comp.benchmark_score),
+                'rubric_descriptors': comp.rubric_descriptors or {},
+                'review': {
+                    'id': str(rev.id) if rev else None,
+                    'score': float(rev.score) if rev and rev.score is not None else None,
+                    'mentor_assessment': rev.mentor_assessment if rev else '',
+                    'evidence_url': rev.evidence_url if rev else '',
+                    'status': rev.status if rev else 'DRAFT',
+                    'updated_at': rev.updated_at.isoformat() if rev else None,
+                }
+            })
+
+        return Response({
+            'cycle_id': str(cycle.id),
+            'cycle_name': cycle.name,
+            'rating_scale_max': float(cycle.rating_scale_max or Decimal('5.0')),
+            'participant_id': str(participant.id),
+            'employee_id': str(emp.id),
+            'employee_code': emp.employee_code,
+            'full_name': emp.full_name,
+            'department': emp.department.name if emp.department else '',
+            'competencies': competencies_data,
+            'available_evidence': list(evidence_qs)
+        }, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        try:
+            cycle, participant = self._resolve_context(request)
+        except (ValidationError, PermissionDenied) as exc:
+            return Response({'error': str(exc.detail if hasattr(exc, 'detail') else exc)}, status=getattr(exc, 'status_code', status.HTTP_400_BAD_REQUEST))
+
+        # Historical cycle protection guard: finalized, published, or closed cycles are strictly read-only
+        if cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response({
+                'error': 'CYCLE_CLOSED',
+                'detail': f"Cannot submit or modify technical evaluations for a cycle in '{cycle.get_status_display()}' status."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        emp = participant.employee
+        raw_status = request.data.get('status', 'DRAFT').upper()
+        is_submitting = raw_status in ['SUBMITTED', 'SUBMIT']
+        target_status = 'SUBMITTED' if is_submitting else 'DRAFT'
+        reviews_data = request.data.get('reviews', [])
+
+        active_comps = {
+            str(c.id): c
+            for c in cycle.competencies.filter(section=CompetencySection.TECHNICAL, is_active=True)
+        }
+        scale_max = cycle.rating_scale_max or Decimal('5.0')
+
+        if is_submitting:
+            submitted_comp_ids = set()
+            for item in reviews_data:
+                cid = str(item.get('competency_id') or item.get('competencyId') or '')
+                score = item.get('score')
+                if score is not None and str(score).strip() != '':
+                    submitted_comp_ids.add(cid)
+            missing = set(active_comps.keys()) - submitted_comp_ids
+            if missing:
+                return Response({
+                    'error': 'INCOMPLETE_SUBMISSION',
+                    'detail': f"All {len(active_comps)} active Technical competencies must be scored before submission. Missing: {len(missing)}."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        saved_records = []
+        with transaction.atomic():
+            for item in reviews_data:
+                cid = str(item.get('competency_id') or item.get('competencyId') or '')
+                comp = active_comps.get(cid)
+                if not comp:
+                    continue
+
+                raw_score = item.get('score')
+                score_val = None
+                if raw_score is not None and str(raw_score).strip() != '':
+                    score_val = Decimal(str(raw_score))
+                    if score_val < Decimal('0.00') or score_val > scale_max:
+                        return Response({
+                            'error': 'INVALID_SCORE',
+                            'detail': f"Score for '{comp.name}' must be between 0.00 and {scale_max}."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                assessment = (item.get('mentor_assessment') or item.get('mentorAssessment') or item.get('assessment') or '').strip()
+                evidence_url = (item.get('evidence_url') or item.get('evidenceUrl') or '').strip()
+
+                rev, _ = TechnicalCapabilityReview.objects.update_or_create(
+                    competency=comp,
+                    employee=emp,
+                    defaults={
+                        'cycle': cycle,
+                        'reviewer': request.user,
+                        'score': score_val,
+                        'mentor_assessment': assessment,
+                        'evidence_url': evidence_url,
+                        'status': target_status,
+                        'parameter': None
+                    }
+                )
+                saved_records.append(rev)
+
+        return Response({
+            'message': f"Technical evaluation {'submitted' if is_submitting else 'saved as draft'}.",
+            'status': target_status,
+            'saved_count': len(saved_records),
+            'cycle_id': str(cycle.id),
+            'participant_id': str(participant.id)
+        }, status=status.HTTP_200_OK)
+
+
+class BehavioralEvaluationView(APIView):
+    """
+    Behavioral Evaluation Sheet and Review Submission.
+    HR exclusively authorized for this milestone.
+    Mentors, direct managers, and interns are denied access (HTTP 403).
+    """
+    permission_classes = [IsHR]
+
+    def _resolve_context(self, request):
+        participant_id = request.query_params.get('participant_id') or (request.data.get('participant_id') if isinstance(request.data, dict) else None)
+        employee_id = request.query_params.get('employee_id') or (request.data.get('employee_id') if isinstance(request.data, dict) else None)
+        cycle_id = request.query_params.get('cycle_id') or (request.data.get('cycle_id') if isinstance(request.data, dict) else None)
+
+        if not participant_id and not employee_id:
+            raise ValidationError("Either participant_id or employee_id is required.")
+
+        cycle = None
+        if cycle_id:
+            cycle = PerformanceCycle.objects.filter(id=cycle_id).first()
+            if not cycle:
+                raise ValidationError("Specified performance cycle was not found.")
+
+        participant = None
+        if participant_id:
+            participant = CycleParticipant.objects.filter(id=participant_id).select_related('cycle', 'employee', 'employee__department').first()
+            if not participant:
+                raise ValidationError("Participant not found.")
+            if cycle and participant.cycle_id != cycle.id:
+                raise ValidationError("Participant does not belong to the specified cycle.")
+            cycle = participant.cycle
+        elif employee_id:
+            if not cycle:
+                raise ValidationError("cycle_id is required when participant_id is not provided.")
+            participant = CycleParticipant.objects.filter(
+                Q(cycle=cycle) & (Q(employee__id=employee_id) | Q(employee__user__id=employee_id) | Q(employee__employee_code__iexact=str(employee_id)))
+            ).select_related('cycle', 'employee', 'employee__department').first()
+            if not participant:
+                raise ValidationError("Participant is not enrolled in the specified cycle.")
+
+        return cycle, participant
+
+    def get(self, request):
+        try:
+            cycle, participant = self._resolve_context(request)
+        except (ValidationError, PermissionDenied) as exc:
+            return Response({'error': str(exc.detail if hasattr(exc, 'detail') else exc)}, status=getattr(exc, 'status_code', status.HTTP_400_BAD_REQUEST))
+
+        emp = participant.employee
+        active_comps = cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True).order_by('order', 'name')
+        existing_reviews = {
+            r.competency_id: r
+            for r in BehavioralCapabilityReview.objects.filter(cycle=cycle, employee=emp, competency__in=active_comps)
+        }
+
+        competencies_data = []
+        for comp in active_comps:
+            rev = existing_reviews.get(comp.id)
+            competencies_data.append({
+                'competency_id': str(comp.id),
+                'name': comp.name,
+                'description': comp.description,
+                'weight': float(comp.weight),
+                'benchmark_score': float(comp.benchmark_score),
+                'rubric_descriptors': comp.rubric_descriptors or {},
+                'review': {
+                    'id': str(rev.id) if rev else None,
+                    'score': float(rev.score) if rev and rev.score is not None else None,
+                    'hr_assessment': rev.hr_assessment if rev else '',
+                    'status': rev.status if rev else 'DRAFT',
+                    'updated_at': rev.updated_at.isoformat() if rev else None,
+                }
+            })
+
+        return Response({
+            'cycle_id': str(cycle.id),
+            'cycle_name': cycle.name,
+            'rating_scale_max': float(cycle.rating_scale_max or Decimal('5.0')),
+            'participant_id': str(participant.id),
+            'employee_id': str(emp.id),
+            'employee_code': emp.employee_code,
+            'full_name': emp.full_name,
+            'department': emp.department.name if emp.department else '',
+            'competencies': competencies_data,
+        }, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        try:
+            cycle, participant = self._resolve_context(request)
+        except (ValidationError, PermissionDenied) as exc:
+            return Response({'error': str(exc.detail if hasattr(exc, 'detail') else exc)}, status=getattr(exc, 'status_code', status.HTTP_400_BAD_REQUEST))
+
+        # Historical cycle protection guard: finalized, published, or closed cycles are strictly read-only
+        if cycle.status in [CycleStatus.FINALIZED, CycleStatus.PUBLISHED, CycleStatus.CLOSED]:
+            return Response({
+                'error': 'CYCLE_CLOSED',
+                'detail': f"Cannot submit or modify behavioral evaluations for a cycle in '{cycle.get_status_display()}' status."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        emp = participant.employee
+        raw_status = request.data.get('status', 'DRAFT').upper()
+        is_submitting = raw_status in ['SUBMITTED', 'SUBMIT']
+        target_status = 'SUBMITTED' if is_submitting else 'DRAFT'
+        reviews_data = request.data.get('reviews', [])
+
+        active_comps = {
+            str(c.id): c
+            for c in cycle.competencies.filter(section=CompetencySection.BEHAVIORAL, is_active=True)
+        }
+        scale_max = cycle.rating_scale_max or Decimal('5.0')
+
+        if is_submitting:
+            submitted_comp_ids = set()
+            for item in reviews_data:
+                cid = str(item.get('competency_id') or item.get('competencyId') or '')
+                score = item.get('score')
+                if score is not None and str(score).strip() != '':
+                    submitted_comp_ids.add(cid)
+            missing = set(active_comps.keys()) - submitted_comp_ids
+            if missing:
+                return Response({
+                    'error': 'INCOMPLETE_SUBMISSION',
+                    'detail': f"All {len(active_comps)} active Behavioral competencies must be scored before submission. Missing: {len(missing)}."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        saved_records = []
+        with transaction.atomic():
+            for item in reviews_data:
+                cid = str(item.get('competency_id') or item.get('competencyId') or '')
+                comp = active_comps.get(cid)
+                if not comp:
+                    continue
+
+                raw_score = item.get('score')
+                score_val = None
+                if raw_score is not None and str(raw_score).strip() != '':
+                    score_val = Decimal(str(raw_score))
+                    if score_val < Decimal('0.00') or score_val > scale_max:
+                        return Response({
+                            'error': 'INVALID_SCORE',
+                            'detail': f"Score for '{comp.name}' must be between 0.00 and {scale_max}."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                assessment = (item.get('hr_assessment') or item.get('hrAssessment') or item.get('assessment') or '').strip()
+
+                rev, _ = BehavioralCapabilityReview.objects.update_or_create(
+                    competency=comp,
+                    employee=emp,
+                    defaults={
+                        'cycle': cycle,
+                        'reviewer': request.user,
+                        'score': score_val,
+                        'hr_assessment': assessment,
+                        'status': target_status,
+                    }
+                )
+                saved_records.append(rev)
+
+        return Response({
+            'message': f"Behavioral evaluation {'submitted' if is_submitting else 'saved as draft'}.",
+            'status': target_status,
+            'saved_count': len(saved_records),
+            'cycle_id': str(cycle.id),
+            'participant_id': str(participant.id)
+        }, status=status.HTTP_200_OK)
+
+
+class EvaluationSummaryView(APIView):
+    """
+    Returns canonical score calculation breakdown and telemetry for a participant.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        participant_id = request.query_params.get('participant_id')
+        employee_id = request.query_params.get('employee_id')
+        cycle_id = request.query_params.get('cycle_id')
+
+        if not participant_id and not employee_id:
+            return Response({'error': 'Either participant_id or employee_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        cycle = None
+        if cycle_id:
+            cycle = PerformanceCycle.objects.filter(id=cycle_id).first()
+            if not cycle:
+                return Response({'error': 'Specified cycle was not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        participant = None
+        if participant_id:
+            participant = CycleParticipant.objects.filter(id=participant_id).select_related('cycle', 'employee').first()
+            if not participant:
+                return Response({'error': 'Participant not found.'}, status=status.HTTP_404_NOT_FOUND)
+            if cycle and participant.cycle_id != cycle.id:
+                return Response({'error': 'Participant does not belong to the specified cycle.'}, status=status.HTTP_400_BAD_REQUEST)
+            cycle = participant.cycle
+        elif employee_id:
+            if not cycle:
+                return Response({'error': 'cycle_id is required when participant_id is not provided.'}, status=status.HTTP_400_BAD_REQUEST)
+            participant = CycleParticipant.objects.filter(
+                Q(cycle=cycle) & (Q(employee__id=employee_id) | Q(employee__user__id=employee_id) | Q(employee__employee_code__iexact=str(employee_id)))
+            ).select_related('cycle', 'employee').first()
+            if not participant:
+                return Response({'error': 'Participant is not enrolled in the specified cycle.'}, status=status.HTTP_404_NOT_FOUND)
+
+        emp = participant.employee
+
+        is_hr_admin = getattr(user, 'is_super_admin', False) or getattr(user, 'is_hr', False) or getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or user.is_staff or user.is_superuser
+        user_is_intern = (getattr(user, 'role', '') == 'INTERN') or (hasattr(user, 'profile') and getattr(user.profile, 'role', '') == 'INTERN') or (emp.user_id == user.id)
+
+        if user_is_intern and not is_hr_admin:
+            # Intern Privacy Boundary: Interns can ONLY inspect their own evaluation.
+            user_profile = getattr(user, 'profile', None)
+            if not user_profile:
+                user_profile = EmployeeProfile.objects.filter(user=user).first()
+            if not user_profile:
+                return Response({'error': 'Intern profile not found for authenticated user.'}, status=status.HTTP_403_FORBIDDEN)
+            if participant and participant.employee_id != user_profile.id:
+                return Response({'error': 'Access denied: cannot inspect other participant evaluations.'}, status=status.HTTP_403_FORBIDDEN)
+            emp = user_profile
+
+            # Check canonical MANAGER Appraisal publication
+            appraisal = Appraisal.objects.filter(employee=emp, cycle=cycle, appraisal_type=AppraisalType.MANAGER).first()
+            if not appraisal or appraisal.status != AppraisalStatus.PUBLISHED:
+                return Response({'error': 'Appraisal has not been published by HR yet.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not is_hr_admin and not user_is_intern:
+            is_assigned = CycleEvaluatorAssignment.objects.filter(cycle=cycle, participant=participant, evaluator=user).exists()
+            if not is_assigned:
+                return Response({'error': 'You do not have access to this evaluation summary.'}, status=status.HTTP_403_FORBIDDEN)
+
+        calculation = ScoringService.calculate_cycle_score(emp, cycle)
+        return Response({
+            'participant_id': str(participant.id),
+            'employee_id': str(emp.id),
+            'full_name': emp.full_name,
+            'employee_code': emp.employee_code,
+            'cycle_id': str(cycle.id),
+            'cycle_name': cycle.name,
+            'score_calculation': calculation
+        }, status=status.HTTP_200_OK)
+
+
+class MentorAssignedEvaluationsView(APIView):
+    """
+    Dedicated discovery endpoint for mentor technical evaluations.
+    Restricted to authenticated users with TECHNICAL evaluator assignments.
+    Resolves active performance cycles without silent latest-cycle fallbacks.
+    Returns assigned participants with evaluation progress telemetry.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        cycle_id = request.query_params.get('cycle_id')
+
+        is_hr_admin = (
+            getattr(user, 'is_super_admin', False) or
+            getattr(user, 'is_hr', False) or
+            getattr(user, 'role', '') in ['SUPER_ADMIN', 'HR'] or
+            user.is_staff or
+            user.is_superuser
+        )
+
+        active_statuses = [
+            CycleStatus.ACTIVE,
+            CycleStatus.IN_PROGRESS,
+            CycleStatus.REVIEW_PERIOD,
+        ]
+
+        # 1. Discover all eligible active cycles where user has TECHNICAL assignments
+        # (or all active cycles for HR/Super Admin)
+        eligible_cycles_qs = PerformanceCycle.objects.filter(status__in=active_statuses)
+        if not is_hr_admin:
+            eligible_cycles_qs = eligible_cycles_qs.filter(
+                evaluator_assignments__evaluator=user,
+                evaluator_assignments__section=EvaluatorSectionType.TECHNICAL
+            ).distinct()
+
+        eligible_cycles = list(eligible_cycles_qs.order_by('-start_date', '-created_at'))
+
+        target_cycle = None
+
+        if cycle_id:
+            # Explicit cycle requested
+            target_cycle = PerformanceCycle.objects.filter(id=cycle_id).first()
+            if not target_cycle:
+                return Response(
+                    {
+                        'error': 'CYCLE_NOT_FOUND',
+                        'detail': 'The specified performance cycle does not exist.'
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Validate explicit cycle access: mentor must have at least one assignment in that cycle (unless HR/Super Admin)
+            if not is_hr_admin:
+                has_access = CycleEvaluatorAssignment.objects.filter(
+                    cycle=target_cycle,
+                    evaluator=user,
+                    section=EvaluatorSectionType.TECHNICAL
+                ).exists()
+                if not has_access:
+                    return Response(
+                        {
+                            'error': 'ACCESS_DENIED',
+                            'detail': 'You do not have technical evaluator assignments in this cycle.'
+                        },
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+        else:
+            # No cycle_id provided: deterministic active cycle resolution
+            if len(eligible_cycles) == 0:
+                return Response({
+                    'requires_cycle_selection': False,
+                    'selected_cycle': None,
+                    'eligible_cycles': [],
+                    'assigned_evaluations': [],
+                    'message': 'No active performance cycles with assigned technical evaluations were found.'
+                }, status=status.HTTP_200_OK)
+
+            elif len(eligible_cycles) == 1:
+                target_cycle = eligible_cycles[0]
+
+            else:
+                # Multiple active cycles exist -> prompt user selection, never pick latest as fallback!
+                eligible_cycles_data = [
+                    {
+                        'id': str(c.id),
+                        'name': c.name,
+                        'status': c.status,
+                        'start_date': c.start_date.isoformat() if c.start_date else None,
+                        'end_date': c.end_date.isoformat() if c.end_date else None,
+                        'rating_scale_max': float(c.rating_scale_max or Decimal('5.0')),
+                    }
+                    for c in eligible_cycles
+                ]
+                return Response({
+                    'requires_cycle_selection': True,
+                    'selected_cycle': None,
+                    'eligible_cycles': eligible_cycles_data,
+                    'assigned_evaluations': [],
+                    'message': 'Multiple active performance cycles are available. Please select a cycle to view assigned evaluations.'
+                }, status=status.HTTP_200_OK)
+
+        # 2. Query assignments for target_cycle
+        assignments_qs = CycleEvaluatorAssignment.objects.filter(
+            cycle=target_cycle,
+            evaluator=user,
+            section=EvaluatorSectionType.TECHNICAL
+        ).select_related(
+            'participant',
+            'participant__employee',
+            'participant__employee__department',
+            'participant__employee__user'
+        ).order_by('participant__employee__first_name', 'participant__employee__last_name')
+
+        assignments = list(assignments_qs)
+
+        # 3. Retrieve active technical competencies for target_cycle
+        active_comps = list(target_cycle.competencies.filter(
+            section=CompetencySection.TECHNICAL,
+            is_active=True
+        ).order_by('order', 'name'))
+        total_comps = len(active_comps)
+        active_comp_ids = [c.id for c in active_comps]
+
+        # 4. Bulk fetch existing reviews to avoid N+1 queries
+        emp_ids = [a.participant.employee_id for a in assignments if a.participant and a.participant.employee_id]
+        reviews_by_emp = {}
+        if emp_ids and active_comp_ids:
+            reviews = TechnicalCapabilityReview.objects.filter(
+                cycle=target_cycle,
+                employee_id__in=emp_ids,
+                competency_id__in=active_comp_ids,
+                reviewer=user
+            )
+            for r in reviews:
+                reviews_by_emp.setdefault(r.employee_id, []).append(r)
+
+        # 5. Format assigned evaluations with real progress
+        assigned_data = []
+        for a in assignments:
+            participant = a.participant
+            if not participant:
+                continue
+            emp = participant.employee
+            if not emp:
+                continue
+
+            emp_reviews = reviews_by_emp.get(emp.id, [])
+            scored_reviews = [r for r in emp_reviews if r.score is not None]
+            scored_count = len(scored_reviews)
+            submitted_count = len([r for r in scored_reviews if r.status == 'SUBMITTED'])
+
+            # Determine status
+            if total_comps == 0:
+                eval_status = 'NOT_STARTED'
+            elif scored_count == total_comps and submitted_count == total_comps:
+                eval_status = 'SUBMITTED'
+            elif scored_count > 0 or len(emp_reviews) > 0:
+                eval_status = 'IN_PROGRESS'
+            else:
+                eval_status = 'NOT_STARTED'
+
+            last_updated = max([r.updated_at for r in emp_reviews]) if emp_reviews else None
+
+            assigned_data.append({
+                'assignment_id': str(a.id),
+                'participant_id': str(participant.id),
+                'employee_id': str(emp.id),
+                'employee_code': emp.employee_code,
+                'full_name': emp.full_name,
+                'department': emp.department.name if emp.department else '',
+                'employment_status': emp.employment_status,
+                'is_mandatory': a.is_mandatory,
+                'assigned_at': a.created_at.isoformat(),
+                'progress': {
+                    'total_competencies': total_comps,
+                    'scored_competencies': scored_count,
+                    'status': eval_status,
+                    'has_configuration_error': total_comps == 0,
+                    'configuration_error': 'No active technical competencies configured for this cycle.' if total_comps == 0 else None,
+                    'last_updated_at': last_updated.isoformat() if last_updated else None,
+                }
+            })
+
+        eligible_cycles_data = [
+            {
+                'id': str(c.id),
+                'name': c.name,
+                'status': c.status,
+                'start_date': c.start_date.isoformat() if c.start_date else None,
+                'end_date': c.end_date.isoformat() if c.end_date else None,
+                'rating_scale_max': float(c.rating_scale_max or Decimal('5.0')),
+            }
+            for c in eligible_cycles
+        ]
+
+        return Response({
+            'requires_cycle_selection': False,
+            'selected_cycle': {
+                'id': str(target_cycle.id),
+                'name': target_cycle.name,
+                'status': target_cycle.status,
+                'start_date': target_cycle.start_date.isoformat() if target_cycle.start_date else None,
+                'end_date': target_cycle.end_date.isoformat() if target_cycle.end_date else None,
+                'rating_scale_max': float(target_cycle.rating_scale_max or Decimal('5.0')),
+                'scoring_model': target_cycle.scoring_model,
+            },
+            'eligible_cycles': eligible_cycles_data,
+            'assigned_evaluations': assigned_data,
+        }, status=status.HTTP_200_OK)
